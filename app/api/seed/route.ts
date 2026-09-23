@@ -4,7 +4,7 @@ import User from '@/lib/models/User';
 import Package from '@/lib/models/Package';
 import bcrypt from 'bcryptjs';
 
-export async function POST() {
+export async function GET() {
   try {
     await connectDB();
 

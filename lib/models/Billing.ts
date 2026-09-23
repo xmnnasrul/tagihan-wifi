@@ -8,6 +8,7 @@ export interface IBilling extends Document {
   address: string;
   packageName: string;
   packagePrice: number;
+  paidAmount: number;
   month: string;
   year: number;
   status: PaymentStatus;
@@ -24,6 +25,7 @@ const BillingSchema = new Schema<IBilling>(
     address: { type: String, default: '' },
     packageName: { type: String, required: true },
     packagePrice: { type: Number, required: true },
+    paidAmount: { type: Number, default: 0 },
     month: { type: String, required: true },
     year: { type: Number, required: true },
     status: { type: String, enum: ['TF', 'Cash', 'Nyicil'], required: true },

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { Wifi, LayoutDashboard, FilePlus, Package, LogOut, Menu, X } from 'lucide-react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, LogOut, Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +11,7 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/billing/add', label: 'Tambah Tagihan', icon: FilePlus },
   { href: '/packages', label: 'Manajemen Paket', icon: Package },
+  { href: '/archived', label: 'Arsip', icon: Archive },
 ];
 
 export default function NavSidebar() {
@@ -82,7 +83,7 @@ export default function NavSidebar() {
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 border-b border-border bg-card/80 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <Wifi className="h-5 w-5 text-primary" />
-          <span className="text-sm font-semibold">WiFi Billing</span>
+          <span className="text-sm font-semibold">TAGIHAN</span>
         </div>
         <Button variant="ghost" size="icon" onClick={() => setMobileOpen(!mobileOpen)}>
           {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

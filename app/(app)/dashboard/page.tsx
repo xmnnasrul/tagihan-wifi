@@ -48,6 +48,7 @@ export default function DashboardPage() {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<SortBy>('name-asc');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [exportMonth, setExportMonth] = useState<string>('all');
   const [exportYear, setExportYear] = useState<string>('all');
 
@@ -60,6 +61,10 @@ export default function DashboardPage() {
         ]);
         const statsData = await statsRes.json();
         const customersData = await customersRes.json();
+        if (!statsRes.ok) throw new Error(statsData.error || 'Gagal memuat statistik');
+        if (!customersRes.ok || !Array.isArray(customersData)) {
+          throw new Error(customersData.error || 'Gagal memuat data pelanggan');
+        }
         setStats(statsData);
         setCustomers(customersData);
 
@@ -69,10 +74,13 @@ export default function DashboardPage() {
         const billingResults = await Promise.all(billingPromises);
         const billingMap: Record<string, string[]> = {};
         customersData.forEach((c: Customer, i: number) => {
-          billingMap[c.name] = billingResults[i].map((b: { status: string }) => b.status);
+          billingMap[c.name] = Array.isArray(billingResults[i])
+            ? billingResults[i].map((b: { status: string }) => b.status)
+            : [];
         });
         setBillings(billingMap);
-      } catch {
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Gagal memuat data dashboard');
       } finally {
         setLoading(false);
       }
@@ -133,27 +141,6 @@ export default function DashboardPage() {
       color: 'text-blue-400',
       bg: 'bg-blue-500/10',
     },
-    {
-      title: `Tagihan ${stats?.currentMonth} ${stats?.currentYear}`,
-      value: stats?.totalBillings ?? 0,
-      icon: FileText,
-      color: 'text-amber-400',
-      bg: 'bg-amber-500/10',
-    },
-    {
-      title: `Pendapatan Bulan Ini`,
-      value: formatRupiah(stats?.totalRevenue ?? 0),
-      icon: DollarSign,
-      color: 'text-emerald-400',
-      bg: 'bg-emerald-500/10',
-    },
-    {
-      title: 'Total Pendapatan',
-      value: formatRupiah(stats?.totalAllRevenue ?? 0),
-      icon: TrendingUp,
-      color: 'text-primary',
-      bg: 'bg-primary/10',
-    },
   ];
 
   return (
@@ -163,8 +150,14 @@ export default function DashboardPage() {
         <p className="text-sm text-muted-foreground mt-1">Ringkasan dan kelola tagihan pelanggan WiFi</p>
       </div>
 
+      {error && (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
       {/* Stats cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
         {statCards.map((stat, i) => {
           const Icon = stat.icon;
           return (

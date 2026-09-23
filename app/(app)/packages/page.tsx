@@ -240,7 +240,6 @@ export default function PackagesPage() {
                 <Input
                   id="pkg-price"
                   type="number"
-                  placeholder="200000"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   required
@@ -250,7 +249,6 @@ export default function PackagesPage() {
                 <Label htmlFor="pkg-speed">Kecepatan</Label>
                 <Input
                   id="pkg-speed"
-                  placeholder="20 Mbps"
                   value={speed}
                   onChange={(e) => setSpeed(e.target.value)}
                   required
@@ -261,7 +259,6 @@ export default function PackagesPage() {
               <Label htmlFor="pkg-desc">Deskripsi</Label>
               <Input
                 id="pkg-desc"
-                placeholder="Cocok untuk keluarga"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />

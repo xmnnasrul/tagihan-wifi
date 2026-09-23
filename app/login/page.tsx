@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 
 export default function LoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -22,7 +23,7 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(mode === 'login' ? '/api/auth/login' : '/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -57,14 +58,18 @@ export default function LoginPage() {
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4 ring-1 ring-primary/20">
             <Wifi className="h-8 w-8" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">WiFi Billing System</h1>
-          <p className="text-sm text-muted-foreground mt-1">Masuk untuk mengelola tagihan</p>
+          <h1 className="text-2xl font-bold tracking-tight">TAGIHAN</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {mode === 'login' ? 'Masuk untuk mengelola tagihan' : 'Buat akun untuk mulai mengelola tagihan'}
+          </p>
         </div>
 
         <Card className="border-border/60 shadow-2xl shadow-black/20">
           <CardHeader>
-            <CardTitle className="text-xl">Login</CardTitle>
-            <CardDescription>Masukkan username dan password Anda</CardDescription>
+            <CardTitle className="text-xl">{mode === 'login' ? 'Login' : 'Daftar'}</CardTitle>
+            <CardDescription>
+              {mode === 'login' ? 'Masukkan username dan password Anda' : 'Buat username dan password baru'}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -75,12 +80,12 @@ export default function LoginPage() {
                   <Input
                     id="username"
                     type="text"
-                    placeholder="admin"
+                    placeholder="isinen dw"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="pl-10"
                     required
-                    autoComplete="username"
+                    autoComplete={mode === 'login' ? 'username' : 'new-username'}
                   />
                 </div>
               </div>
@@ -97,7 +102,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     className="pl-10 pr-10"
                     required
-                    autoComplete="current-password"
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                   />
                   <button
                     type="button"
@@ -123,15 +128,22 @@ export default function LoginPage() {
                     Memproses...
                   </>
                 ) : (
-                  'Masuk'
+                  mode === 'login' ? 'Masuk' : 'Daftar'
                 )}
               </Button>
 
-              <p className="text-xs text-center text-muted-foreground pt-2">
-                Default: <span className="text-foreground font-medium">admin</span> / <span className="text-foreground font-medium">admin123</span>
-              </p>
-              <p className="text-xs text-center text-muted-foreground">
-                Jalankan <code className="text-primary">/api/seed</code> jika belum ada akun
+              <p className="text-sm text-center text-muted-foreground pt-2">
+                {mode === 'login' ? 'Belum punya akun?' : 'Sudah punya akun?'}{' '}
+                <button
+                  type="button"
+                  className="font-medium text-primary hover:underline"
+                  onClick={() => {
+                    setMode(mode === 'login' ? 'register' : 'login');
+                    setError('');
+                  }}
+                >
+                  {mode === 'login' ? 'Daftar sekarang' : 'Login'}
+                </button>
               </p>
             </form>
           </CardContent>

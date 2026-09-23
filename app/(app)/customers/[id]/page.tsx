@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, User, MapPin, Wifi, Loader2, Trash2, Pencil, Check, Clock, AlertCircle } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ArrowLeft, User, MapPin, Wifi, Loader2, Trash2, Pencil, Check, Clock, AlertCircle, Archive } from 'lucide-react';
+import { toast } from 'sonner';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -50,6 +51,7 @@ interface Billing {
   address: string;
   packageName: string;
   packagePrice: number;
+  paidAmount: number;
   month: string;
   year: number;
   status: 'TF' | 'Cash' | 'Nyicil';
@@ -58,12 +60,39 @@ interface Billing {
   createdAt: string;
 }
 
-export default function CustomerDetailPage({ searchParams }: { searchParams: Promise<{ name?: string }> }) {
-  const params = use(searchParams);
+interface Package {
+  _id: string;
+  name: string;
+  price: number;
+  speed: string;
+  description: string;
+}
+
+const months = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+];
+
+export default function CustomerDetailPage() {
   const router = useRouter();
-  const customerName = params.name || '';
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const customerId = (params?.id as string) || '';
+  const customerName = searchParams.get('name') || '';
+  const [customer, setCustomer] = useState<{ name: string; address: string; packageId?: Package | string | null } | null>(null);
+  const [packages, setPackages] = useState<Package[]>([]);
   const [billings, setBillings] = useState<Billing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [customerAddress, setCustomerAddress] = useState('');
+  const [customerPackageId, setCustomerPackageId] = useState('');
+  const [billingMonth, setBillingMonth] = useState(months[new Date().getMonth()]);
+  const [billingYear, setBillingYear] = useState(String(new Date().getFullYear()));
+  const [billingStatus, setBillingStatus] = useState<'TF' | 'Cash' | 'Nyicil' | ''>('');
+  const [billingAmount, setBillingAmount] = useState('');
+  const [billingNote, setBillingNote] = useState('');
+  const [savingBilling, setSavingBilling] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editBilling, setEditBilling] = useState<Billing | null>(null);
   const [editStatus, setEditStatus] = useState<string>('');
@@ -72,18 +101,106 @@ export default function CustomerDetailPage({ searchParams }: { searchParams: Pro
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!customerName) return;
+    if (!customerId) return;
+    fetchCustomer();
     fetchBillings();
-  }, [customerName]);
+    fetchPackages();
+  }, [customerId]);
+
+  const fetchCustomer = async () => {
+    try {
+      const res = await fetch(`/api/customers?id=${customerId}`);
+      const data = await res.json();
+      if (!res.ok || !data) throw new Error(data.error || 'Pelanggan tidak ditemukan');
+      setCustomer(data);
+      setCustomerAddress(data.address || '');
+      setCustomerPackageId(typeof data.packageId === 'object' && data.packageId ? data.packageId._id : data.packageId || '');
+      if (data.packageId && typeof data.packageId === 'object') setBillingAmount(String(data.packageId.price));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Gagal mengambil data pelanggan');
+    }
+  };
+
+  const fetchPackages = async () => {
+    try {
+      const res = await fetch('/api/packages');
+      setPackages(await res.json());
+    } catch {
+      toast.error('Gagal mengambil daftar paket');
+    }
+  };
 
   const fetchBillings = async () => {
     try {
-      const res = await fetch(`/api/billings?customerName=${encodeURIComponent(customerName)}`);
+      const res = await fetch(`/api/billings?customerId=${encodeURIComponent(customerId)}`);
       const data = await res.json();
-      setBillings(data);
+      if (!res.ok) throw new Error(data.error || 'Gagal mengambil riwayat tagihan');
+      setBillings(Array.isArray(data) ? data : []);
     } catch {
+      toast.error('Gagal mengambil riwayat tagihan');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveCustomer = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSavingCustomer(true);
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: customerId, address: customerAddress, packageId: customerPackageId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal memperbarui pelanggan');
+      setCustomer(data);
+      setEditingCustomer(false);
+      toast.success('Data pelanggan berhasil diperbarui');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Gagal memperbarui pelanggan');
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
+
+  const handleAddBilling = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!billingStatus) {
+      toast.error('Status pembayaran wajib dipilih');
+      return;
+    }
+    if (billingStatus === 'Nyicil' && !billingAmount) {
+      toast.error('Nominal yang sudah dibayar wajib diisi untuk cicilan');
+      return;
+    }
+
+    setSavingBilling(true);
+    try {
+      const res = await fetch('/api/billings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId,
+          month: billingMonth,
+          year: Number(billingYear),
+          status: billingStatus,
+          paidAmount: Number(billingAmount) || 0,
+          installmentAmount: billingStatus === 'Nyicil' ? Number(billingAmount) : 0,
+          note: billingNote,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal menambah tagihan');
+      toast.success('Tagihan berhasil ditambahkan');
+      setBillingAmount('');
+      setBillingNote('');
+      setBillingStatus('');
+      await fetchBillings();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Gagal menambah tagihan');
+    } finally {
+      setSavingBilling(false);
     }
   };
 
@@ -95,6 +212,20 @@ export default function CustomerDetailPage({ searchParams }: { searchParams: Pro
     } catch {
     } finally {
       setDeleteId(null);
+    }
+  };
+
+  const handleArchiveCustomer = async () => {
+    if (!customerId) return;
+    try {
+      const res = await fetch(`/api/customers?id=${customerId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Gagal mengarsipkan pelanggan');
+      }
+      router.push('/dashboard');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Gagal mengarsipkan pelanggan');
     }
   };
 
@@ -150,7 +281,11 @@ export default function CustomerDetailPage({ searchParams }: { searchParams: Pro
     );
   }
 
+  const displayCustomerName = customer?.name || customerName;
+  const currentPackage = customer?.packageId && typeof customer.packageId === 'object' ? customer.packageId : null;
+
   const totalPaid = billings.reduce((sum, b) => {
+    if (b.paidAmount) return sum + b.paidAmount;
     if (b.status === 'TF' || b.status === 'Cash') return sum + b.packagePrice;
     if (b.status === 'Nyicil') return sum + b.installmentAmount;
     return sum;
@@ -163,11 +298,15 @@ export default function CustomerDetailPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4">
           <ArrowLeft className="h-4 w-4" />
           Kembali ke Dashboard
         </Link>
+        <Button variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" onClick={handleArchiveCustomer}>
+          <Archive className="h-4 w-4 mr-2" />
+          Arsipkan Pelanggan
+        </Button>
       </div>
 
       {/* Customer info card */}
@@ -178,7 +317,7 @@ export default function CustomerDetailPage({ searchParams }: { searchParams: Pro
               {customerName.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-bold tracking-tight">{customerName}</h1>
+              <h1 className="text-2xl font-bold tracking-tight">{displayCustomerName}</h1>
               <div className="flex items-center gap-4 mt-2 flex-wrap">
                 {billings[0]?.address && (
                   <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -186,10 +325,10 @@ export default function CustomerDetailPage({ searchParams }: { searchParams: Pro
                     {billings[0].address}
                   </span>
                 )}
-                {billings[0]?.packageName && (
+                {currentPackage?.name && (
                   <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                     <Wifi className="h-3.5 w-3.5" />
-                    {billings[0].packageName}
+                    {currentPackage.name}
                   </span>
                 )}
               </div>
@@ -216,6 +355,98 @@ export default function CustomerDetailPage({ searchParams }: { searchParams: Pro
               <p className="text-lg font-bold mt-1 text-amber-400">{formatRupiah(totalOutstanding)}</p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/60">
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle className="text-lg">Data Pelanggan</CardTitle>
+            <CardDescription>Perubahan paket berlaku untuk tagihan baru. Riwayat lama tetap memakai harga sebelumnya.</CardDescription>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => setEditingCustomer((value) => !value)}>
+            <Pencil className="h-4 w-4 mr-2" />
+            {editingCustomer ? 'Batal' : 'Edit Data'}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {editingCustomer ? (
+            <form onSubmit={handleSaveCustomer} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="customer-address">Alamat</Label>
+                <Input id="customer-address" value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Paket</Label>
+                <Select value={customerPackageId} onValueChange={setCustomerPackageId}>
+                  <SelectTrigger><SelectValue placeholder="Pilih paket" /></SelectTrigger>
+                  <SelectContent>
+                    {packages.map((pkg) => (
+                      <SelectItem key={pkg._id} value={pkg._id}>{pkg.name} - {formatRupiah(pkg.price)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button type="submit" disabled={savingCustomer}>
+                {savingCustomer ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</> : 'Simpan Perubahan'}
+              </Button>
+            </form>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 text-sm">
+              <div><p className="text-muted-foreground">Alamat</p><p className="mt-1">{customer?.address || '-'}</p></div>
+              <div><p className="text-muted-foreground">Paket aktif</p><p className="mt-1">{currentPackage ? `${currentPackage.name} - ${formatRupiah(currentPackage.price)}` : '-'}</p></div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/60">
+        <CardHeader>
+          <CardTitle className="text-lg">Tambah Tagihan Bulanan</CardTitle>
+          <CardDescription>Nama, alamat, dan paket diambil otomatis dari data pelanggan.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleAddBilling} className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Bulan</Label>
+                <Select value={billingMonth} onValueChange={setBillingMonth}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{months.map((month) => <SelectItem key={month} value={month}>{month}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Tahun</Label>
+                <Select value={billingYear} onValueChange={setBillingYear}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{Array.from({ length: 5 }, (_, index) => new Date().getFullYear() - index).map((year) => <SelectItem key={year} value={String(year)}>{year}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="billing-amount">Nominal Dibayar</Label>
+                <Input id="billing-amount" type="number" min="0" value={billingAmount} onChange={(event) => setBillingAmount(event.target.value)} placeholder={currentPackage ? String(currentPackage.price) : 'Masukkan nominal'} />
+                <p className="text-xs text-muted-foreground">Otomatis dari paket, tetapi bisa diedit.</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Status Pembayaran</Label>
+                <Select value={billingStatus} onValueChange={(value) => setBillingStatus(value as 'TF' | 'Cash' | 'Nyicil')}>
+                  <SelectTrigger><SelectValue placeholder="Pilih status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TF">TF (Transfer)</SelectItem>
+                    <SelectItem value="Cash">Cash (Tunai)</SelectItem>
+                    <SelectItem value="Nyicil">Nyicil (Cicilan)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="billing-note">Keterangan</Label>
+              <Textarea id="billing-note" value={billingNote} onChange={(event) => setBillingNote(event.target.value)} placeholder="Keterangan tambahan (opsional)" rows={3} />
+            </div>
+            <Button type="submit" disabled={savingBilling || !currentPackage}>
+              {savingBilling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</> : 'Simpan Tagihan'}
+            </Button>
+          </form>
         </CardContent>
       </Card>
 
@@ -259,9 +490,9 @@ export default function CustomerDetailPage({ searchParams }: { searchParams: Pro
                       <TableCell>{getStatusBadge(billing.status)}</TableCell>
                       <TableCell className="text-right">
                         {billing.status === 'Nyicil'
-                          ? formatRupiah(billing.installmentAmount)
+                          ? formatRupiah(billing.paidAmount || billing.installmentAmount)
                           : billing.status === 'TF' || billing.status === 'Cash'
-                            ? formatRupiah(billing.packagePrice)
+                            ? formatRupiah(billing.paidAmount || billing.packagePrice)
                             : '-'}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">

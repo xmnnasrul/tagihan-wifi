@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, User, MapPin, Wifi, Loader2, Trash2, Pencil, Check, Clock, AlertCircle, Archive } from 'lucide-react';
@@ -44,6 +44,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import PageSkeleton from '@/components/PageSkeleton';
 
 interface Billing {
   _id: string;
@@ -51,13 +52,25 @@ interface Billing {
   address: string;
   packageName: string;
   packagePrice: number;
+  carriedAmount?: number;
+  totalDue?: number;
   paidAmount: number;
   month: string;
   year: number;
-  status: 'TF' | 'Cash' | 'Nyicil';
+  status: 'TF' | 'Cash' | 'Nyicil' | 'Lunas';
   installmentAmount: number;
   note: string;
   createdAt: string;
+  paymentHistory?: PaymentHistory[];
+}
+
+interface PaymentHistory {
+  _id?: string;
+  amount: number;
+  addedAt: string;
+  addedBy: string;
+  status: 'TF' | 'Cash' | 'Nyicil' | 'Lunas';
+  note: string;
 }
 
 interface Package {
@@ -73,13 +86,17 @@ const months = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
 ];
 
+const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+const getBillingPeriod = (month: string, year: number) => year * 12 + months.indexOf(month);
+
 export default function CustomerDetailPage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
   const customerId = (params?.id as string) || '';
   const customerName = searchParams.get('name') || '';
-  const [customer, setCustomer] = useState<{ name: string; address: string; packageId?: Package | string | null } | null>(null);
+  const [customer, setCustomer] = useState<{ name: string; address: string; status?: 'active' | 'inactive'; packageId?: Package | string | null } | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
   const [billings, setBillings] = useState<Billing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,11 +104,14 @@ export default function CustomerDetailPage() {
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerPackageId, setCustomerPackageId] = useState('');
   const [billingMonth, setBillingMonth] = useState(months[new Date().getMonth()]);
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [billingYear, setBillingYear] = useState(String(new Date().getFullYear()));
   const [billingStatus, setBillingStatus] = useState<'TF' | 'Cash' | 'Nyicil' | ''>('');
   const [billingAmount, setBillingAmount] = useState('');
   const [billingNote, setBillingNote] = useState('');
   const [savingBilling, setSavingBilling] = useState(false);
+  const [showBillingForm, setShowBillingForm] = useState(false);
+  const [canDismissBillingForm, setCanDismissBillingForm] = useState(true);
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editBilling, setEditBilling] = useState<Billing | null>(null);
@@ -99,19 +119,14 @@ export default function CustomerDetailPage() {
   const [editInstallment, setEditInstallment] = useState('');
   const [editNote, setEditNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [expandedBillingIds, setExpandedBillingIds] = useState<string[]>([]);
+  const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!customerId) return;
-    fetchCustomer();
-    fetchBillings();
-    fetchPackages();
-  }, [customerId]);
-
-  const fetchCustomer = async () => {
+  const fetchCustomer = useCallback(async () => {
     try {
       const res = await fetch(`/api/customers?id=${customerId}`);
       const data = await res.json();
-      if (!res.ok || !data) throw new Error(data.error || 'Pelanggan tidak ditemukan');
+      if (!res.ok || !data) throw new Error(data?.error || 'Pelanggan tidak ditemukan');
       setCustomer(data);
       setCustomerAddress(data.address || '');
       setCustomerPackageId(typeof data.packageId === 'object' && data.packageId ? data.packageId._id : data.packageId || '');
@@ -119,29 +134,42 @@ export default function CustomerDetailPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Gagal mengambil data pelanggan');
     }
-  };
+  }, [customerId]);
 
-  const fetchPackages = async () => {
+  const fetchPackages = useCallback(async () => {
     try {
       const res = await fetch('/api/packages');
-      setPackages(await res.json());
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Gagal mengambil daftar paket');
+      setPackages(Array.isArray(data) ? data : []);
     } catch {
       toast.error('Gagal mengambil daftar paket');
     }
-  };
+  }, []);
 
-  const fetchBillings = async () => {
+  const fetchBillings = useCallback(async () => {
     try {
       const res = await fetch(`/api/billings?customerId=${encodeURIComponent(customerId)}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Gagal mengambil riwayat tagihan');
-      setBillings(Array.isArray(data) ? data : []);
+      if (!res.ok) throw new Error(data?.error || 'Gagal mengambil riwayat tagihan');
+      setBillings(Array.isArray(data) ? data.filter(Boolean) : []);
+      if (Array.isArray(data) && data.length > 0) {
+        setShowBillingForm(true);
+        setCanDismissBillingForm(false);
+      }
     } catch {
       toast.error('Gagal mengambil riwayat tagihan');
     } finally {
       setLoading(false);
     }
-  };
+  }, [customerId]);
+
+  useEffect(() => {
+    if (!customerId) return;
+    fetchCustomer();
+    fetchBillings();
+    fetchPackages();
+  }, [customerId, fetchCustomer, fetchBillings, fetchPackages]);
 
   const handleSaveCustomer = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -174,6 +202,14 @@ export default function CustomerDetailPage() {
       toast.error('Nominal yang sudah dibayar wajib diisi untuk cicilan');
       return;
     }
+    const amount = getAmountValue(billingAmount);
+    const existingBilling = billings.find((billing) => billing.month === billingMonth && billing.year === Number(billingYear));
+    const alreadyPaid = existingBilling?.paidAmount || existingBilling?.installmentAmount || 0;
+    const remainingAmount = currentDueAmount - alreadyPaid;
+    if (billingStatus === 'Nyicil' && amount > remainingAmount) {
+      toast.error(`Cicilan terlalu besar. Maksimal ${formatRupiah(Math.max(0, remainingAmount))} untuk bulan ini.`);
+      return;
+    }
 
     setSavingBilling(true);
     try {
@@ -202,6 +238,13 @@ export default function CustomerDetailPage() {
     } finally {
       setSavingBilling(false);
     }
+  };
+
+  const handleCancelBilling = () => {
+    setBillingStatus('');
+    setBillingAmount('');
+    setBillingNote('');
+    if (canDismissBillingForm) setShowBillingForm(false);
   };
 
   const handleDelete = async () => {
@@ -241,7 +284,7 @@ export default function CustomerDetailPage() {
     if (!editBilling) return;
     setSaving(true);
     try {
-      await fetch('/api/billings', {
+      const res = await fetch('/api/billings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -251,9 +294,12 @@ export default function CustomerDetailPage() {
           note: editNote,
         }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal mengedit tagihan');
       setEditBilling(null);
       await fetchBillings();
-    } catch {
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Gagal mengedit tagihan');
     } finally {
       setSaving(false);
     }
@@ -263,8 +309,44 @@ export default function CustomerDetailPage() {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
   };
 
+  const formatDateTime = (value: string) => new Intl.DateTimeFormat('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+
+  const getPaymentHistory = (billing: Billing): PaymentHistory[] => billing.paymentHistory?.length
+    ? billing.paymentHistory
+    : [{
+        amount: billing.paidAmount || billing.packagePrice,
+        addedAt: billing.createdAt,
+        addedBy: 'Data lama',
+        status: billing.status,
+        note: billing.note || '',
+      }];
+
+  const openBillingDetails = (billingId: string) => {
+    setExpandedBillingIds((current) => current.includes(billingId) ? current : [...current, billingId]);
+  };
+
+  const handleBillingRowClick = (billingId: string) => {
+    if (selectedBillingId === billingId && expandedBillingIds.includes(billingId)) {
+      setSelectedBillingId(null);
+      setExpandedBillingIds((current) => current.filter((id) => id !== billingId));
+      return;
+    }
+    setSelectedBillingId(billingId);
+    openBillingDetails(billingId);
+  };
+
+  const visibleBillings = selectedBillingId
+    ? billings.filter((billing) => billing._id === selectedBillingId)
+    : billings;
+
   const getStatusBadge = (status: string) => {
-    if (status === 'TF' || status === 'Cash') {
+    if (status === 'TF' || status === 'Cash' || status === 'Lunas') {
+      if (status === 'Lunas') {
+        return <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15">Lunas</Badge>;
+      }
       return <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15">{status === 'TF' ? 'Transfer' : 'Tunai'}</Badge>;
     }
     if (status === 'Nyicil') {
@@ -273,40 +355,55 @@ export default function CustomerDetailPage() {
     return <Badge variant="outline">{status}</Badge>;
   };
 
+  const formatAmountInput = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    return digits ? new Intl.NumberFormat('id-ID').format(Number(digits)) : '';
+  };
+
+  const getAmountValue = (value: string) => Number(value.replace(/\D/g, '')) || 0;
+
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   const displayCustomerName = customer?.name || customerName;
+  const isArchived = customer?.status === 'inactive';
   const currentPackage = customer?.packageId && typeof customer.packageId === 'object' ? customer.packageId : null;
-
+  const selectedBilling = billings.find((billing) => billing.month === billingMonth && billing.year === Number(billingYear));
+  const previousBilling = billings
+    .filter((billing) => getBillingPeriod(billing.month, billing.year) < getBillingPeriod(billingMonth, Number(billingYear)))
+    .sort((a, b) => getBillingPeriod(b.month, b.year) - getBillingPeriod(a.month, a.year))[0];
+  const previousOutstanding = previousBilling?.status === 'Nyicil'
+    ? Math.max(0, (previousBilling.totalDue || previousBilling.packagePrice) - (previousBilling.paidAmount || 0))
+    : 0;
+  const currentDueAmount = selectedBilling?.totalDue || (currentPackage?.price ?? 0) + previousOutstanding;
+  const currentPaidAmount = selectedBilling?.paidAmount || selectedBilling?.installmentAmount || 0;
+  const currentRemainingAmount = Math.max(0, currentDueAmount - currentPaidAmount);
   const totalPaid = billings.reduce((sum, b) => {
     if (b.paidAmount) return sum + b.paidAmount;
-    if (b.status === 'TF' || b.status === 'Cash') return sum + b.packagePrice;
+    if (b.status === 'TF' || b.status === 'Cash' || b.status === 'Lunas') return sum + (b.paidAmount || b.packagePrice);
     if (b.status === 'Nyicil') return sum + b.installmentAmount;
     return sum;
   }, 0);
 
   const totalOutstanding = billings.reduce((sum, b) => {
-    if (b.status === 'Nyicil') return sum + (b.packagePrice - b.installmentAmount);
+    if (b.status === 'Nyicil') return sum + ((b.totalDue || b.packagePrice) - b.installmentAmount);
     return sum;
   }, 0);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4">
+        <Link href={isArchived ? '/archived' : '/dashboard'} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4">
           <ArrowLeft className="h-4 w-4" />
-          Kembali ke Dashboard
+          {isArchived ? 'Kembali ke Arsip' : 'Kembali ke Dashboard'}
         </Link>
-        <Button variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" onClick={handleArchiveCustomer}>
-          <Archive className="h-4 w-4 mr-2" />
-          Arsipkan Pelanggan
-        </Button>
+        {!isArchived && (
+          <Button variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" onClick={handleArchiveCustomer}>
+            <Archive className="h-4 w-4 mr-2" />
+            Arsipkan Pelanggan
+          </Button>
+        )}
       </div>
 
       {/* Customer info card */}
@@ -343,7 +440,7 @@ export default function CustomerDetailPage() {
             <div>
               <p className="text-xs text-muted-foreground">Lunas</p>
               <p className="text-lg font-bold mt-1 text-emerald-400">
-                {billings.filter((b) => b.status === 'TF' || b.status === 'Cash').length}
+                      {billings.filter((b) => b.status === 'TF' || b.status === 'Cash' || b.status === 'Lunas').length}
               </p>
             </div>
             <div>
@@ -358,97 +455,145 @@ export default function CustomerDetailPage() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/60">
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <div>
-            <CardTitle className="text-lg">Data Pelanggan</CardTitle>
-            <CardDescription>Perubahan paket berlaku untuk tagihan baru. Riwayat lama tetap memakai harga sebelumnya.</CardDescription>
-          </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => setEditingCustomer((value) => !value)}>
-            <Pencil className="h-4 w-4 mr-2" />
-            {editingCustomer ? 'Batal' : 'Edit Data'}
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {editingCustomer ? (
-            <form onSubmit={handleSaveCustomer} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="customer-address">Alamat</Label>
-                <Input id="customer-address" value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Paket</Label>
-                <Select value={customerPackageId} onValueChange={setCustomerPackageId}>
-                  <SelectTrigger><SelectValue placeholder="Pilih paket" /></SelectTrigger>
-                  <SelectContent>
-                    {packages.map((pkg) => (
-                      <SelectItem key={pkg._id} value={pkg._id}>{pkg.name} - {formatRupiah(pkg.price)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="submit" disabled={savingCustomer}>
-                {savingCustomer ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</> : 'Simpan Perubahan'}
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[360px,minmax(0,1fr)]">
+        <Card className="border-border/60 h-fit min-w-0">
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle className="text-lg">Data Pelanggan</CardTitle>
+              <CardDescription>Perubahan paket berlaku untuk tagihan baru. Riwayat lama tetap memakai harga sebelumnya.</CardDescription>
+            </div>
+            {!isArchived && (
+              <Button type="button" variant="outline" size="sm" onClick={() => setEditingCustomer((value) => !value)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                {editingCustomer ? 'Batal' : 'Edit'}
               </Button>
-            </form>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 text-sm">
-              <div><p className="text-muted-foreground">Alamat</p><p className="mt-1">{customer?.address || '-'}</p></div>
-              <div><p className="text-muted-foreground">Paket aktif</p><p className="mt-1">{currentPackage ? `${currentPackage.name} - ${formatRupiah(currentPackage.price)}` : '-'}</p></div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardHeader>
+          <CardContent>
+            {editingCustomer ? (
+              <form onSubmit={handleSaveCustomer} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="customer-address">Alamat</Label>
+                  <Input id="customer-address" value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Paket</Label>
+                  <Select value={customerPackageId} onValueChange={setCustomerPackageId}>
+                    <SelectTrigger><SelectValue placeholder="Pilih paket" /></SelectTrigger>
+                    <SelectContent>
+                      {packages.map((pkg) => (
+                        <SelectItem key={pkg._id} value={pkg._id}>{pkg.name} - {formatRupiah(pkg.price)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button type="submit" disabled={savingCustomer}>
+                  {savingCustomer ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</> : 'Simpan Perubahan'}
+                </Button>
+              </form>
+            ) : (
+              <div className="space-y-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Alamat</p>
+                  <p className="mt-1 font-medium">{customer?.address || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Paket aktif</p>
+                  <p className="mt-1 font-medium">{currentPackage ? `${currentPackage.name} - ${formatRupiah(currentPackage.price)}` : '-'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Tagihan bulan ini</p>
+                  <p className="mt-1 font-medium text-lg">{formatRupiah(currentDueAmount)}</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      <Card className="border-border/60">
-        <CardHeader>
-          <CardTitle className="text-lg">Tambah Tagihan Bulanan</CardTitle>
-          <CardDescription>Nama, alamat, dan paket diambil otomatis dari data pelanggan.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleAddBilling} className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Bulan</Label>
-                <Select value={billingMonth} onValueChange={setBillingMonth}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{months.map((month) => <SelectItem key={month} value={month}>{month}</SelectItem>)}</SelectContent>
-                </Select>
+        {!isArchived && showBillingForm && <Card className="border-border/60 min-w-0" id="billing-form">
+          <CardHeader>
+            <CardTitle className="text-lg">Tambah Tagihan Bulanan</CardTitle>
+            <CardDescription>Nama, alamat, dan paket diambil otomatis dari data pelanggan.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAddBilling} className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Bulan</Label>
+                  <Button type="button" variant="outline" className="w-full justify-between font-normal" onClick={() => setMonthPickerOpen(true)}>
+                    {months[months.indexOf(billingMonth)] || billingMonth}
+                    <span className="text-xs text-muted-foreground">Pilih</span>
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tahun</Label>
+                  <Select value={billingYear} onValueChange={setBillingYear}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 5 }, (_, index) => 2026 + index).map((year) => (
+                        <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Status Pembayaran</Label>
+                  <Select value={billingStatus} onValueChange={(value) => {
+                    const nextStatus = value as 'TF' | 'Cash' | 'Nyicil';
+                    setBillingStatus(nextStatus);
+                    if (currentPackage && (nextStatus === 'TF' || nextStatus === 'Cash')) {
+                      setBillingAmount(String(currentRemainingAmount));
+                    }
+                    if (currentPackage && nextStatus === 'Nyicil' && !billingAmount) {
+                      setBillingAmount(String(Math.round(currentRemainingAmount / 2)));
+                    }
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Pilih status" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TF">TF (Transfer)</SelectItem>
+                      <SelectItem value="Cash">Cash (Tunai)</SelectItem>
+                      <SelectItem value="Nyicil">Nyicil (Cicilan)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="billing-amount">{billingStatus === 'Nyicil' ? 'Nominal Cicilan' : 'Nominal Dibayar'}</Label>
+                  <Input
+                    id="billing-amount"
+                    type="text"
+                    inputMode="numeric"
+                    value={formatAmountInput(billingAmount)}
+                    onChange={(event) => setBillingAmount(event.target.value.replace(/\D/g, ''))}
+                    placeholder={currentPackage ? formatRupiah(currentRemainingAmount) : 'Masukkan nominal'}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {billingStatus === 'Nyicil'
+                      ? `Masukkan nominal cicilan. Sisa tagihan ${formatRupiah(currentRemainingAmount)}${previousOutstanding > 0 ? ` termasuk tunggakan ${formatRupiah(previousOutstanding)} dari bulan sebelumnya.` : '.'}`
+                      : `Jumlah yang dibayar untuk ${currentPackage?.name ?? 'paket'} adalah ${formatRupiah(currentDueAmount)}.`}
+                  </p>
+                </div>
               </div>
               <div className="space-y-2">
-                <Label>Tahun</Label>
-                <Select value={billingYear} onValueChange={setBillingYear}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{Array.from({ length: 5 }, (_, index) => new Date().getFullYear() - index).map((year) => <SelectItem key={year} value={String(year)}>{year}</SelectItem>)}</SelectContent>
-                </Select>
+                <Label htmlFor="billing-note">Keterangan</Label>
+                <Textarea id="billing-note" value={billingNote} onChange={(event) => setBillingNote(event.target.value)} placeholder="Keterangan tambahan (opsional)" rows={3} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="billing-amount">Nominal Dibayar</Label>
-                <Input id="billing-amount" type="number" min="0" value={billingAmount} onChange={(event) => setBillingAmount(event.target.value)} placeholder={currentPackage ? String(currentPackage.price) : 'Masukkan nominal'} />
-                <p className="text-xs text-muted-foreground">Otomatis dari paket, tetapi bisa diedit.</p>
+              <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <Button type="submit" disabled={savingBilling || !currentPackage}>
+                    {savingBilling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</> : 'Simpan Tagihan'}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={handleCancelBilling}>
+                    Batal
+                  </Button>
+                </div>
+                {currentPackage && (
+                  <p className="text-sm text-muted-foreground">Total tagihan: {formatRupiah(currentDueAmount)}</p>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label>Status Pembayaran</Label>
-                <Select value={billingStatus} onValueChange={(value) => setBillingStatus(value as 'TF' | 'Cash' | 'Nyicil')}>
-                  <SelectTrigger><SelectValue placeholder="Pilih status" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="TF">TF (Transfer)</SelectItem>
-                    <SelectItem value="Cash">Cash (Tunai)</SelectItem>
-                    <SelectItem value="Nyicil">Nyicil (Cicilan)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="billing-note">Keterangan</Label>
-              <Textarea id="billing-note" value={billingNote} onChange={(event) => setBillingNote(event.target.value)} placeholder="Keterangan tambahan (opsional)" rows={3} />
-            </div>
-            <Button type="submit" disabled={savingBilling || !currentPackage}>
-              {savingBilling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</> : 'Simpan Tagihan'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+            </form>
+          </CardContent>
+        </Card>}
+      </div>
 
       {/* Billing history */}
       <div>
@@ -459,21 +604,24 @@ export default function CustomerDetailPage() {
             <CardContent className="py-16 text-center">
               <AlertCircle className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-muted-foreground">Belum ada riwayat tagihan untuk pelanggan ini.</p>
-              <Button asChild className="mt-4">
-                <Link href="/billing/add">Tambah Tagihan</Link>
-              </Button>
+              {!isArchived && (
+                <Button type="button" className="mt-4" onClick={() => {
+                  setCanDismissBillingForm(true);
+                  setShowBillingForm(true);
+                }}>
+                  Tambah Tagihan
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-border/60 overflow-hidden">
+          <Card className="border-border/60 min-w-0 overflow-hidden">
             <div className="overflow-x-auto scrollbar-thin">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Bulan</TableHead>
                     <TableHead>Tahun</TableHead>
-                    <TableHead>Paket</TableHead>
-                    <TableHead className="text-right">Harga</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Dibayar</TableHead>
                     <TableHead>Catatan</TableHead>
@@ -481,41 +629,83 @@ export default function CustomerDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {billings.map((billing) => (
-                    <TableRow key={billing._id} className="group">
+                  {visibleBillings.map((billing) => {
+                    const paymentHistory = getPaymentHistory(billing);
+                    const isExpanded = expandedBillingIds.includes(billing._id);
+                    return (
+                      <Fragment key={billing._id}>
+                        <TableRow className="group cursor-pointer transition-colors duration-200" onClick={() => handleBillingRowClick(billing._id)}>
                       <TableCell className="font-medium">{billing.month}</TableCell>
                       <TableCell>{billing.year}</TableCell>
-                      <TableCell className="text-muted-foreground">{billing.packageName}</TableCell>
-                      <TableCell className="text-right">{formatRupiah(billing.packagePrice)}</TableCell>
                       <TableCell>{getStatusBadge(billing.status)}</TableCell>
-                      <TableCell className="text-right">
-                        {billing.status === 'Nyicil'
-                          ? formatRupiah(billing.paidAmount || billing.installmentAmount)
-                          : billing.status === 'TF' || billing.status === 'Cash'
-                            ? formatRupiah(billing.paidAmount || billing.packagePrice)
-                            : '-'}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
-                        {billing.note || '-'}
-                      </TableCell>
+                      <TableCell className="text-right">{formatRupiah(billing.paidAmount || billing.installmentAmount || 0)}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{billing.note || '-'}</TableCell>
                       <TableCell>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(billing)}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteId(billing._id)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
+                        {!isArchived && (
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(event) => { event.stopPropagation(); openEdit(billing); }}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={(event) => { event.stopPropagation(); setDeleteId(billing._id); }}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
                       </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableRow>
+                        {isExpanded && (
+                          <TableRow className="bg-muted/20 hover:bg-muted/20">
+                            <TableCell colSpan={6} className="p-0">
+                              <div className="animate-fade-in space-y-3 border-l-2 border-primary/40 px-4 py-4 sm:ml-6">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Detail pembayaran</p>
+                                {paymentHistory.map((payment, paymentIndex) => (
+                                  <div key={`${billing._id}-${payment._id || paymentIndex}`} className="flex flex-col gap-2 rounded-md border border-border/60 bg-background/50 p-3 text-sm">
+                                    <div>
+                                      <p className="font-medium">Pembayaran ke-{paymentIndex + 1}</p>
+                                      <p className="text-xs text-muted-foreground">{formatDateTime(payment.addedAt)} oleh {payment.addedBy || 'Admin'}</p>
+                                      <p className="mt-1 font-semibold">Nominal: {formatRupiah(payment.amount)}</p>
+                                    </div>
+                                    <div className="self-start">{getStatusBadge(payment.status)}</div>
+                                    {payment.note && <p className="text-xs text-muted-foreground">Catatan: {payment.note}</p>}
+                                  </div>
+                                ))}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
           </Card>
         )}
       </div>
+
+      <Dialog open={monthPickerOpen} onOpenChange={setMonthPickerOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Pilih Bulan</DialogTitle>
+            <DialogDescription>Pilih bulan tagihan yang ingin ditambahkan.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-3 gap-3">
+            {months.map((month, index) => (
+              <Button
+                key={month}
+                type="button"
+                variant={billingMonth === month ? 'default' : 'outline'}
+                onClick={() => {
+                  setBillingMonth(month);
+                  setMonthPickerOpen(false);
+                }}
+              >
+                {monthShortNames[index]}
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
@@ -558,19 +748,21 @@ export default function CustomerDetailPage() {
                   <SelectItem value="TF">TF (Transfer)</SelectItem>
                   <SelectItem value="Cash">Cash (Tunai)</SelectItem>
                   <SelectItem value="Nyicil">Nyicil (Cicilan)</SelectItem>
+                  <SelectItem value="Lunas">Lunas</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {editStatus === 'Nyicil' && (
               <div className="space-y-2 animate-fade-in">
-                <Label htmlFor="edit-installment">Nominal Cicilan</Label>
+                <Label htmlFor="edit-installment">Total Cicilan yang Sudah Dibayar</Label>
                 <Input
                   id="edit-installment"
-                  type="number"
-                  value={editInstallment}
-                  onChange={(e) => setEditInstallment(e.target.value)}
-                  placeholder="Masukkan nominal"
+                  type="text"
+                  inputMode="numeric"
+                  value={formatAmountInput(editInstallment)}
+                  onChange={(e) => setEditInstallment(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Contoh: 100.000"
                 />
               </div>
             )}

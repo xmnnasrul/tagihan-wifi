@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Archive, ArrowLeft, Loader2, RotateCcw, UserX } from 'lucide-react';
+import { Archive, ArrowLeft, Eye, Loader2, RotateCcw, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,12 +13,18 @@ interface ArchivedCustomer {
   address: string;
   packageId: { _id: string; name: string; speed: string } | null;
   archivedAt: string | null;
+  createdAt?: string;
+  createdBy?: string;
 }
 
 export default function ArchivedCustomersPage() {
   const [customers, setCustomers] = useState<ArchivedCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const formatDateTime = (value?: string) => value
+    ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+    : '-';
 
   const fetchArchived = async () => {
     try {
@@ -98,6 +104,9 @@ export default function ArchivedCustomersPage() {
                       {customer.packageId && (
                         <p className="text-xs text-muted-foreground mt-1">{customer.packageId.name} · {customer.packageId.speed}</p>
                       )}
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Ditambahkan {formatDateTime(customer.createdAt)} oleh {customer.createdBy || 'Admin'}
+                      </p>
                     </div>
                   </div>
 
@@ -107,6 +116,12 @@ export default function ArchivedCustomersPage() {
                         Arsip sejak {new Date(customer.archivedAt).toLocaleDateString('id-ID')}
                       </Badge>
                     )}
+                    <Button variant="outline" asChild>
+                      <Link href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}>
+                        <Eye className="h-4 w-4 mr-2" />
+                        Lihat riwayat
+                      </Link>
+                    </Button>
                     <Button variant="outline" onClick={() => handleRestore(customer._id)}>
                       <RotateCcw className="h-4 w-4 mr-2" />
                       Pulihkan

@@ -14,18 +14,18 @@ export async function GET() {
 
     const currentBillings = await Billing.find({ year: currentYear, month: currentMonth });
     const totalBillings = currentBillings.length;
-    const paidBillings = currentBillings.filter((b) => b.status === 'TF' || b.status === 'Cash').length;
+    const paidBillings = currentBillings.filter((b) => b.status === 'TF' || b.status === 'Cash' || b.status === 'Lunas').length;
     const installmentBillings = currentBillings.filter((b) => b.status === 'Nyicil').length;
 
     const totalRevenue = currentBillings.reduce((sum, b) => {
-      if (b.status === 'TF' || b.status === 'Cash') return sum + b.packagePrice;
+      if (b.status === 'TF' || b.status === 'Cash' || b.status === 'Lunas') return sum + (b.paidAmount || b.packagePrice);
       if (b.status === 'Nyicil') return sum + b.installmentAmount;
       return sum;
     }, 0);
 
     const allBillings = await Billing.find({});
     const totalAllRevenue = allBillings.reduce((sum, b) => {
-      if (b.status === 'TF' || b.status === 'Cash') return sum + b.packagePrice;
+      if (b.status === 'TF' || b.status === 'Cash' || b.status === 'Lunas') return sum + (b.paidAmount || b.packagePrice);
       if (b.status === 'Nyicil') return sum + b.installmentAmount;
       return sum;
     }, 0);

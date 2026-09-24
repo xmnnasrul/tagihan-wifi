@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Search, Users, FileText, DollarSign, TrendingUp, ArrowUpDown, Download, ChevronRight, Loader2, Wifi } from 'lucide-react';
+import { Search, Users, ChevronRight, Loader2, Wifi, MapPin, CalendarDays, UserRound } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface Stats {
   totalCustomers: number;
@@ -32,25 +33,35 @@ interface Customer {
   name: string;
   address: string;
   packageId: { _id: string; name: string; price: number; speed: string } | null;
+  createdAt?: string;
+  createdBy?: string;
 }
 
-type SortBy = 'name-asc' | 'name-desc' | 'status-paid' | 'status-unpaid';
+interface BillingSummary {
+  status: string;
+  month: string;
+}
+
+type StatusFilter = 'all' | 'lunas' | 'nyicil';
 
 const months = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
 ];
 
+const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [billings, setBillings] = useState<Record<string, string[]>>({});
+  const [billings, setBillings] = useState<Record<string, BillingSummary[]>>({});
   const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState<SortBy>('name-asc');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [exportMonth, setExportMonth] = useState<string>('all');
-  const [exportYear, setExportYear] = useState<string>('all');
+  const [billingMonthFilter, setBillingMonthFilter] = useState<string>('all');
+  const [billingMonthPickerOpen, setBillingMonthPickerOpen] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -72,10 +83,10 @@ export default function DashboardPage() {
           fetch(`/api/billings?customerName=${encodeURIComponent(c.name)}`).then((r) => r.json())
         );
         const billingResults = await Promise.all(billingPromises);
-        const billingMap: Record<string, string[]> = {};
+        const billingMap: Record<string, BillingSummary[]> = {};
         customersData.forEach((c: Customer, i: number) => {
           billingMap[c.name] = Array.isArray(billingResults[i])
-            ? billingResults[i].map((b: { status: string }) => b.status)
+            ? billingResults[i].map((b: BillingSummary) => ({ status: b.status, month: b.month }))
             : [];
         });
         setBillings(billingMap);
@@ -88,47 +99,56 @@ export default function DashboardPage() {
     fetchData();
   }, []);
 
-  const filteredAndSorted = useMemo(() => {
-    let result = customers.filter((c) =>
-      c.name.toLowerCase().includes(search.toLowerCase())
-    );
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timeout);
+  }, [search]);
 
-    if (sortBy === 'name-asc') {
-      result = [...result].sort((a, b) => a.name.localeCompare(b.name));
-    } else if (sortBy === 'name-desc') {
-      result = [...result].sort((a, b) => b.name.localeCompare(a.name));
-    } else if (sortBy === 'status-paid') {
-      result = [...result].sort((a, b) => {
-        const aPaid = (billings[a.name] || []).some((s) => s === 'TF' || s === 'Cash') ? 1 : 0;
-        const bPaid = (billings[b.name] || []).some((s) => s === 'TF' || s === 'Cash') ? 1 : 0;
-        return bPaid - aPaid;
-      });
-    } else if (sortBy === 'status-unpaid') {
-      result = [...result].sort((a, b) => {
-        const aPaid = (billings[a.name] || []).some((s) => s === 'TF' || s === 'Cash') ? 1 : 0;
-        const bPaid = (billings[b.name] || []).some((s) => s === 'TF' || s === 'Cash') ? 1 : 0;
-        return aPaid - bPaid;
-      });
-    }
+  const filteredCustomers = useMemo(() => {
+    return customers.filter((c) => {
+      const searchableText = `${c.name} ${c.address ?? ''} ${c.packageId?.name ?? ''} ${c.packageId?.speed ?? ''}`.toLowerCase();
+      const matchesSearch = searchableText.includes(debouncedSearch.toLowerCase());
 
-    return result;
-  }, [customers, search, sortBy, billings]);
+      const allStatuses = billings[c.name] || [];
+      const statuses = billingMonthFilter === 'all'
+        ? allStatuses
+        : allStatuses.filter((billing) => billing.month === billingMonthFilter);
+      const hasPaid = statuses.some((billing) => billing.status === 'TF' || billing.status === 'Cash' || billing.status === 'Lunas');
+      const hasInstallment = statuses.some((billing) => billing.status === 'Nyicil');
+      const hasSelectedMonth = billingMonthFilter === 'all' || statuses.length > 0;
+      const matchStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'lunas' && hasPaid) ||
+        (statusFilter === 'nyicil' && hasInstallment);
 
-  const handleExport = () => {
-    const params = new URLSearchParams();
-    if (exportMonth !== 'all') params.set('month', exportMonth);
-    if (exportYear !== 'all') params.set('year', exportYear);
-    window.open(`/api/billings/export?${params.toString()}`, '_blank');
-  };
+      return matchesSearch && matchStatus && hasSelectedMonth;
+    });
+  }, [customers, debouncedSearch, statusFilter, billingMonthFilter, billings]);
+
+  const visibleCustomers = debouncedSearch ? filteredCustomers : filteredCustomers.slice(0, 20);
 
   const formatRupiah = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
   };
 
+  const formatDateTime = (value?: string) => value
+    ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+    : '-';
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="space-y-6" aria-label="Memuat dashboard">
+        <div className="space-y-2">
+          <div className="h-7 w-40 animate-pulse rounded-md bg-muted" />
+          <div className="h-4 w-72 animate-pulse rounded-md bg-muted" />
+        </div>
+        <div className="h-24 animate-pulse rounded-xl bg-card" />
+        <div className="h-20 animate-pulse rounded-xl bg-card" />
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="h-20 animate-pulse rounded-xl bg-card" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -178,82 +198,74 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* Export section */}
-      <Card className="border-border/60">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Download className="h-4 w-4" />
-            Ekspor Data Tagihan
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground">Bulan</label>
-              <Select value={exportMonth} onValueChange={setExportMonth}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Semua Bulan" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Bulan</SelectItem>
-                  {months.map((m) => (
-                    <SelectItem key={m} value={m}>{m}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground">Tahun</label>
-              <Select value={exportYear} onValueChange={setExportYear}>
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue placeholder="Semua" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Tahun</SelectItem>
-                  {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map((y) => (
-                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button onClick={handleExport} className="gap-2">
-              <Download className="h-4 w-4" />
-              Ekspor CSV
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Search & Sort */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      {/* Search & Filters */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Cari nama pelanggan..."
+            placeholder="Cari nama, alamat, atau paket..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="name-asc">Nama (A-Z)</SelectItem>
-              <SelectItem value="name-desc">Nama (Z-A)</SelectItem>
-              <SelectItem value="status-paid">Sudah Bayar</SelectItem>
-              <SelectItem value="status-unpaid">Belum Bayar</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Bulan</span>
+            <Button type="button" variant="outline" className="w-[150px] justify-between font-normal" onClick={() => setBillingMonthPickerOpen(true)}>
+              {billingMonthFilter === 'all' ? 'Semua Bulan' : billingMonthFilter}
+              <span className="text-xs text-muted-foreground">Pilih</span>
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Status</span>
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                <SelectItem value="lunas">Lunas</SelectItem>
+                <SelectItem value="nyicil">Nyicil</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
+      <Dialog open={billingMonthPickerOpen} onOpenChange={setBillingMonthPickerOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Filter Bulan Tagihan</DialogTitle>
+            <DialogDescription>Tampilkan pelanggan yang memiliki tagihan pada bulan tertentu.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-3 gap-3">
+            <Button type="button" variant={billingMonthFilter === 'all' ? 'default' : 'outline'} onClick={() => {
+              setBillingMonthFilter('all');
+              setBillingMonthPickerOpen(false);
+            }}>
+              Semua
+            </Button>
+            {months.map((month, index) => (
+              <Button key={month} type="button" variant={billingMonthFilter === month ? 'default' : 'outline'} onClick={() => {
+                setBillingMonthFilter(month);
+                setBillingMonthPickerOpen(false);
+              }}>
+                {monthShortNames[index]}
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Customer list */}
       <div className="space-y-2">
-        {filteredAndSorted.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {search.trim()
+            ? `${visibleCustomers.length} hasil pencarian`
+            : `Menampilkan ${visibleCustomers.length} dari ${filteredCustomers.length} pelanggan`}
+        </p>
+        {visibleCustomers.length === 0 ? (
           <Card className="border-border/60">
             <CardContent className="py-16 text-center">
               <Wifi className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
@@ -263,40 +275,44 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         ) : (
-          filteredAndSorted.map((customer) => {
+          visibleCustomers.map((customer, index) => {
             const statuses = billings[customer.name] || [];
-            const hasPaid = statuses.some((s) => s === 'TF' || s === 'Cash');
-            const hasInstallment = statuses.some((s) => s === 'Nyicil');
-            const pkg = customer.packageId;
+            const hasPaid = statuses.some((billing) => billing.status === 'TF' || billing.status === 'Cash' || billing.status === 'Lunas');
+            const hasInstallment = statuses.some((billing) => billing.status === 'Nyicil');
 
             return (
               <Link
                 key={customer._id}
                 href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}
-                className="block group"
+                className="block group animate-fade-in"
+                style={{ animationDelay: `${Math.min(index, 9) * 35}ms` }}
               >
                 <Card className="border-border/60 hover:border-primary/40 hover:bg-accent/30 transition-all duration-200 cursor-pointer">
                   <CardContent className="py-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-4 min-w-0 flex-1">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-start gap-4 min-w-0 flex-1">
                         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary font-semibold text-sm flex-shrink-0">
                           {customer.name.charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-semibold truncate">{customer.name}</p>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            {pkg ? (
-                              <span className="text-xs text-muted-foreground">{pkg.name} - {pkg.speed}</span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">Tidak ada paket</span>
-                            )}
-                            {customer.address && (
-                              <span className="text-xs text-muted-foreground hidden sm:inline">- {customer.address}</span>
-                            )}
+                          <p className="font-semibold truncate text-base">{customer.name}</p>
+                          <div className="flex items-start gap-1.5 mt-1 text-xs text-muted-foreground">
+                            <MapPin className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                            <span className="truncate">{customer.address || 'Alamat belum diisi'}</span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px] text-muted-foreground">
+                            <span className="inline-flex items-center gap-1">
+                              <CalendarDays className="h-3 w-3" />
+                              {formatDateTime(customer.createdAt)}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <UserRound className="h-3 w-3" />
+                              {customer.createdBy || 'Admin'}
+                            </span>
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="flex items-center justify-between gap-3 flex-shrink-0 sm:justify-end">
                         <div className="flex gap-1.5">
                           {hasPaid && <Badge variant="default" className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15">Lunas</Badge>}
                           {hasInstallment && <Badge variant="default" className="bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/15">Nyicil</Badge>}

@@ -60,7 +60,9 @@ export default function AddCustomerPage() {
       }
 
       toast.success('Pelanggan berhasil ditambahkan');
-      router.push(`/customers/${data._id}?name=${encodeURIComponent(data.name)}`);
+      setName('');
+      setAddress('');
+      setPackageId('');
     } catch {
       toast.error('Terjadi kesalahan. Coba lagi.');
     } finally {

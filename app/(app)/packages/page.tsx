@@ -177,7 +177,7 @@ export default function PackagesPage() {
         <Card className="border-border/60">
           <CardContent className="py-16 text-center">
             <PackageIcon className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-muted-foreground">Belum ada paket. Klik "Tambah Paket" untuk memulai.</p>
+            <p className="text-muted-foreground">Belum ada paket. Klik &quot;Tambah Paket&quot; untuk memulai.</p>
           </CardContent>
         </Card>
       ) : (

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { Wifi, LayoutDashboard, FilePlus, Package, Archive, LogOut, Menu, X } from 'lucide-react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -12,6 +12,7 @@ const navItems = [
   { href: '/billing/add', label: 'Tambah Tagihan', icon: FilePlus },
   { href: '/packages', label: 'Manajemen Paket', icon: Package },
   { href: '/archived', label: 'Arsip', icon: Archive },
+  { href: '/export', label: 'Ekspor Data', icon: Download },
 ];
 
 export default function NavSidebar() {
@@ -27,13 +28,15 @@ export default function NavSidebar() {
   const NavContent = () => (
     <>
       <div className="flex items-center gap-3 px-6 py-6 border-b border-border">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <Wifi className="h-5 w-5" />
-        </div>
-        <div>
-          <h1 className="text-sm font-semibold tracking-tight">WiFi Billing</h1>
-          <p className="text-xs text-muted-foreground">Manajemen Tagihan</p>
-        </div>
+        <Link href="/dashboard" className="flex items-center gap-3" onClick={() => setMobileOpen(false)}>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Wifi className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-sm font-semibold tracking-tight">WiFi Billing</h1>
+            <p className="text-xs text-muted-foreground">Manajemen Tagihan</p>
+          </div>
+        </Link>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">
@@ -82,8 +85,10 @@ export default function NavSidebar() {
       {/* Mobile header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 border-b border-border bg-card/80 backdrop-blur-md">
         <div className="flex items-center gap-2">
-          <Wifi className="h-5 w-5 text-primary" />
-          <span className="text-sm font-semibold">TAGIHAN</span>
+          <Link href="/dashboard" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
+            <Wifi className="h-5 w-5 text-primary" />
+            <span className="text-sm font-semibold">TAGIHAN</span>
+          </Link>
         </div>
         <Button variant="ghost" size="icon" onClick={() => setMobileOpen(!mobileOpen)}>
           {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

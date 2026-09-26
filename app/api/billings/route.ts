@@ -3,7 +3,8 @@ import { connectDB } from '@/lib/mongodb';
 import Billing from '@/lib/models/Billing';
 import Customer from '@/lib/models/Customer';
 import Package from '@/lib/models/Package';
-import { getCurrentUser } from '@/lib/session';
+import { getCurrentUser, requireAuthenticatedUser } from '@/lib/session';
+import { writeAuditLog } from '@/lib/audit';
 
 const billingMonths = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -14,6 +15,9 @@ const getBillingPeriod = (month: string, year: number) => year * 12 + billingMon
 
 export async function GET(request: Request) {
   try {
+    const authError = await requireAuthenticatedUser();
+    if (authError) return authError;
+
     await connectDB();
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
@@ -38,6 +42,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const authError = await requireAuthenticatedUser();
+    if (authError) return authError;
+
     await connectDB();
     const body = await request.json();
     const { customerId, month, year, status, paidAmount, installmentAmount, note } = body;
@@ -104,6 +111,14 @@ export async function POST(request: Request) {
       existingBilling.paymentHistory = existingBilling.paymentHistory || [];
       existingBilling.paymentHistory.push({ amount: paymentAmount, addedAt: new Date(), addedBy: adminName, status: nextStatus, note: note || '' });
       await existingBilling.save();
+      await writeAuditLog({
+        actorUsername: adminName,
+        action: 'billing.payment_added',
+        entityType: 'billing',
+        entityId: existingBilling._id.toString(),
+        entityLabel: `${customer.name} - ${month} ${year}`,
+        summary: `Pembayaran ${paymentAmount} ditambahkan; total dibayar ${totalPaid} dari ${totalDue}`,
+      });
       return NextResponse.json(existingBilling);
     }
 
@@ -130,6 +145,15 @@ export async function POST(request: Request) {
       }],
     });
 
+    await writeAuditLog({
+      actorUsername: adminName,
+      action: 'billing.created',
+      entityType: 'billing',
+      entityId: billing._id.toString(),
+      entityLabel: `${customer.name} - ${month} ${year}`,
+      summary: `Tagihan dibuat dengan total ${totalDue}; pembayaran awal ${paymentAmount}`,
+    });
+
     return NextResponse.json(billing, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: 'Gagal menambah tagihan' }, { status: 500 });
@@ -138,6 +162,9 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const authError = await requireAuthenticatedUser();
+    if (authError) return authError;
+
     await connectDB();
     const body = await request.json();
     const { id, status, paidAmount, installmentAmount, note } = body;
@@ -204,6 +231,17 @@ export async function PUT(request: Request) {
     if (note !== undefined) updateData.note = note;
 
     const updatedBilling = await Billing.findByIdAndUpdate(id, updateData, { new: true });
+    const actor = await getCurrentUser();
+    if (updatedBilling) {
+      await writeAuditLog({
+        actorUsername: actor?.username || 'Admin',
+        action: 'billing.updated',
+        entityType: 'billing',
+        entityId: updatedBilling._id.toString(),
+        entityLabel: `${updatedBilling.customerName} - ${updatedBilling.month} ${updatedBilling.year}`,
+        summary: `Tagihan diubah; status ${updatedBilling.status}, total dibayar ${updatedBilling.paidAmount}`,
+      });
+    }
 
     return NextResponse.json(updatedBilling);
   } catch (error) {
@@ -213,6 +251,9 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const authError = await requireAuthenticatedUser();
+    if (authError) return authError;
+
     await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -225,6 +266,16 @@ export async function DELETE(request: Request) {
     if (!billing) {
       return NextResponse.json({ error: 'Tagihan tidak ditemukan' }, { status: 404 });
     }
+
+    const actor = await getCurrentUser();
+    await writeAuditLog({
+      actorUsername: actor?.username || 'Admin',
+      action: 'billing.deleted',
+      entityType: 'billing',
+      entityId: billing._id.toString(),
+      entityLabel: `${billing.customerName} - ${billing.month} ${billing.year}`,
+      summary: `Tagihan dihapus; total ${billing.totalDue || billing.packagePrice}, dibayar ${billing.paidAmount}`,
+    });
 
     return NextResponse.json({ message: 'Tagihan berhasil dihapus' });
   } catch (error) {

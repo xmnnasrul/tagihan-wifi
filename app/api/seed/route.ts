@@ -4,13 +4,26 @@ import User from '@/lib/models/User';
 import Package from '@/lib/models/Package';
 import bcrypt from 'bcryptjs';
 
-export async function GET() {
+export async function POST(request: Request) {
   try {
+    if (process.env.NODE_ENV === 'production') {
+      const seedSecret = process.env.SEED_SECRET;
+      if (!seedSecret || request.headers.get('x-seed-secret') !== seedSecret) {
+        return NextResponse.json({ error: 'Tidak ditemukan' }, { status: 404 });
+      }
+    }
+
     await connectDB();
 
     const existingAdmin = await User.findOne({ username: 'admin' });
     if (!existingAdmin) {
-      const hashedPassword = await bcrypt.hash('admin123', 10);
+      const initialPassword = process.env.NODE_ENV === 'production'
+        ? process.env.INITIAL_ADMIN_PASSWORD
+        : 'admin123';
+      if (!initialPassword) {
+        return NextResponse.json({ error: 'INITIAL_ADMIN_PASSWORD wajib dikonfigurasi' }, { status: 500 });
+      }
+      const hashedPassword = await bcrypt.hash(initialPassword, 10);
       await User.create({ username: 'admin', password: hashedPassword, role: 'admin' });
     }
 
@@ -28,10 +41,7 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({
-      message: 'Seed berhasil! Akun admin: admin / admin123',
-      credentials: { username: 'admin', password: 'admin123' },
-    });
+    return NextResponse.json({ message: 'Seed berhasil' });
   } catch (error) {
     return NextResponse.json({ error: 'Seed gagal: ' + (error as Error).message }, { status: 500 });
   }

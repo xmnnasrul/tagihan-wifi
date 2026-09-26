@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     }
 
     const user = await User.findOne({ username });
-    if (!user) {
+    if (!user || user.isActive === false) {
       return NextResponse.json({ error: 'Username atau password salah' }, { status: 401 });
     }
 
@@ -23,7 +23,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Username atau password salah' }, { status: 401 });
     }
 
-    const token = signToken({ username: user.username, role: user.role });
+    const token = signToken({
+      username: user.username,
+      role: user.role,
+      tokenVersion: user.tokenVersion || 0,
+    });
 
     const response = NextResponse.json({ message: 'Login berhasil', user: { username: user.username, role: user.role } });
     response.cookies.set(COOKIE_NAME, token, {

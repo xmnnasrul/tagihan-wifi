@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Package from '@/lib/models/Package';
+import { getCurrentUser, requireAuthenticatedUser } from '@/lib/session';
+import { writeAuditLog } from '@/lib/audit';
 
 export async function GET() {
   try {
+    const authError = await requireAuthenticatedUser();
+    if (authError) return authError;
+
     await connectDB();
     const packages = await Package.find({}).sort({ price: 1 });
     return NextResponse.json(packages);
@@ -14,6 +19,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const authError = await requireAuthenticatedUser();
+    if (authError) return authError;
+
     await connectDB();
     const body = await request.json();
     const { name, price, speed, description } = body;
@@ -28,6 +36,15 @@ export async function POST(request: Request) {
     }
 
     const pkg = await Package.create({ name, price: Number(price), speed, description: description || '' });
+    const actor = await getCurrentUser();
+    await writeAuditLog({
+      actorUsername: actor?.username || 'Admin',
+      action: 'package.created',
+      entityType: 'package',
+      entityId: pkg._id.toString(),
+      entityLabel: pkg.name,
+      summary: `Paket ${pkg.name} dibuat dengan harga ${pkg.price}`,
+    });
     return NextResponse.json(pkg, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: 'Gagal menambah paket' }, { status: 500 });
@@ -36,6 +53,9 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const authError = await requireAuthenticatedUser();
+    if (authError) return authError;
+
     await connectDB();
     const body = await request.json();
     const { id, name, price, speed, description } = body;
@@ -54,6 +74,16 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Paket tidak ditemukan' }, { status: 404 });
     }
 
+    const actor = await getCurrentUser();
+    await writeAuditLog({
+      actorUsername: actor?.username || 'Admin',
+      action: 'package.updated',
+      entityType: 'package',
+      entityId: pkg._id.toString(),
+      entityLabel: pkg.name,
+      summary: `Data paket ${pkg.name} diperbarui dengan harga ${pkg.price}`,
+    });
+
     return NextResponse.json(pkg);
   } catch (error) {
     return NextResponse.json({ error: 'Gagal mengedit paket' }, { status: 500 });
@@ -62,6 +92,9 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const authError = await requireAuthenticatedUser();
+    if (authError) return authError;
+
     await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -74,6 +107,16 @@ export async function DELETE(request: Request) {
     if (!pkg) {
       return NextResponse.json({ error: 'Paket tidak ditemukan' }, { status: 404 });
     }
+
+    const actor = await getCurrentUser();
+    await writeAuditLog({
+      actorUsername: actor?.username || 'Admin',
+      action: 'package.deleted',
+      entityType: 'package',
+      entityId: pkg._id.toString(),
+      entityLabel: pkg.name,
+      summary: `Paket ${pkg.name} dihapus`,
+    });
 
     return NextResponse.json({ message: 'Paket berhasil dihapus' });
   } catch (error) {

@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -13,12 +13,27 @@ const navItems = [
   { href: '/packages', label: 'Manajemen Paket', icon: Package },
   { href: '/archived', label: 'Arsip', icon: Archive },
   { href: '/export', label: 'Ekspor Data', icon: Download },
+  { href: '/audit', label: 'Log Aktivitas', icon: History },
+  { href: '/admins', label: 'Pengelolaan Admin', icon: Shield },
 ];
 
 export default function NavSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [username, setUsername] = useState('');
+  const [role, setRole] = useState('');
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(async (response) => {
+        if (!response.ok) return;
+        const data = await response.json();
+        setUsername(typeof data.user?.username === 'string' ? data.user.username : '');
+        setRole(typeof data.user?.role === 'string' ? data.user.role : '');
+      })
+      .catch(() => setUsername(''));
+  }, []);
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -40,7 +55,7 @@ export default function NavSidebar() {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map((item) => {
+        {navItems.filter((item) => role === 'admin' || (item.href !== '/admins' && item.href !== '/audit')).map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
           return (
@@ -63,14 +78,19 @@ export default function NavSidebar() {
       </nav>
 
       <div className="px-3 py-4 border-t border-border">
-        <Button
-          variant="ghost"
-          onClick={handleLogout}
-          className="w-full justify-start gap-3 text-muted-foreground hover:text-destructive"
-        >
-          <LogOut className="h-4 w-4" />
-          Keluar
-        </Button>
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate px-2 text-sm font-medium" title={username || 'Admin'}>
+            {username || 'Admin'}
+          </span>
+          <Button
+            variant="ghost"
+            onClick={handleLogout}
+            className="shrink-0 justify-start gap-2 text-muted-foreground hover:text-destructive"
+          >
+            <LogOut className="h-4 w-4" />
+            Keluar
+          </Button>
+        </div>
       </div>
     </>
   );

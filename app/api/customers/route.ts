@@ -3,10 +3,14 @@ import { connectDB } from '@/lib/mongodb';
 import Customer from '@/lib/models/Customer';
 import Package from '@/lib/models/Package';
 import Billing from '@/lib/models/Billing';
-import { getCurrentUser } from '@/lib/session';
+import { getCurrentUser, requireAuthenticatedUser } from '@/lib/session';
+import { writeAuditLog } from '@/lib/audit';
 
 export async function GET(request: Request) {
   try {
+    const authError = await requireAuthenticatedUser();
+    if (authError) return authError;
+
     await connectDB();
 
     const { searchParams } = new URL(request.url);
@@ -33,6 +37,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const authError = await requireAuthenticatedUser();
+    if (authError) return authError;
+
     await connectDB();
     const body = await request.json();
     const { name, address, packageId } = body;
@@ -61,6 +68,14 @@ export async function POST(request: Request) {
       status: 'active',
       archivedAt: null,
     });
+    await writeAuditLog({
+      actorUsername: currentUser?.username || 'Admin',
+      action: 'customer.created',
+      entityType: 'customer',
+      entityId: customer._id.toString(),
+      entityLabel: customer.name,
+      summary: `Pelanggan ${customer.name} ditambahkan`,
+    });
     return NextResponse.json(customer, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: 'Gagal menambah pelanggan' }, { status: 500 });
@@ -69,6 +84,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const authError = await requireAuthenticatedUser();
+    if (authError) return authError;
+
     await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -87,12 +105,30 @@ export async function DELETE(request: Request) {
       customer.status = 'active';
       customer.archivedAt = null;
       await customer.save();
+      const actor = await getCurrentUser();
+      await writeAuditLog({
+        actorUsername: actor?.username || 'Admin',
+        action: 'customer.restored',
+        entityType: 'customer',
+        entityId: customer._id.toString(),
+        entityLabel: customer.name,
+        summary: `Pelanggan ${customer.name} dipulihkan dari arsip`,
+      });
       return NextResponse.json({ message: 'Pelanggan berhasil dipulihkan' });
     }
 
     customer.status = 'inactive';
     customer.archivedAt = new Date();
     await customer.save();
+    const actor = await getCurrentUser();
+    await writeAuditLog({
+      actorUsername: actor?.username || 'Admin',
+      action: 'customer.archived',
+      entityType: 'customer',
+      entityId: customer._id.toString(),
+      entityLabel: customer.name,
+      summary: `Pelanggan ${customer.name} diarsipkan`,
+    });
 
     return NextResponse.json({ message: 'Pelanggan berhasil diarsipkan dan tidak dihapus dari database' });
   } catch (error) {
@@ -102,6 +138,9 @@ export async function DELETE(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const authError = await requireAuthenticatedUser();
+    if (authError) return authError;
+
     await connectDB();
     const body = await request.json();
     const { id, address, packageId } = body;
@@ -119,6 +158,16 @@ export async function PUT(request: Request) {
     if (!customer) {
       return NextResponse.json({ error: 'Pelanggan tidak ditemukan' }, { status: 404 });
     }
+
+    const actor = await getCurrentUser();
+    await writeAuditLog({
+      actorUsername: actor?.username || 'Admin',
+      action: 'customer.updated',
+      entityType: 'customer',
+      entityId: customer._id.toString(),
+      entityLabel: customer.name,
+      summary: `Alamat atau paket pelanggan ${customer.name} diperbarui`,
+    });
 
     return NextResponse.json(customer);
   } catch (error) {

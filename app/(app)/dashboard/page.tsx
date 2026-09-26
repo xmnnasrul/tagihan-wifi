@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Search, Users, ChevronRight, Loader2, Wifi, MapPin, CalendarDays, UserRound } from 'lucide-react';
+import { Search, Users, ChevronRight, Loader2, Wifi, MapPin, CalendarDays, UserRound, FileText, Wallet, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,10 @@ interface Stats {
   totalCustomers: number;
   totalBillings: number;
   paidBillings: number;
+  unpaidBillings: number;
   installmentBillings: number;
+  totalDue: number;
+  outstandingAmount: number;
   totalRevenue: number;
   totalAllRevenue: number;
   currentMonth: string;
@@ -62,21 +65,42 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const [billingMonthFilter, setBillingMonthFilter] = useState<string>('all');
   const [billingMonthPickerOpen, setBillingMonthPickerOpen] = useState(false);
+  const [statsMonth, setStatsMonth] = useState(months[new Date().getMonth()]);
+  const [statsMonthPickerOpen, setStatsMonthPickerOpen] = useState(false);
+  const [statsYear, setStatsYear] = useState(String(new Date().getFullYear()));
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  useEffect(() => {
+    let isCurrentRequest = true;
+    async function fetchStats() {
+      setStatsLoading(true);
+      setStats(null);
+      try {
+        const params = new URLSearchParams({ month: statsMonth, year: statsYear });
+        const response = await fetch(`/api/stats?${params.toString()}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Gagal memuat statistik');
+        if (isCurrentRequest) setStats(data);
+      } catch (err) {
+        if (isCurrentRequest) setError(err instanceof Error ? err.message : 'Gagal memuat statistik');
+      } finally {
+        if (isCurrentRequest) setStatsLoading(false);
+      }
+    }
+    void fetchStats();
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [statsMonth, statsYear]);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [statsRes, customersRes] = await Promise.all([
-          fetch('/api/stats'),
-          fetch('/api/customers'),
-        ]);
-        const statsData = await statsRes.json();
+        const customersRes = await fetch('/api/customers');
         const customersData = await customersRes.json();
-        if (!statsRes.ok) throw new Error(statsData.error || 'Gagal memuat statistik');
         if (!customersRes.ok || !Array.isArray(customersData)) {
           throw new Error(customersData.error || 'Gagal memuat data pelanggan');
         }
-        setStats(statsData);
         setCustomers(customersData);
 
         const billingPromises = customersData.map((c: Customer) =>
@@ -155,11 +179,36 @@ export default function DashboardPage() {
 
   const statCards = [
     {
-      title: 'Total Pelanggan',
+      title: 'Pelanggan Aktif',
       value: stats?.totalCustomers ?? 0,
+      description: 'Pelanggan berjalan',
       icon: Users,
       color: 'text-blue-400',
       bg: 'bg-blue-500/10',
+    },
+    {
+      title: 'Total Tagihan',
+      value: statsLoading ? 'Memuat...' : formatRupiah(stats?.totalDue ?? 0),
+      description: `${statsLoading ? 'Mengambil' : stats?.totalBillings ?? 0} tagihan ${statsMonth} ${statsYear}`,
+      icon: FileText,
+      color: 'text-cyan-400',
+      bg: 'bg-cyan-500/10',
+    },
+    {
+      title: 'Uang Terkumpul',
+      value: statsLoading ? 'Memuat...' : formatRupiah(stats?.totalRevenue ?? 0),
+      description: `Pembayaran ${statsMonth} ${statsYear}`,
+      icon: Wallet,
+      color: 'text-emerald-400',
+      bg: 'bg-emerald-500/10',
+    },
+    {
+      title: 'Sisa Belum Lunas',
+      value: statsLoading ? 'Memuat...' : formatRupiah(stats?.outstandingAmount ?? 0),
+      description: `${statsLoading ? 'Menghitung' : stats?.unpaidBillings ?? 0} tagihan belum lunas`,
+      icon: AlertCircle,
+      color: 'text-amber-400',
+      bg: 'bg-amber-500/10',
     },
   ];
 
@@ -170,6 +219,60 @@ export default function DashboardPage() {
         <p className="text-sm text-muted-foreground mt-1">Ringkasan dan kelola tagihan pelanggan WiFi</p>
       </div>
 
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-medium">Periode Keuangan</p>
+          <p className="text-xs text-muted-foreground mt-1">Pilih bulan untuk memperbarui ringkasan tagihan.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-[150px] justify-between font-normal"
+            aria-label="Pilih bulan periode keuangan"
+            onClick={() => setStatsMonthPickerOpen(true)}
+          >
+            {statsMonth}
+            <span className="text-xs text-muted-foreground">Pilih</span>
+          </Button>
+          <Select value={statsYear} onValueChange={setStatsYear}>
+            <SelectTrigger className="w-[110px]" aria-label="Tahun periode keuangan">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: 5 }, (_, index) => 2026 + index).map((year) => (
+                <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {statsLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Memuat statistik" />}
+        </div>
+      </div>
+
+      <Dialog open={statsMonthPickerOpen} onOpenChange={setStatsMonthPickerOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Pilih Bulan</DialogTitle>
+            <DialogDescription>Pilih bulan untuk ringkasan keuangan.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-3 gap-3">
+            {months.map((month, index) => (
+              <Button
+                key={month}
+                type="button"
+                variant={statsMonth === month ? 'default' : 'outline'}
+                onClick={() => {
+                  setStatsMonth(month);
+                  setStatsMonthPickerOpen(false);
+                }}
+              >
+                {monthShortNames[index]}
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {error && (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
@@ -177,7 +280,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4" aria-busy={statsLoading}>
         {statCards.map((stat, i) => {
           const Icon = stat.icon;
           return (
@@ -187,6 +290,7 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-xs text-muted-foreground font-medium">{stat.title}</p>
                     <p className="text-2xl font-bold mt-2 tracking-tight">{stat.value}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{stat.description}</p>
                   </div>
                   <div className={cn('flex h-10 w-10 items-center justify-center rounded-xl', stat.bg)}>
                     <Icon className={cn('h-5 w-5', stat.color)} />

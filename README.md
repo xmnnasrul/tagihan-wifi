@@ -4,13 +4,16 @@ Sistem manajemen tagihan WiFi dengan Next.js, MongoDB, dan Tailwind CSS.
 
 ## Fitur
 
-- Login dengan JWT authentication
-- Dashboard dengan statistik, pencarian, dan sortir pelanggan
+- Login admin dengan JWT authentication
+- Endpoint manajemen data hanya dapat diakses admin; pendaftaran publik dinonaktifkan
+- Dashboard dengan pelanggan aktif, total tagihan, pembayaran terkumpul, dan sisa belum lunas
 - Tambah tagihan bulanan dengan status TF, Cash, atau Nyicil
 - Field cicilan otomatis muncul saat status "Nyicil"
 - Manajemen paket internet (CRUD)
 - Riwayat tagihan per pelanggan
-- Ekspor data tagihan ke CSV (filter per bulan/tahun)
+- Ekspor rekonsiliasi CSV/Excel dengan rincian pembayaran dan sisa saldo (filter per bulan/tahun)
+- Log audit untuk perubahan tagihan, pelanggan, paket, dan akun admin
+- Pengelolaan admin: tambah akun, aktifkan/nonaktifkan, serta perlindungan agar selalu ada admin aktif
 - Tema gelap minimalis
 
 ## Setup
@@ -32,15 +35,15 @@ npm install
 
 ```
 MONGODB_URI=mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/wifi_billing?retryWrites=true&w=majority
-JWT_SECRET=secret-key-anda-yang-acak
+JWT_SECRET=secret-acak-minimal-32-karakter
 ```
 
 ### 3. Seed Database (Buat Akun Admin & Paket Default)
 
-Setelah menjalankan aplikasi, buka URL berikut di browser:
+Di lingkungan lokal, setelah menjalankan aplikasi, jalankan:
 
-```
-http://localhost:3000/api/seed
+```bash
+curl -X POST http://localhost:3000/api/seed
 ```
 
 Ini akan membuat:
@@ -65,7 +68,7 @@ Buka `http://localhost:3000` dan login dengan admin / admin123.
    - `JWT_SECRET` = secret key acak Anda
 5. Klik **Deploy**
 6. Tunggu proses build selesai, lalu buka URL Vercel
-7. Kunjungi `https://nama-project.vercel.app/api/seed` untuk inisialisasi data
+7. Untuk inisialisasi production, atur `SEED_SECRET` dan `INITIAL_ADMIN_PASSWORD` sebagai environment variable, lalu panggil endpoint seed satu kali menggunakan `POST` dan header `x-seed-secret`. Endpoint seed menolak request production tanpa secret tersebut. Setelah inisialisasi, hapus `SEED_SECRET` dan `INITIAL_ADMIN_PASSWORD` dari environment.
 
 ## Struktur Folder
 

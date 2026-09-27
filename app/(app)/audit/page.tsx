@@ -34,6 +34,7 @@ const actionLabels: Record<string, string> = {
   'customer.updated': 'Pelanggan diperbarui',
   'customer.archived': 'Pelanggan diarsipkan',
   'customer.restored': 'Pelanggan dipulihkan',
+  'customer.deleted': 'Pelanggan dihapus permanen',
   'package.created': 'Paket ditambahkan',
   'package.updated': 'Paket diperbarui',
   'package.deleted': 'Paket dihapus',

@@ -2,10 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Archive, ArrowLeft, Eye, Loader2, RotateCcw, UserX } from 'lucide-react';
+import { ArrowLeft, Eye, Loader2, RotateCcw, Trash2, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface ArchivedCustomer {
   _id: string;
@@ -21,6 +31,8 @@ export default function ArchivedCustomersPage() {
   const [customers, setCustomers] = useState<ArchivedCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [customerToDelete, setCustomerToDelete] = useState<ArchivedCustomer | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const formatDateTime = (value?: string) => value
     ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -51,6 +63,23 @@ export default function ArchivedCustomersPage() {
       await fetchArchived();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal memulihkan pelanggan');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!customerToDelete) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/customers?id=${customerToDelete._id}&permanent=true`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal menghapus pelanggan');
+      setCustomers((current) => current.filter((customer) => customer._id !== customerToDelete._id));
+      setCustomerToDelete(null);
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal menghapus pelanggan');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -126,6 +155,10 @@ export default function ArchivedCustomersPage() {
                       <RotateCcw className="h-4 w-4 mr-2" />
                       Pulihkan
                     </Button>
+                    <Button variant="destructive" onClick={() => setCustomerToDelete(customer)}>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Hapus pelanggan
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -133,6 +166,30 @@ export default function ArchivedCustomersPage() {
           ))}
         </div>
       )}
+
+      <AlertDialog open={!!customerToDelete} onOpenChange={(open) => !open && !deleting && setCustomerToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus pelanggan permanen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Data pelanggan {customerToDelete?.name} beserta seluruh riwayat tagihannya akan dihapus permanen dan tidak dapat dipulihkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDelete();
+              }}
+              disabled={deleting}
+            >
+              {deleting ? 'Menghapus...' : 'Hapus permanen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

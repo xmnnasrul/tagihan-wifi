@@ -91,6 +91,7 @@ export async function DELETE(request: Request) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     const restore = searchParams.get('restore') === 'true';
+    const permanent = searchParams.get('permanent') === 'true';
 
     if (!id) {
       return NextResponse.json({ error: 'ID pelanggan wajib diisi' }, { status: 400 });
@@ -115,6 +116,28 @@ export async function DELETE(request: Request) {
         summary: `Pelanggan ${customer.name} dipulihkan dari arsip`,
       });
       return NextResponse.json({ message: 'Pelanggan berhasil dipulihkan' });
+    }
+
+    if (permanent) {
+      if (customer.status !== 'inactive') {
+        return NextResponse.json({ error: 'Hanya pelanggan yang sudah diarsipkan yang dapat dihapus permanen' }, { status: 400 });
+      }
+
+      const deletedBillings = await Billing.deleteMany({ customerId: customer._id });
+      await Customer.findByIdAndDelete(id);
+      const actor = await getCurrentUser();
+      await writeAuditLog({
+        actorUsername: actor?.username || 'Admin',
+        action: 'customer.deleted',
+        entityType: 'customer',
+        entityId: customer._id.toString(),
+        entityLabel: customer.name,
+        summary: `Data pelanggan ${customer.name} dan ${deletedBillings.deletedCount} riwayat tagihan dihapus permanen`,
+      });
+      return NextResponse.json({
+        message: 'Pelanggan dan riwayat tagihannya berhasil dihapus permanen',
+        deletedBillings: deletedBillings.deletedCount,
+      });
     }
 
     customer.status = 'inactive';

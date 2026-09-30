@@ -166,7 +166,7 @@ export default function AuditPage() {
       ) : (
         <>
           <div className="overflow-x-auto rounded-md border border-border">
-            <Table>
+            <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-40">Waktu</TableHead>

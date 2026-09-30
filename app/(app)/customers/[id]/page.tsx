@@ -343,16 +343,21 @@ export default function CustomerDetailPage() {
     : billings;
 
   const getStatusBadge = (status: string) => {
+    const baseClassName = 'whitespace-nowrap inline-flex items-center justify-center';
+
     if (status === 'TF' || status === 'Cash' || status === 'Lunas') {
       if (status === 'Lunas') {
-        return <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15">Lunas</Badge>;
+        return <Badge className={`${baseClassName} bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15`}>Lunas</Badge>;
       }
-      return <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15">{status === 'TF' ? 'Transfer' : 'Tunai'}</Badge>;
+      return <Badge className={`${baseClassName} bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15`}>{status === 'TF' ? 'Transfer' : 'Tunai'}</Badge>;
     }
     if (status === 'Nyicil') {
-      return <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/15">Nyicil</Badge>;
+      return <Badge className={`${baseClassName} bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/15`}>Nyicil</Badge>;
     }
-    return <Badge variant="outline">{status}</Badge>;
+    if (status === 'Belum Bayar') {
+      return <Badge className={`${baseClassName} border-red-500/20 bg-red-500/15 text-red-400 hover:bg-red-500/15`}>Belum Bayar</Badge>;
+    }
+    return <Badge variant="outline" className={baseClassName}>{status}</Badge>;
   };
 
   const formatAmountInput = (value: string) => {
@@ -623,7 +628,7 @@ export default function CustomerDetailPage() {
         ) : (
           <Card className="border-border/60 min-w-0 overflow-hidden">
             <div className="overflow-x-auto scrollbar-thin">
-              <Table>
+              <Table className="min-w-[640px]">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Bulan</TableHead>
@@ -665,14 +670,14 @@ export default function CustomerDetailPage() {
                               <div className="animate-fade-in space-y-3 border-l-2 border-primary/40 px-4 py-4 sm:ml-6">
                                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Detail pembayaran</p>
                                 {paymentHistory.map((payment, paymentIndex) => (
-                                  <div key={`${billing._id}-${payment._id || paymentIndex}`} className="flex flex-col gap-2 rounded-md border border-border/60 bg-background/50 p-3 text-sm">
-                                    <div>
+                                  <div key={`${billing._id}-${payment._id || paymentIndex}`} className="flex flex-col gap-2 rounded-md border border-border/60 bg-background/50 p-3 text-sm sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0">
                                       <p className="font-medium">Pembayaran ke-{paymentIndex + 1}</p>
                                       <p className="text-xs text-muted-foreground">{formatDateTime(payment.addedAt)} oleh {payment.addedBy || 'Admin'}</p>
                                       <p className="mt-1 font-semibold">Nominal: {formatRupiah(payment.amount)}</p>
+                                      {payment.note && <p className="mt-1 text-xs text-muted-foreground">Catatan: {payment.note}</p>}
                                     </div>
-                                    <div className="self-start">{getStatusBadge(payment.status)}</div>
-                                    {payment.note && <p className="text-xs text-muted-foreground">Catatan: {payment.note}</p>}
+                                    <div className="shrink-0 self-start">{getStatusBadge(payment.status)}</div>
                                   </div>
                                 ))}
                               </div>

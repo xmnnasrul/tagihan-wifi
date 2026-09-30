@@ -139,23 +139,23 @@ export default function ArchivedCustomersPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 flex-wrap">
+                  <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:gap-3">
                     {customer.archivedAt && (
                       <Badge variant="secondary" className="bg-amber-500/10 text-amber-400 border-amber-500/20">
                         Arsip sejak {new Date(customer.archivedAt).toLocaleDateString('id-ID')}
                       </Badge>
                     )}
-                    <Button variant="outline" asChild>
+                    <Button variant="outline" asChild className="w-full justify-start sm:w-auto">
                       <Link href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}>
                         <Eye className="h-4 w-4 mr-2" />
                         Lihat riwayat
                       </Link>
                     </Button>
-                    <Button variant="outline" onClick={() => handleRestore(customer._id)}>
+                    <Button variant="outline" onClick={() => handleRestore(customer._id)} className="w-full justify-start sm:w-auto">
                       <RotateCcw className="h-4 w-4 mr-2" />
                       Pulihkan
                     </Button>
-                    <Button variant="destructive" onClick={() => setCustomerToDelete(customer)}>
+                    <Button variant="destructive" onClick={() => setCustomerToDelete(customer)} className="w-full justify-start sm:w-auto">
                       <Trash2 className="h-4 w-4 mr-2" />
                       Hapus pelanggan
                     </Button>

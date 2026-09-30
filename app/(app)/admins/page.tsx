@@ -266,7 +266,7 @@ export default function AdminsPage() {
           <p className="py-6 text-sm text-muted-foreground">Tidak ada akun admin.</p>
         ) : (
           <div className="overflow-x-auto rounded-md border border-border">
-            <Table>
+            <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Akun</TableHead>

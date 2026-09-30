@@ -55,7 +55,7 @@ export default function NavSidebar() {
         </Link>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-1">
         {navItems.filter((item) => role === 'admin' || (item.href !== '/admins' && item.href !== '/audit')).map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
@@ -99,7 +99,7 @@ export default function NavSidebar() {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex w-64 flex-col border-r border-border bg-card/50 backdrop-blur-sm fixed inset-y-0 left-0 z-40">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col overflow-y-auto border-r border-border bg-card/50 backdrop-blur-sm lg:flex">
         <NavContent />
       </aside>
 
@@ -111,7 +111,14 @@ export default function NavSidebar() {
             <span className="text-sm font-semibold">TAGIHAN</span>
           </Link>
         </div>
-        <Button variant="ghost" size="icon" onClick={() => setMobileOpen(!mobileOpen)}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setMobileOpen(!mobileOpen)}
+          aria-label={mobileOpen ? 'Tutup navigasi' : 'Buka navigasi'}
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-navigation"
+        >
           {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </Button>
       </div>
@@ -121,7 +128,8 @@ export default function NavSidebar() {
         <div className="lg:hidden fixed inset-0 z-40" onClick={() => setMobileOpen(false)}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
           <aside
-            className="absolute left-0 top-0 bottom-0 w-64 bg-card border-r border-border flex flex-col"
+            id="mobile-navigation"
+            className="absolute inset-y-0 left-0 flex max-h-[100dvh] w-64 flex-col overflow-y-auto overscroll-contain border-r border-border bg-card"
             onClick={(e) => e.stopPropagation()}
           >
             <NavContent />

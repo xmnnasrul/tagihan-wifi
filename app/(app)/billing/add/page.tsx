@@ -108,11 +108,11 @@ export default function AddCustomerPage() {
               {selectedPackage && <p className="text-xs text-muted-foreground">{selectedPackage.speed} - {selectedPackage.description}</p>}
             </div>
 
-            <div className="flex gap-3 pt-2">
-              <Button type="submit" disabled={loading}>
+            <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+              <Button type="submit" disabled={loading} className="w-full sm:w-auto">
                 {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</> : 'Simpan Pelanggan'}
               </Button>
-              <Button type="button" variant="outline" onClick={() => router.push('/dashboard')}>Batal</Button>
+              <Button type="button" variant="outline" onClick={() => router.push('/dashboard')} className="w-full sm:w-auto">Batal</Button>
             </div>
           </form>
         </CardContent>

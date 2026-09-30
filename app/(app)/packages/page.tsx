@@ -189,7 +189,7 @@ export default function PackagesPage() {
                       <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
                         <PackageIcon className="h-5 w-5" />
                       </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(pkg)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>

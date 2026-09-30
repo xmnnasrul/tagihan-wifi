@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Archive, ArrowLeft, CalendarDays, ChevronRight, Loader2, MapPin, Search, UserRound, Users } from 'lucide-react';
+import { CalendarDays, ChevronRight, Loader2, MapPin, Search, UserRound, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -61,23 +61,6 @@ export default function AllCustomersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Semua Pelanggan</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Daftar seluruh pelanggan aktif</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link href="/archived" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-            <Archive className="h-4 w-4" />
-            Arsip
-          </Link>
-          <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" />
-            Dashboard
-          </Link>
-        </div>
-      </div>
-
       <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input

@@ -57,7 +57,7 @@ interface Billing {
   paidAmount: number;
   month: string;
   year: number;
-  status: 'TF' | 'Cash' | 'Nyicil' | 'Lunas';
+  status: 'TF' | 'Cash' | 'Nyicil' | 'Lunas' | 'Belum Bayar';
   installmentAmount: number;
   note: string;
   createdAt: string;
@@ -106,7 +106,7 @@ export default function CustomerDetailPage() {
   const [billingMonth, setBillingMonth] = useState(months[new Date().getMonth()]);
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [billingYear, setBillingYear] = useState(String(new Date().getFullYear()));
-  const [billingStatus, setBillingStatus] = useState<'TF' | 'Cash' | 'Nyicil' | ''>('');
+  const [billingStatus, setBillingStatus] = useState<'TF' | 'Cash' | 'Nyicil' | 'Belum Bayar' | ''>('');
   const [billingAmount, setBillingAmount] = useState('');
   const [billingNote, setBillingNote] = useState('');
   const [savingBilling, setSavingBilling] = useState(false);
@@ -221,7 +221,7 @@ export default function CustomerDetailPage() {
           month: billingMonth,
           year: Number(billingYear),
           status: billingStatus,
-          paidAmount: Number(billingAmount) || 0,
+          paidAmount: billingStatus === 'Belum Bayar' ? 0 : Number(billingAmount) || 0,
           installmentAmount: billingStatus === 'Nyicil' ? Number(billingAmount) : 0,
           note: billingNote,
         }),
@@ -316,7 +316,7 @@ export default function CustomerDetailPage() {
 
   const getPaymentHistory = (billing: Billing): PaymentHistory[] => billing.paymentHistory?.length
     ? billing.paymentHistory
-    : [{
+    : billing.status === 'Belum Bayar' ? [] : [{
         amount: billing.paidAmount || billing.packagePrice,
         addedAt: billing.createdAt,
         addedBy: 'Data lama',
@@ -373,7 +373,7 @@ export default function CustomerDetailPage() {
   const previousBilling = billings
     .filter((billing) => getBillingPeriod(billing.month, billing.year) < getBillingPeriod(billingMonth, Number(billingYear)))
     .sort((a, b) => getBillingPeriod(b.month, b.year) - getBillingPeriod(a.month, a.year))[0];
-  const previousOutstanding = previousBilling?.status === 'Nyicil'
+  const previousOutstanding = (previousBilling?.status === 'Nyicil' || previousBilling?.status === 'Belum Bayar')
     ? Math.max(0, (previousBilling.totalDue || previousBilling.packagePrice) - (previousBilling.paidAmount || 0))
     : 0;
   const currentDueAmount = selectedBilling?.totalDue || (currentPackage?.price ?? 0) + previousOutstanding;
@@ -387,7 +387,9 @@ export default function CustomerDetailPage() {
   }, 0);
 
   const totalOutstanding = billings.reduce((sum, b) => {
-    if (b.status === 'Nyicil') return sum + ((b.totalDue || b.packagePrice) - b.installmentAmount);
+    if (b.status === 'Nyicil' || b.status === 'Belum Bayar') {
+      return sum + Math.max(0, (b.totalDue || b.packagePrice) - (b.paidAmount || 0));
+    }
     return sum;
   }, 0);
 
@@ -539,8 +541,9 @@ export default function CustomerDetailPage() {
                 <div className="space-y-2">
                   <Label>Status Pembayaran</Label>
                   <Select value={billingStatus} onValueChange={(value) => {
-                    const nextStatus = value as 'TF' | 'Cash' | 'Nyicil';
+                    const nextStatus = value as 'TF' | 'Cash' | 'Nyicil' | 'Belum Bayar';
                     setBillingStatus(nextStatus);
+                    if (nextStatus === 'Belum Bayar') setBillingAmount('');
                     if (currentPackage && (nextStatus === 'TF' || nextStatus === 'Cash')) {
                       setBillingAmount(String(currentRemainingAmount));
                     }
@@ -553,9 +556,11 @@ export default function CustomerDetailPage() {
                       <SelectItem value="TF">TF (Transfer)</SelectItem>
                       <SelectItem value="Cash">Cash (Tunai)</SelectItem>
                       <SelectItem value="Nyicil">Nyicil (Cicilan)</SelectItem>
+                      {!selectedBilling && <SelectItem value="Belum Bayar">Belum Bayar</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
+                {billingStatus !== 'Belum Bayar' && (
                 <div className="space-y-2">
                   <Label htmlFor="billing-amount">{billingStatus === 'Nyicil' ? 'Nominal Cicilan' : 'Nominal Dibayar'}</Label>
                   <Input
@@ -572,6 +577,7 @@ export default function CustomerDetailPage() {
                       : `Jumlah yang dibayar untuk ${currentPackage?.name ?? 'paket'} adalah ${formatRupiah(currentDueAmount)}.`}
                   </p>
                 </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="billing-note">Keterangan</Label>

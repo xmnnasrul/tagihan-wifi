@@ -1,6 +1,12 @@
 import { Schema, model, Document, models, Model } from 'mongoose';
 
 export type AuditEntityType = 'billing' | 'customer' | 'package' | 'admin';
+export type AuditValue = string | number | boolean | null;
+
+export interface AuditChanges {
+  before: Record<string, AuditValue> | null;
+  after: Record<string, AuditValue> | null;
+}
 
 export interface IAuditLog extends Document {
   actorUsername: string;
@@ -9,6 +15,7 @@ export interface IAuditLog extends Document {
   entityId: string;
   entityLabel: string;
   summary: string;
+  changes?: AuditChanges;
   createdAt: Date;
 }
 
@@ -20,6 +27,7 @@ const AuditLogSchema = new Schema<IAuditLog>(
     entityId: { type: String, required: true },
     entityLabel: { type: String, required: true },
     summary: { type: String, required: true },
+    changes: { type: Schema.Types.Mixed },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );

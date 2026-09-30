@@ -27,9 +27,11 @@ export async function GET(request: Request) {
       ? Number(requestedYear)
       : new Date().getFullYear();
 
-    const totalCustomers = await Customer.countDocuments({ status: { $ne: 'inactive' } });
-
-    const currentBillings = await Billing.find({ year, month });
+    const activeCustomerIds = await Customer.distinct('_id', { status: { $ne: 'inactive' } });
+    const currentBillings = await Billing.find({ year, month, customerId: { $in: activeCustomerIds } })
+      .select('customerId totalDue packagePrice carriedAmount paidAmount status installmentAmount')
+      .lean();
+    const totalCustomers = activeCustomerIds.length;
     const totalBillings = currentBillings.length;
     const totalDue = currentBillings.reduce((sum, billing) => sum + getBillingTotalDue(billing), 0);
     const totalRevenue = currentBillings.reduce((sum, billing) => sum + getBillingPaidAmount(billing), 0);
@@ -43,13 +45,6 @@ export async function GET(request: Request) {
     const paidBillings = totalBillings - unpaidBillings;
     const installmentBillings = currentBillings.filter((b) => b.status === 'Nyicil').length;
 
-    const allBillings = await Billing.find({});
-    const totalAllRevenue = allBillings.reduce((sum, b) => {
-      if (b.status === 'TF' || b.status === 'Cash' || b.status === 'Lunas') return sum + (b.paidAmount || b.packagePrice);
-      if (b.status === 'Nyicil') return sum + b.installmentAmount;
-      return sum;
-    }, 0);
-
     return NextResponse.json({
       totalCustomers,
       totalBillings,
@@ -59,7 +54,10 @@ export async function GET(request: Request) {
       totalDue,
       outstandingAmount,
       totalRevenue,
-      totalAllRevenue,
+      billingStatuses: currentBillings.map((billing) => ({
+        customerId: billing.customerId.toString(),
+        status: billing.status,
+      })),
       currentMonth: month,
       currentYear: year,
     });

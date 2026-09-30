@@ -75,6 +75,15 @@ export async function POST(request: Request) {
       entityId: customer._id.toString(),
       entityLabel: customer.name,
       summary: `Pelanggan ${customer.name} ditambahkan`,
+      changes: {
+        before: null,
+        after: {
+          name: customer.name,
+          address: customer.address,
+          packageId: customer.packageId?.toString() || null,
+          status: customer.status,
+        },
+      },
     });
     return NextResponse.json(customer, { status: 201 });
   } catch (error) {
@@ -103,6 +112,10 @@ export async function DELETE(request: Request) {
     }
 
     if (restore) {
+      const before = {
+        status: customer.status,
+        archivedAt: customer.archivedAt?.toISOString() || null,
+      };
       customer.status = 'active';
       customer.archivedAt = null;
       await customer.save();
@@ -114,6 +127,7 @@ export async function DELETE(request: Request) {
         entityId: customer._id.toString(),
         entityLabel: customer.name,
         summary: `Pelanggan ${customer.name} dipulihkan dari arsip`,
+        changes: { before, after: { status: customer.status, archivedAt: null } },
       });
       return NextResponse.json({ message: 'Pelanggan berhasil dipulihkan' });
     }
@@ -123,6 +137,12 @@ export async function DELETE(request: Request) {
         return NextResponse.json({ error: 'Hanya pelanggan yang sudah diarsipkan yang dapat dihapus permanen' }, { status: 400 });
       }
 
+      const before = {
+        name: customer.name,
+        address: customer.address,
+        packageId: customer.packageId?.toString() || null,
+        status: customer.status,
+      };
       const deletedBillings = await Billing.deleteMany({ customerId: customer._id });
       await Customer.findByIdAndDelete(id);
       const actor = await getCurrentUser();
@@ -133,6 +153,7 @@ export async function DELETE(request: Request) {
         entityId: customer._id.toString(),
         entityLabel: customer.name,
         summary: `Data pelanggan ${customer.name} dan ${deletedBillings.deletedCount} riwayat tagihan dihapus permanen`,
+        changes: { before, after: null },
       });
       return NextResponse.json({
         message: 'Pelanggan dan riwayat tagihannya berhasil dihapus permanen',
@@ -140,6 +161,10 @@ export async function DELETE(request: Request) {
       });
     }
 
+    const before = {
+      status: customer.status,
+      archivedAt: customer.archivedAt?.toISOString() || null,
+    };
     customer.status = 'inactive';
     customer.archivedAt = new Date();
     await customer.save();
@@ -151,6 +176,7 @@ export async function DELETE(request: Request) {
       entityId: customer._id.toString(),
       entityLabel: customer.name,
       summary: `Pelanggan ${customer.name} diarsipkan`,
+      changes: { before, after: { status: customer.status, archivedAt: customer.archivedAt?.toISOString() || null } },
     });
 
     return NextResponse.json({ message: 'Pelanggan berhasil diarsipkan dan tidak dihapus dari database' });
@@ -172,6 +198,10 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'ID pelanggan wajib diisi' }, { status: 400 });
     }
 
+    const previousCustomer = await Customer.findById(id);
+    if (!previousCustomer) {
+      return NextResponse.json({ error: 'Pelanggan tidak ditemukan' }, { status: 404 });
+    }
     const customer = await Customer.findByIdAndUpdate(
       id,
       { address: address || '', packageId: packageId || null },
@@ -190,6 +220,16 @@ export async function PUT(request: Request) {
       entityId: customer._id.toString(),
       entityLabel: customer.name,
       summary: `Alamat atau paket pelanggan ${customer.name} diperbarui`,
+      changes: {
+        before: {
+          address: previousCustomer.address || '',
+          packageId: previousCustomer.packageId?.toString() || null,
+        },
+        after: {
+          address: customer.address || '',
+          packageId: packageId || null,
+        },
+      },
     });
 
     return NextResponse.json(customer);

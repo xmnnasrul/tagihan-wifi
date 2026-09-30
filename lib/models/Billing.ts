@@ -1,12 +1,13 @@
 import { Schema, model, Document, models, Model, Types } from 'mongoose';
 
-export type PaymentStatus = 'TF' | 'Cash' | 'Nyicil' | 'Lunas';
+export type PaymentStatus = 'TF' | 'Cash' | 'Nyicil' | 'Lunas' | 'Belum Bayar';
+export type PaymentHistoryStatus = Exclude<PaymentStatus, 'Belum Bayar'>;
 
 export interface IPaymentHistory {
   amount: number;
   addedAt: Date;
   addedBy: string;
-  status: PaymentStatus;
+  status: PaymentHistoryStatus;
   note: string;
 }
 
@@ -41,7 +42,7 @@ const BillingSchema = new Schema<IBilling>(
     paidAmount: { type: Number, default: 0 },
     month: { type: String, required: true },
     year: { type: Number, required: true },
-    status: { type: String, enum: ['TF', 'Cash', 'Nyicil', 'Lunas'], required: true },
+    status: { type: String, enum: ['TF', 'Cash', 'Nyicil', 'Lunas', 'Belum Bayar'], required: true },
     installmentAmount: { type: Number, default: 0 },
     note: { type: String, default: '' },
     paymentHistory: [{
@@ -56,6 +57,7 @@ const BillingSchema = new Schema<IBilling>(
 );
 
 BillingSchema.index({ customerName: 1, month: 1, year: 1 }, { unique: true });
+BillingSchema.index({ year: 1, month: 1 });
 
 const Billing: Model<IBilling> = models.Billing || model<IBilling>('Billing', BillingSchema);
 

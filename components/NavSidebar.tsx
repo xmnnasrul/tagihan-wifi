@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield } from 'lucide-react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/customers/all', label: 'Semua Pelanggan', icon: Users },
   { href: '/billing/add', label: 'Tambah Tagihan', icon: FilePlus },
   { href: '/packages', label: 'Manajemen Paket', icon: Package },
   { href: '/archived', label: 'Arsip', icon: Archive },

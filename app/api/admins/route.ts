@@ -64,6 +64,7 @@ export async function POST(request: Request) {
       entityId: admin._id.toString(),
       entityLabel: admin.username,
       summary: `Akun user ${admin.username} dibuat`,
+      changes: { before: null, after: { username: admin.username, role: admin.role, isActive: admin.isActive } },
     });
 
     return NextResponse.json({
@@ -101,8 +102,9 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: 'Password baru minimal 10 karakter' }, { status: 400 });
       }
 
+      const previousTokenVersion = admin.tokenVersion || 0;
       admin.password = await bcrypt.hash(password, 10);
-      admin.tokenVersion = (admin.tokenVersion || 0) + 1;
+      admin.tokenVersion = previousTokenVersion + 1;
       await admin.save();
       await writeAuditLog({
         actorUsername: actor?.username || 'Admin',
@@ -111,6 +113,10 @@ export async function PATCH(request: Request) {
         entityId: admin._id.toString(),
         entityLabel: admin.username,
         summary: `Password admin ${admin.username} direset; sesi lama dicabut`,
+        changes: {
+          before: { credential: 'Nilai tidak dicatat', tokenVersion: previousTokenVersion },
+          after: { credential: 'Diperbarui; nilai disembunyikan', tokenVersion: admin.tokenVersion },
+        },
       });
 
       return NextResponse.json({
@@ -138,6 +144,7 @@ export async function PATCH(request: Request) {
       }
     }
 
+    const previousIsActive = admin.isActive !== false;
     admin.isActive = isActive;
     await admin.save();
     await writeAuditLog({
@@ -149,6 +156,7 @@ export async function PATCH(request: Request) {
       entityId: admin._id.toString(),
       entityLabel: admin.username,
       summary: `Akun ${accountRole} ${admin.username} ${isActive ? 'diaktifkan' : 'dinonaktifkan'}`,
+      changes: { before: { isActive: previousIsActive }, after: { isActive: admin.isActive } },
     });
 
     return NextResponse.json({ message: `Admin ${isActive ? 'diaktifkan' : 'dinonaktifkan'}` });

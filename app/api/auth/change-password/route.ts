@@ -32,8 +32,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Password baru harus berbeda dari password saat ini' }, { status: 400 });
     }
 
+    const previousTokenVersion = admin.tokenVersion || 0;
     admin.password = await bcrypt.hash(newPassword, 10);
-    admin.tokenVersion = (admin.tokenVersion || 0) + 1;
+    admin.tokenVersion = previousTokenVersion + 1;
     await admin.save();
     await writeAuditLog({
       actorUsername: admin.username,
@@ -42,6 +43,10 @@ export async function POST(request: Request) {
       entityId: admin._id.toString(),
       entityLabel: admin.username,
       summary: `Password admin ${admin.username} diubah; sesi lama dicabut`,
+      changes: {
+        before: { credential: 'Nilai tidak dicatat', tokenVersion: previousTokenVersion },
+        after: { credential: 'Diperbarui; nilai disembunyikan', tokenVersion: admin.tokenVersion },
+      },
     });
 
     const response = NextResponse.json({ message: 'Password berhasil diubah. Silakan masuk kembali.' });

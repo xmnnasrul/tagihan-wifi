@@ -35,6 +35,7 @@ export async function GET(request: Request) {
     const customerName = searchParams.get('customerName');
     const status = searchParams.get('status');
     const activeOnly = searchParams.get('activeOnly') === 'true';
+    const summaryOnly = searchParams.get('summary') === 'true';
 
     const query: Record<string, unknown> = {};
     if (month) query.month = month;
@@ -45,6 +46,15 @@ export async function GET(request: Request) {
     if (activeOnly) {
       const activeCustomerIds = await Customer.distinct('_id', { status: { $ne: 'inactive' } });
       query.customerId = { $in: activeCustomerIds };
+    }
+
+    if (summaryOnly) {
+      const summaries = await Billing.find(query).select('customerId status month').lean();
+      return NextResponse.json(summaries.map((billing) => ({
+        customerId: billing.customerId.toString(),
+        status: billing.status,
+        month: billing.month,
+      })));
     }
 
     const billings = await Billing.find(query).sort({ year: -1, createdAt: -1 });

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Users, Loader2, FileText, Wallet, AlertCircle, MapPin, Search, CalendarDays, UserRound, ChevronRight } from 'lucide-react';
+import { Users, Loader2, FileText, Wallet, AlertCircle, MapPin, Search, CalendarDays, UserRound, ChevronRight, X } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -126,6 +126,11 @@ export default function DashboardPage() {
   }, []);
 
   const openBillingList = async (type: BillingListType) => {
+    if (billingListType === type) {
+      setBillingListType(null);
+      return;
+    }
+
     setBillingListType(type);
     setBillingList([]);
     setBillingListError('');
@@ -269,52 +274,6 @@ export default function DashboardPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={billingListType !== null} onOpenChange={(open) => !open && setBillingListType(null)}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{billingListType === 'paid' ? 'Pelanggan Sudah Lunas' : 'Pelanggan Belum Lunas'}</DialogTitle>
-            <DialogDescription>{statsMonth} {statsYear}</DialogDescription>
-          </DialogHeader>
-          {billingListLoading ? (
-            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Memuat daftar pelanggan...
-            </div>
-          ) : billingListError ? (
-            <p role="alert" className="py-6 text-sm text-destructive">{billingListError}</p>
-          ) : billingList.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada pelanggan pada kategori ini untuk periode tersebut.</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {billingList.map((billing) => {
-                const totalDue = billing.totalDue || billing.packagePrice + (billing.carriedAmount || 0);
-                const paidAmount = billing.paidAmount > 0
-                  ? billing.paidAmount
-                  : ['TF', 'Cash', 'Lunas'].includes(billing.status)
-                    ? totalDue
-                    : billing.installmentAmount || 0;
-                return (
-                  <li key={billing._id}>
-                    <Link
-                      href={`/customers/${billing.customerId}?name=${encodeURIComponent(billing.customerName)}`}
-                      className="flex min-h-16 items-center justify-between gap-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">{billing.customerName}</span>
-                        <span className="block truncate text-xs text-muted-foreground">{billing.address || 'Alamat belum diisi'}</span>
-                      </span>
-                      <span className="shrink-0 text-right text-xs text-muted-foreground">
-                        <span className="block">Dibayar {formatRupiah(paidAmount)}</span>
-                        <span className="block">dari {formatRupiah(totalDue)}</span>
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </DialogContent>
-      </Dialog>
-
       {error && (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
@@ -350,6 +309,8 @@ export default function DashboardPage() {
               type="button"
               disabled={statsLoading}
               onClick={() => void openBillingList(stat.action!)}
+              aria-expanded={billingListType === stat.action}
+              aria-controls="dashboard-billing-results"
               aria-label={stat.action === 'paid' ? 'Lihat pelanggan yang sudah lunas' : 'Lihat pelanggan yang belum lunas'}
               className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
             >
@@ -358,6 +319,85 @@ export default function DashboardPage() {
           ) : <div key={i}>{card}</div>;
         })}
       </div>
+
+      {billingListType && (
+        <section id="dashboard-billing-results" className="space-y-4" aria-labelledby="billing-results-heading" aria-live="polite">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 id="billing-results-heading" className="text-lg font-semibold">
+                {billingListType === 'paid' ? 'Pelanggan Sudah Lunas' : 'Pelanggan Belum Lunas'}
+              </h2>
+              <p className="text-xs text-muted-foreground">{statsMonth} {statsYear}</p>
+            </div>
+            <Button type="button" variant="ghost" size="icon" onClick={() => setBillingListType(null)} aria-label="Tutup daftar pelanggan">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          {billingListLoading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Memuat daftar pelanggan...
+            </div>
+          ) : billingListError ? (
+            <p role="alert" className="py-6 text-sm text-destructive">{billingListError}</p>
+          ) : billingList.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada pelanggan pada kategori ini untuk periode tersebut.</p>
+          ) : (
+            <ul className="space-y-2">
+              {billingList.map((billing) => {
+                const totalDue = billing.totalDue || billing.packagePrice + (billing.carriedAmount || 0);
+                const paidAmount = billing.paidAmount > 0
+                  ? billing.paidAmount
+                  : ['TF', 'Cash', 'Lunas'].includes(billing.status)
+                    ? totalDue
+                    : billing.installmentAmount || 0;
+                return (
+                  <li key={billing._id}>
+                    <Link
+                      href={`/customers/${billing.customerId}?name=${encodeURIComponent(billing.customerName)}`}
+                      className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      <Card className="cursor-pointer border-border/60 transition-all duration-200 hover:border-primary/40 hover:bg-accent/30">
+                        <CardContent className="py-4">
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex min-w-0 flex-1 items-start gap-4">
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
+                                {billing.customerName.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-base font-semibold">{billing.customerName}</p>
+                                <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
+                                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">{billing.address || 'Alamat belum diisi'}</span>
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                                  <span className="inline-flex items-center gap-1">
+                                    <CalendarDays className="h-3 w-3" /> {billing.month} {billing.year}
+                                  </span>
+                                  <span>Dibayar {formatRupiah(paidAmount)} dari {formatRupiah(totalDue)}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
+                              <Badge className={billingListType === 'paid'
+                                ? 'border-emerald-500/20 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/15'
+                                : billing.status === 'Nyicil'
+                                  ? 'border-amber-500/20 bg-amber-500/15 text-amber-400 hover:bg-amber-500/15'
+                                  : 'border-red-500/20 bg-red-500/15 text-red-400 hover:bg-red-500/15'}>
+                                {billingListType === 'paid' ? 'Lunas' : billing.status === 'Nyicil' ? 'Nyicil' : 'Belum Lunas'}
+                              </Badge>
+                              <ChevronRight className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section className="space-y-4" aria-labelledby="dashboard-customers-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">

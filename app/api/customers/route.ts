@@ -50,8 +50,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Nama pelanggan wajib diisi' }, { status: 400 });
     }
 
-    await Customer.syncIndexes();
-
     const existing = await Customer.findOne({
       name: { $regex: new RegExp(`^${name.trim()}$`, 'i') },
       address: normalizedAddress,

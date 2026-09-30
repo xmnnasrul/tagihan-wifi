@@ -25,7 +25,16 @@ export async function connectDB() {
   if (cached.conn) return cached.conn;
 
   if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI);
+    const connectionPromise = mongoose.connect(MONGODB_URI, {
+      maxPoolSize: 5,
+      minPoolSize: 0,
+      maxIdleTimeMS: 10000,
+      serverSelectionTimeoutMS: 10000,
+    });
+    cached.promise = connectionPromise;
+    void connectionPromise.catch(() => {
+      if (cached.promise === connectionPromise) cached.promise = null;
+    });
   }
 
   cached.conn = await cached.promise;

@@ -30,6 +30,10 @@ interface BillingSummary {
   month: string;
 }
 
+interface BillingSummaryResponse extends BillingSummary {
+  customerId: string;
+}
+
 type StatusFilter = 'all' | 'lunas' | 'nyicil';
 
 const months = [
@@ -53,23 +57,25 @@ export default function CustomersPage() {
   useEffect(() => {
     async function fetchCustomers() {
       try {
-        const response = await fetch('/api/customers');
-        const data = await response.json();
-        if (!response.ok || !Array.isArray(data)) {
-          throw new Error(data.error || 'Gagal memuat data pelanggan');
+        const [customersResponse, billingsResponse] = await Promise.all([
+          fetch('/api/customers'),
+          fetch('/api/billings?summary=true'),
+        ]);
+        const [customerData, billingData] = await Promise.all([
+          customersResponse.json(),
+          billingsResponse.json(),
+        ]);
+        if (!customersResponse.ok || !Array.isArray(customerData)) {
+          throw new Error(customerData.error || 'Gagal memuat data pelanggan');
+        }
+        if (!billingsResponse.ok || !Array.isArray(billingData)) {
+          throw new Error(billingData.error || 'Gagal memuat ringkasan tagihan');
         }
 
-        setCustomers(data);
-        const billingResults = await Promise.all(
-          data.map((customer: Customer) =>
-            fetch(`/api/billings?customerName=${encodeURIComponent(customer.name)}`).then((result) => result.json())
-          )
-        );
+        setCustomers(customerData);
         const billingMap: Record<string, BillingSummary[]> = {};
-        data.forEach((customer: Customer, index: number) => {
-          billingMap[customer.name] = Array.isArray(billingResults[index])
-            ? billingResults[index].map((billing: BillingSummary) => ({ status: billing.status, month: billing.month }))
-            : [];
+        (billingData as BillingSummaryResponse[]).forEach((billing) => {
+          (billingMap[billing.customerId] ||= []).push({ status: billing.status, month: billing.month });
         });
         setBillings(billingMap);
       } catch (err) {
@@ -89,7 +95,7 @@ export default function CustomersPage() {
   const filteredCustomers = useMemo(() => customers.filter((customer) => {
     const searchableText = `${customer.name} ${customer.address ?? ''} ${customer.packageId?.name ?? ''} ${customer.packageId?.speed ?? ''}`.toLowerCase();
     const matchesSearch = searchableText.includes(debouncedSearch.toLowerCase());
-    const allStatuses = billings[customer.name] || [];
+    const allStatuses = billings[customer._id] || [];
     const statuses = billingMonthFilter === 'all'
       ? allStatuses
       : allStatuses.filter((billing) => billing.month === billingMonthFilter);
@@ -209,7 +215,7 @@ export default function CustomersPage() {
             </CardContent>
           </Card>
         ) : filteredCustomers.map((customer, index) => {
-          const statuses = billings[customer.name] || [];
+          const statuses = billings[customer._id] || [];
           const hasPaid = statuses.some((billing) => billing.status === 'TF' || billing.status === 'Cash' || billing.status === 'Lunas');
           const hasInstallment = statuses.some((billing) => billing.status === 'Nyicil');
 

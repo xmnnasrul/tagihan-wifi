@@ -96,12 +96,13 @@ export default function CustomerDetailPage() {
   const searchParams = useSearchParams();
   const customerId = (params?.id as string) || '';
   const customerName = searchParams.get('name') || '';
-  const [customer, setCustomer] = useState<{ name: string; address: string; status?: 'active' | 'inactive'; packageId?: Package | string | null } | null>(null);
+  const [customer, setCustomer] = useState<{ name: string; address: string; phone?: string; status?: 'active' | 'inactive'; packageId?: Package | string | null } | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
   const [billings, setBillings] = useState<Billing[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [customerAddress, setCustomerAddress] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [customerPackageId, setCustomerPackageId] = useState('');
   const [billingMonth, setBillingMonth] = useState(months[new Date().getMonth()]);
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
@@ -129,6 +130,7 @@ export default function CustomerDetailPage() {
       if (!res.ok || !data) throw new Error(data?.error || 'Pelanggan tidak ditemukan');
       setCustomer(data);
       setCustomerAddress(data.address || '');
+      setCustomerPhone(data.phone || '');
       setCustomerPackageId(typeof data.packageId === 'object' && data.packageId ? data.packageId._id : data.packageId || '');
       if (data.packageId && typeof data.packageId === 'object') setBillingAmount(String(data.packageId.price));
     } catch (error) {
@@ -178,7 +180,7 @@ export default function CustomerDetailPage() {
       const res = await fetch('/api/customers', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: customerId, address: customerAddress, packageId: customerPackageId }),
+        body: JSON.stringify({ id: customerId, address: customerAddress, phone: customerPhone, packageId: customerPackageId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Gagal memperbarui pelanggan');
@@ -484,6 +486,10 @@ export default function CustomerDetailPage() {
                   <Input id="customer-address" value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="customer-phone">HP</Label>
+                  <Input id="customer-phone" type="tel" value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} autoComplete="tel" />
+                </div>
+                <div className="space-y-2">
                   <Label>Paket</Label>
                   <Select value={customerPackageId} onValueChange={setCustomerPackageId}>
                     <SelectTrigger><SelectValue placeholder="Pilih paket" /></SelectTrigger>
@@ -503,6 +509,10 @@ export default function CustomerDetailPage() {
                 <div>
                   <p className="text-muted-foreground">Alamat</p>
                   <p className="mt-1 font-medium">{customer?.address || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">HP</p>
+                  <p className="mt-1 font-medium">{customer?.phone || '-'}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Paket aktif</p>
@@ -589,17 +599,17 @@ export default function CustomerDetailPage() {
                 <Textarea id="billing-note" value={billingNote} onChange={(event) => setBillingNote(event.target.value)} placeholder="Keterangan tambahan (opsional)" rows={3} />
               </div>
               <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2">
-                  <Button type="submit" disabled={savingBilling || !currentPackage}>
-                    {savingBilling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</> : 'Simpan Tagihan'}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={handleCancelBilling}>
-                    Batal
-                  </Button>
-                </div>
                 {currentPackage && (
                   <p className="text-sm text-muted-foreground">Total tagihan: {formatRupiah(currentDueAmount)}</p>
                 )}
+                <div className="flex items-center justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={handleCancelBilling}>
+                    Batal
+                  </Button>
+                  <Button type="submit" disabled={savingBilling || !currentPackage}>
+                    {savingBilling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</> : 'Simpan Tagihan'}
+                  </Button>
+                </div>
               </div>
             </form>
           </CardContent>

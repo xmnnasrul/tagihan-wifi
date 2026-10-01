@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield, Users } from 'lucide-react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield, Users, UserCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -16,6 +16,7 @@ const navItems = [
   { href: '/export', label: 'Ekspor Data', icon: Download },
   { href: '/audit', label: 'Log Aktivitas', icon: History },
   { href: '/admins', label: 'Pengelolaan Admin', icon: Shield },
+  { href: '/profile', label: 'Profil', icon: UserCircle2 },
 ];
 
 export default function NavSidebar() {
@@ -55,7 +56,7 @@ export default function NavSidebar() {
         </Link>
       </div>
 
-      <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-1">
+      <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-1.5">
         {navItems.filter((item) => role === 'admin' || (item.href !== '/admins' && item.href !== '/audit')).map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
@@ -65,31 +66,31 @@ export default function NavSidebar() {
               href={item.href}
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-primary/10 text-primary'
+                  ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10'
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground'
               )}
             >
               <Icon className="h-4 w-4" />
-              {item.label}
+              <span>{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      <div className="px-3 py-4 border-t border-border">
-        <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate px-2 text-sm font-medium" title={username || 'Admin'}>
+      <div className="border-t border-border px-3 py-4">
+        <div className="flex items-center justify-between gap-2 overflow-hidden rounded-lg bg-muted/40 px-2.5 py-2">
+          <span className="min-w-0 truncate text-sm font-medium" title={username || 'Admin'}>
             {username || 'Admin'}
           </span>
           <Button
             variant="ghost"
             onClick={handleLogout}
-            className="shrink-0 justify-start gap-2 text-muted-foreground hover:text-destructive"
+            className="shrink-0 justify-start gap-2 px-2 text-muted-foreground hover:text-destructive"
           >
             <LogOut className="h-4 w-4" />
-            Keluar
+            <span className="hidden xl:inline">Keluar</span>
           </Button>
         </div>
       </div>
@@ -99,7 +100,7 @@ export default function NavSidebar() {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col overflow-y-auto border-r border-border bg-card/50 backdrop-blur-sm lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col overflow-y-auto border-r border-border bg-card/30 backdrop-blur-md lg:flex">
         <NavContent />
       </aside>
 

@@ -3,6 +3,7 @@ import { Schema, model, Document, models, Model, Types } from 'mongoose';
 export interface ICustomer extends Document {
   name: string;
   address: string;
+  phone: string;
   packageId: Types.ObjectId;
   createdBy?: string;
   status: 'active' | 'inactive';
@@ -15,6 +16,7 @@ const CustomerSchema = new Schema<ICustomer>(
   {
     name: { type: String, required: true, trim: true },
     address: { type: String, default: '' },
+    phone: { type: String, default: '', trim: true },
     packageId: { type: Schema.Types.ObjectId, ref: 'Package' },
     createdBy: { type: String, default: '' },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },

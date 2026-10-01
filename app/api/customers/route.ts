@@ -42,16 +42,22 @@ export async function POST(request: Request) {
 
     await connectDB();
     const body = await request.json();
-    const { name, address, packageId } = body;
+    const { name, address, phone, packageId } = body;
     const currentUser = await getCurrentUser();
-    const normalizedAddress = address?.trim() || '';
+    const normalizedName = typeof name === 'string' ? name.trim() : '';
+    const normalizedAddress = typeof address === 'string' ? address.trim() : '';
+    const normalizedPhone = typeof phone === 'string' ? phone.trim() : '';
 
-    if (!name) {
-      return NextResponse.json({ error: 'Nama pelanggan wajib diisi' }, { status: 400 });
+    if (!normalizedName || !normalizedAddress || typeof packageId !== 'string' || !packageId) {
+      return NextResponse.json({ error: 'Nama, alamat, dan paket wajib diisi' }, { status: 400 });
+    }
+    const selectedPackage = await Package.findById(packageId).select('_id').lean();
+    if (!selectedPackage) {
+      return NextResponse.json({ error: 'Paket tidak ditemukan' }, { status: 400 });
     }
 
     const existing = await Customer.findOne({
-      name: { $regex: new RegExp(`^${name.trim()}$`, 'i') },
+      name: { $regex: new RegExp(`^${normalizedName}$`, 'i') },
       address: normalizedAddress,
     });
     if (existing) {
@@ -59,9 +65,10 @@ export async function POST(request: Request) {
     }
 
     const customer = await Customer.create({
-      name,
+      name: normalizedName,
       address: normalizedAddress,
-      packageId: packageId || null,
+      phone: normalizedPhone,
+      packageId,
       createdBy: currentUser?.username || 'Admin',
       status: 'active',
       archivedAt: null,
@@ -78,6 +85,7 @@ export async function POST(request: Request) {
         after: {
           name: customer.name,
           address: customer.address,
+          phone: customer.phone,
           packageId: customer.packageId?.toString() || null,
           status: customer.status,
         },
@@ -190,7 +198,7 @@ export async function PUT(request: Request) {
 
     await connectDB();
     const body = await request.json();
-    const { id, address, packageId } = body;
+    const { id, address, phone, packageId } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID pelanggan wajib diisi' }, { status: 400 });
@@ -202,7 +210,11 @@ export async function PUT(request: Request) {
     }
     const customer = await Customer.findByIdAndUpdate(
       id,
-      { address: address || '', packageId: packageId || null },
+      {
+        address: address || '',
+        phone: typeof phone === 'string' ? phone.trim() : previousCustomer.phone || '',
+        packageId: packageId || null,
+      },
       { new: true, runValidators: true }
     ).populate('packageId');
 
@@ -217,14 +229,16 @@ export async function PUT(request: Request) {
       entityType: 'customer',
       entityId: customer._id.toString(),
       entityLabel: customer.name,
-      summary: `Alamat atau paket pelanggan ${customer.name} diperbarui`,
+      summary: `Data kontak atau paket pelanggan ${customer.name} diperbarui`,
       changes: {
         before: {
           address: previousCustomer.address || '',
+          phone: previousCustomer.phone || '',
           packageId: previousCustomer.packageId?.toString() || null,
         },
         after: {
           address: customer.address || '',
+          phone: customer.phone || '',
           packageId: packageId || null,
         },
       },

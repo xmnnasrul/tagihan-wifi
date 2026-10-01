@@ -3,12 +3,12 @@ import bcrypt from 'bcryptjs';
 import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
 import { COOKIE_NAME } from '@/lib/auth';
-import { getCurrentUser, requireAdmin } from '@/lib/session';
+import { getCurrentUser, requireAuthenticatedUser } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
 
 export async function POST(request: Request) {
   try {
-    const authError = await requireAdmin();
+    const authError = await requireAuthenticatedUser();
     if (authError) return authError;
 
     const currentUser = await getCurrentUser();
@@ -24,28 +24,29 @@ export async function POST(request: Request) {
     }
 
     await connectDB();
-    const admin = await User.findOne({ username: currentUser.username, role: 'admin', isActive: { $ne: false } });
-    if (!admin || !(await bcrypt.compare(currentPassword, admin.password))) {
+    const account = await User.findOne({ username: currentUser.username, isActive: { $ne: false } });
+    if (!account || !(await bcrypt.compare(currentPassword, account.password))) {
       return NextResponse.json({ error: 'Password saat ini salah' }, { status: 400 });
     }
-    if (await bcrypt.compare(newPassword, admin.password)) {
+    if (await bcrypt.compare(newPassword, account.password)) {
       return NextResponse.json({ error: 'Password baru harus berbeda dari password saat ini' }, { status: 400 });
     }
 
-    const previousTokenVersion = admin.tokenVersion || 0;
-    admin.password = await bcrypt.hash(newPassword, 10);
-    admin.tokenVersion = previousTokenVersion + 1;
-    await admin.save();
+    const accountRole = account.role || 'admin';
+    const previousTokenVersion = account.tokenVersion || 0;
+    account.password = await bcrypt.hash(newPassword, 10);
+    account.tokenVersion = previousTokenVersion + 1;
+    await account.save();
     await writeAuditLog({
-      actorUsername: admin.username,
-      action: 'admin.password_changed',
+      actorUsername: account.username,
+      action: accountRole === 'admin' ? 'admin.password_changed' : 'user.password_changed',
       entityType: 'admin',
-      entityId: admin._id.toString(),
-      entityLabel: admin.username,
-      summary: `Password admin ${admin.username} diubah; sesi lama dicabut`,
+      entityId: account._id.toString(),
+      entityLabel: account.username,
+      summary: `Password ${accountRole} ${account.username} diubah; sesi lama dicabut`,
       changes: {
         before: { credential: 'Nilai tidak dicatat', tokenVersion: previousTokenVersion },
-        after: { credential: 'Diperbarui; nilai disembunyikan', tokenVersion: admin.tokenVersion },
+        after: { credential: 'Diperbarui; nilai disembunyikan', tokenVersion: account.tokenVersion },
       },
     });
 

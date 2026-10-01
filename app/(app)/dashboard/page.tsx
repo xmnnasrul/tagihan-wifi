@@ -17,21 +17,11 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
   PolarAngleAxis,
   RadialBar,
   RadialBarChart,
-  ReferenceLine,
-  XAxis,
-  YAxis,
 } from 'recharts';
-import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { ChartContainer } from '@/components/ui/chart';
 
 interface Stats {
   totalCustomers: number;
@@ -64,36 +54,28 @@ const months = [
 ];
 
 const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-const periodChartConfig = {
-  totalDue: { label: 'Total Tagihan', color: '#22d3ee' },
-  totalRevenue: { label: 'Uang Terkumpul', color: '#4ade80' },
-  outstandingAmount: { label: 'Belum Dibayar', color: '#fb7185' },
-};
 const progressChartConfig = {
   progress: { label: 'Persentase Terkumpul', color: '#4ade80' },
 };
-const chartStyles = [
-  { value: 'columns', label: 'Kolom' },
-  { value: 'horizontal', label: 'Horizontal' },
-  { value: 'donut', label: 'Donat' },
-  { value: 'stacked', label: 'Bertumpuk' },
-  { value: 'progress', label: 'Progres' },
-] as const;
-type ChartStyle = (typeof chartStyles)[number]['value'];
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState('');
-  const [statsMonth, setStatsMonth] = useState(months[new Date().getMonth()]);
+  const [statsMonth, setStatsMonth] = useState<string | null>(null);
   const [statsMonthPickerOpen, setStatsMonthPickerOpen] = useState(false);
-  const [statsYear, setStatsYear] = useState(String(new Date().getFullYear()));
-  const [chartStyle, setChartStyle] = useState<ChartStyle>('columns');
+  const [statsYear, setStatsYear] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [monthlyBillingsReady, setMonthlyBillingsReady] = useState(false);
   const [customers, setCustomers] = useState<DashboardCustomer[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customersLoading, setCustomersLoading] = useState(true);
   const [customersError, setCustomersError] = useState('');
+
+  useEffect(() => {
+    const now = new Date();
+    setStatsMonth(months[now.getMonth()]);
+    setStatsYear(String(now.getFullYear()));
+  }, []);
 
   useEffect(() => {
     let isCurrentRequest = true;
@@ -115,13 +97,15 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!monthlyBillingsReady) return;
+    const month = statsMonth;
+    const year = statsYear;
+    if (!monthlyBillingsReady || !month || !year) return;
+    const params = new URLSearchParams({ month, year });
     let isCurrentRequest = true;
     async function fetchStats() {
       setStatsLoading(true);
       setStats(null);
       try {
-        const params = new URLSearchParams({ month: statsMonth, year: statsYear });
         const response = await fetch(`/api/stats?${params.toString()}`);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Gagal memuat statistik');
@@ -164,13 +148,6 @@ export default function DashboardPage() {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
   };
 
-  const formatCompactRupiah = (amount: number) => new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(amount);
-
   const formatDateTime = (value?: string) => value
     ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
     : '-';
@@ -180,21 +157,6 @@ export default function DashboardPage() {
     `${customer.name} ${customer.address || ''}`.toLocaleLowerCase('id-ID').includes(normalizedCustomerSearch)
   );
   const visibleCustomers = normalizedCustomerSearch ? matchingCustomers : matchingCustomers.slice(0, 10);
-  const periodChartData = stats ? [{
-    period: `${statsMonth} ${statsYear}`,
-    totalDue: stats.totalDue,
-    totalRevenue: stats.totalRevenue,
-    outstandingAmount: stats.outstandingAmount,
-  }] : [];
-  const comparisonChartData = stats ? [
-    { label: 'Total Tagihan', value: stats.totalDue, fill: periodChartConfig.totalDue.color },
-    { label: 'Uang Terkumpul', value: stats.totalRevenue, fill: periodChartConfig.totalRevenue.color },
-    { label: 'Belum Dibayar', value: stats.outstandingAmount, fill: periodChartConfig.outstandingAmount.color },
-  ] : [];
-  const paymentCompositionData = stats ? [
-    { name: 'Uang Terkumpul', value: stats.totalRevenue, fill: periodChartConfig.totalRevenue.color },
-    { name: 'Belum Dibayar', value: stats.outstandingAmount, fill: periodChartConfig.outstandingAmount.color },
-  ] : [];
   const collectedPercent = stats && stats.totalDue > 0
     ? Math.min(100, Math.round((stats.totalRevenue / stats.totalDue) * 100))
     : 0;
@@ -207,6 +169,7 @@ export default function DashboardPage() {
       icon: Users,
       color: 'text-blue-400',
       bg: 'bg-blue-500/10',
+      href: '/customers/all',
     },
     {
       title: 'Pelanggan Arsip',
@@ -224,7 +187,6 @@ export default function DashboardPage() {
       icon: FileText,
       color: 'text-cyan-400',
       bg: 'bg-cyan-500/10',
-      href: `/dashboard/billings/paid?month=${encodeURIComponent(statsMonth)}&year=${statsYear}`,
     },
     {
       title: 'Uang Terkumpul',
@@ -233,6 +195,7 @@ export default function DashboardPage() {
       icon: Wallet,
       color: 'text-emerald-400',
       bg: 'bg-emerald-500/10',
+      href: `/dashboard/billings/paid?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
     },
     {
       title: 'Sisa Belum Lunas',
@@ -241,7 +204,7 @@ export default function DashboardPage() {
       icon: AlertCircle,
       color: 'text-amber-400',
       bg: 'bg-amber-500/10',
-      href: `/dashboard/billings/unpaid?month=${encodeURIComponent(statsMonth)}&year=${statsYear}`,
+      href: `/dashboard/billings/unpaid?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
     },
     {
       title: 'Belum Bayar',
@@ -250,7 +213,7 @@ export default function DashboardPage() {
       icon: Clock3,
       color: 'text-rose-400',
       bg: 'bg-rose-500/10',
-      href: `/dashboard/billings/belum-bayar?month=${encodeURIComponent(statsMonth)}&year=${statsYear}`,
+      href: `/dashboard/billings/belum-bayar?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
     },
   ];
 
@@ -274,12 +237,12 @@ export default function DashboardPage() {
             aria-label="Pilih bulan periode keuangan"
             onClick={() => setStatsMonthPickerOpen(true)}
           >
-            {statsMonth}
+            {statsMonth ?? 'Memuat...'}
             <span className="text-xs text-muted-foreground">Pilih</span>
           </Button>
-          <Select value={statsYear} onValueChange={setStatsYear}>
+          <Select value={statsYear ?? ''} onValueChange={setStatsYear}>
             <SelectTrigger className="w-[110px]" aria-label="Tahun periode keuangan">
-              <SelectValue />
+              <SelectValue placeholder="..." />
             </SelectTrigger>
             <SelectContent>
               {Array.from({ length: 5 }, (_, index) => 2026 + index).map((year) => (
@@ -322,7 +285,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-busy={statsLoading}>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6" aria-busy={statsLoading}>
         {statCards.map((stat, i) => {
           const Icon = stat.icon;
           const card = (
@@ -358,24 +321,9 @@ export default function DashboardPage() {
 
       <Card className="border-border/60">
         <CardContent className="space-y-4 pt-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Pilihan Grafik Tagihan</h2>
-              <p className="mt-1 text-xs text-muted-foreground">{statsMonth} {statsYear} · Total tagihan, pembayaran, dan sisa</p>
-            </div>
-            <ToggleGroup
-              type="single"
-              value={chartStyle}
-              onValueChange={(value) => value && setChartStyle(value as ChartStyle)}
-              aria-label="Pilih gaya grafik tagihan"
-              className="flex flex-wrap justify-start gap-1"
-            >
-              {chartStyles.map((style) => (
-                <ToggleGroupItem key={style.value} value={style.value} size="sm" aria-label={`Grafik ${style.label}`}>
-                  {style.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+          <div>
+            <h2 className="text-lg font-semibold">Progres Pembayaran Tagihan</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{statsMonth ?? '...'} {statsYear ?? ''} · Persentase tagihan yang sudah terkumpul</p>
           </div>
           {statsLoading ? (
             <div className="flex h-[300px] items-center justify-center gap-2 text-sm text-muted-foreground" aria-live="polite">
@@ -387,90 +335,7 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">
-                {chartStyle === 'columns' && 'Kolom vertikal membandingkan tiga nominal dalam satu skala.'}
-                {chartStyle === 'horizontal' && 'Batang horizontal memudahkan membandingkan nilai dan label nominal.'}
-                {chartStyle === 'donut' && 'Donat menunjukkan bagian pembayaran yang sudah diterima dan yang masih tersisa.'}
-                {chartStyle === 'stacked' && 'Pembayaran dan sisa ditumpuk hingga membentuk total tagihan.'}
-                {chartStyle === 'progress' && 'Progres menunjukkan persentase total tagihan yang sudah terkumpul.'}
-              </p>
-              {chartStyle === 'columns' && (
-                <ChartContainer config={periodChartConfig} className="h-[300px] w-full aspect-auto" aria-label="Contoh grafik kolom tagihan periode terpilih">
-                  <BarChart data={periodChartData} margin={{ left: 12, right: 12, top: 8 }}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis dataKey="period" tickLine={false} axisLine={false} tickMargin={8} />
-                    <YAxis width={72} tickLine={false} axisLine={false} tickFormatter={(value: number) => formatCompactRupiah(value)} />
-                    <ChartTooltip cursor={false} content={<ChartTooltipContent formatter={(value, name) => (
-                      <div className="flex w-full justify-between gap-4">
-                        <span>{typeof name === 'string' ? periodChartConfig[name as keyof typeof periodChartConfig]?.label || name : name}</span>
-                        <span className="font-mono font-medium">{formatRupiah(Number(value))}</span>
-                      </div>
-                    )} />} />
-                    <ChartLegend content={<ChartLegendContent />} />
-                    <Bar dataKey="totalDue" fill="var(--color-totalDue)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="totalRevenue" fill="var(--color-totalRevenue)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="outstandingAmount" fill="var(--color-outstandingAmount)" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ChartContainer>
-              )}
-              {chartStyle === 'horizontal' && (
-                <ChartContainer config={{ value: { label: 'Nominal', color: '#22d3ee' } }} className="h-[300px] w-full aspect-auto" aria-label="Contoh grafik batang horizontal tagihan periode terpilih">
-                  <BarChart data={comparisonChartData} layout="vertical" margin={{ left: 12, right: 24, top: 8 }}>
-                    <CartesianGrid horizontal={false} />
-                    <XAxis type="number" tickLine={false} axisLine={false} tickFormatter={(value: number) => formatCompactRupiah(value)} />
-                    <YAxis type="category" dataKey="label" width={132} tickLine={false} axisLine={false} />
-                    <ChartTooltip cursor={false} content={<ChartTooltipContent labelKey="label" formatter={(value) => (
-                      <span className="font-mono font-medium">{formatRupiah(Number(value))}</span>
-                    )} />} />
-                    <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                      {comparisonChartData.map((item) => <Cell key={item.label} fill={item.fill} />)}
-                    </Bar>
-                  </BarChart>
-                </ChartContainer>
-              )}
-              {chartStyle === 'donut' && (
-                <div className="relative">
-                  <ChartContainer config={{ totalRevenue: periodChartConfig.totalRevenue, outstandingAmount: periodChartConfig.outstandingAmount }} className="h-[300px] w-full aspect-auto" aria-label="Contoh grafik donat komposisi pembayaran tagihan">
-                    <PieChart>
-                      <ChartTooltip content={<ChartTooltipContent formatter={(value, name) => (
-                        <div className="flex w-full justify-between gap-4">
-                          <span>{typeof name === 'string' ? name : 'Nominal'}</span>
-                          <span className="font-mono font-medium">{formatRupiah(Number(value))}</span>
-                        </div>
-                      )} />} />
-                      <Pie data={paymentCompositionData} dataKey="value" nameKey="name" innerRadius={72} outerRadius={108} paddingAngle={3} strokeWidth={0}>
-                        {paymentCompositionData.map((item) => <Cell key={item.name} fill={item.fill} />)}
-                      </Pie>
-                      <ChartLegend content={<ChartLegendContent hideIcon />} />
-                    </PieChart>
-                  </ChartContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pb-5 text-center">
-                    <span className="text-xs text-muted-foreground">Total Tagihan</span>
-                    <span className="mt-1 text-sm font-semibold">{formatCompactRupiah(stats.totalDue)}</span>
-                  </div>
-                </div>
-              )}
-              {chartStyle === 'stacked' && (
-                <ChartContainer config={periodChartConfig} className="h-[300px] w-full aspect-auto" aria-label="Contoh grafik batang bertumpuk untuk total tagihan dan pembayaran">
-                  <BarChart data={periodChartData} margin={{ left: 12, right: 24, top: 8 }}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis dataKey="period" tickLine={false} axisLine={false} tickMargin={8} />
-                    <YAxis width={72} tickLine={false} axisLine={false} tickFormatter={(value: number) => formatCompactRupiah(value)} />
-                    <ReferenceLine y={stats.totalDue} stroke="#22d3ee" strokeDasharray="5 5" label={{ value: `Total ${formatCompactRupiah(stats.totalDue)}`, position: 'insideTopRight', fill: '#22d3ee', fontSize: 11 }} />
-                    <ChartTooltip cursor={false} content={<ChartTooltipContent formatter={(value, name) => (
-                      <div className="flex w-full justify-between gap-4">
-                        <span>{typeof name === 'string' ? periodChartConfig[name as keyof typeof periodChartConfig]?.label || name : name}</span>
-                        <span className="font-mono font-medium">{formatRupiah(Number(value))}</span>
-                      </div>
-                    )} />} />
-                    <ChartLegend content={<ChartLegendContent />} />
-                    <Bar dataKey="totalRevenue" stackId="payment" fill="var(--color-totalRevenue)" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="outstandingAmount" stackId="payment" fill="var(--color-outstandingAmount)" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ChartContainer>
-              )}
-              {chartStyle === 'progress' && (
-                <div className="grid items-center gap-4 md:grid-cols-[minmax(0,1fr),220px]">
+              <div className="grid items-center gap-4 md:grid-cols-[minmax(0,1fr),220px]">
                   <div className="relative mx-auto h-[280px] w-full max-w-[360px]">
                     <ChartContainer config={progressChartConfig} className="h-full w-full aspect-auto" aria-label={`Progres pembayaran ${collectedPercent} persen`}>
                       <RadialBarChart data={[{ name: 'Terkumpul', progress: collectedPercent }]} innerRadius="72%" outerRadius="96%" startAngle={90} endAngle={-270}>
@@ -497,8 +362,7 @@ export default function DashboardPage() {
                       <dd className="font-medium text-rose-400">{formatRupiah(stats.outstandingAmount)}</dd>
                     </div>
                   </dl>
-                </div>
-              )}
+              </div>
             </div>
           )}
         </CardContent>

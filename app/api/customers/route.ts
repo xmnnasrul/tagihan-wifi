@@ -42,18 +42,22 @@ export async function POST(request: Request) {
 
     await connectDB();
     const body = await request.json();
-    const { name, address, packageId } = body;
+    const { name, address, phone, packageId } = body;
     const currentUser = await getCurrentUser();
-    const normalizedAddress = address?.trim() || '';
+    const normalizedName = typeof name === 'string' ? name.trim() : '';
+    const normalizedAddress = typeof address === 'string' ? address.trim() : '';
+    const normalizedPhone = typeof phone === 'string' ? phone.trim() : '';
 
-    if (!name) {
-      return NextResponse.json({ error: 'Nama pelanggan wajib diisi' }, { status: 400 });
+    if (!normalizedName || !normalizedAddress || typeof packageId !== 'string' || !packageId) {
+      return NextResponse.json({ error: 'Nama, alamat, dan paket wajib diisi' }, { status: 400 });
+    }
+    const selectedPackage = await Package.findById(packageId).select('_id').lean();
+    if (!selectedPackage) {
+      return NextResponse.json({ error: 'Paket tidak ditemukan' }, { status: 400 });
     }
 
-    await Customer.syncIndexes();
-
     const existing = await Customer.findOne({
-      name: { $regex: new RegExp(`^${name.trim()}$`, 'i') },
+      name: { $regex: new RegExp(`^${normalizedName}$`, 'i') },
       address: normalizedAddress,
     });
     if (existing) {
@@ -61,9 +65,10 @@ export async function POST(request: Request) {
     }
 
     const customer = await Customer.create({
-      name,
+      name: normalizedName,
       address: normalizedAddress,
-      packageId: packageId || null,
+      phone: normalizedPhone,
+      packageId,
       createdBy: currentUser?.username || 'Admin',
       status: 'active',
       archivedAt: null,
@@ -75,6 +80,16 @@ export async function POST(request: Request) {
       entityId: customer._id.toString(),
       entityLabel: customer.name,
       summary: `Pelanggan ${customer.name} ditambahkan`,
+      changes: {
+        before: null,
+        after: {
+          name: customer.name,
+          address: customer.address,
+          phone: customer.phone,
+          packageId: customer.packageId?.toString() || null,
+          status: customer.status,
+        },
+      },
     });
     return NextResponse.json(customer, { status: 201 });
   } catch (error) {
@@ -91,6 +106,7 @@ export async function DELETE(request: Request) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     const restore = searchParams.get('restore') === 'true';
+    const permanent = searchParams.get('permanent') === 'true';
 
     if (!id) {
       return NextResponse.json({ error: 'ID pelanggan wajib diisi' }, { status: 400 });
@@ -102,6 +118,10 @@ export async function DELETE(request: Request) {
     }
 
     if (restore) {
+      const before = {
+        status: customer.status,
+        archivedAt: customer.archivedAt?.toISOString() || null,
+      };
       customer.status = 'active';
       customer.archivedAt = null;
       await customer.save();
@@ -113,10 +133,44 @@ export async function DELETE(request: Request) {
         entityId: customer._id.toString(),
         entityLabel: customer.name,
         summary: `Pelanggan ${customer.name} dipulihkan dari arsip`,
+        changes: { before, after: { status: customer.status, archivedAt: null } },
       });
       return NextResponse.json({ message: 'Pelanggan berhasil dipulihkan' });
     }
 
+    if (permanent) {
+      if (customer.status !== 'inactive') {
+        return NextResponse.json({ error: 'Hanya pelanggan yang sudah diarsipkan yang dapat dihapus permanen' }, { status: 400 });
+      }
+
+      const before = {
+        name: customer.name,
+        address: customer.address,
+        packageId: customer.packageId?.toString() || null,
+        status: customer.status,
+      };
+      const deletedBillings = await Billing.deleteMany({ customerId: customer._id });
+      await Customer.findByIdAndDelete(id);
+      const actor = await getCurrentUser();
+      await writeAuditLog({
+        actorUsername: actor?.username || 'Admin',
+        action: 'customer.deleted',
+        entityType: 'customer',
+        entityId: customer._id.toString(),
+        entityLabel: customer.name,
+        summary: `Data pelanggan ${customer.name} dan ${deletedBillings.deletedCount} riwayat tagihan dihapus permanen`,
+        changes: { before, after: null },
+      });
+      return NextResponse.json({
+        message: 'Pelanggan dan riwayat tagihannya berhasil dihapus permanen',
+        deletedBillings: deletedBillings.deletedCount,
+      });
+    }
+
+    const before = {
+      status: customer.status,
+      archivedAt: customer.archivedAt?.toISOString() || null,
+    };
     customer.status = 'inactive';
     customer.archivedAt = new Date();
     await customer.save();
@@ -128,6 +182,7 @@ export async function DELETE(request: Request) {
       entityId: customer._id.toString(),
       entityLabel: customer.name,
       summary: `Pelanggan ${customer.name} diarsipkan`,
+      changes: { before, after: { status: customer.status, archivedAt: customer.archivedAt?.toISOString() || null } },
     });
 
     return NextResponse.json({ message: 'Pelanggan berhasil diarsipkan dan tidak dihapus dari database' });
@@ -143,15 +198,23 @@ export async function PUT(request: Request) {
 
     await connectDB();
     const body = await request.json();
-    const { id, address, packageId } = body;
+    const { id, address, phone, packageId } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID pelanggan wajib diisi' }, { status: 400 });
     }
 
+    const previousCustomer = await Customer.findById(id);
+    if (!previousCustomer) {
+      return NextResponse.json({ error: 'Pelanggan tidak ditemukan' }, { status: 404 });
+    }
     const customer = await Customer.findByIdAndUpdate(
       id,
-      { address: address || '', packageId: packageId || null },
+      {
+        address: address || '',
+        phone: typeof phone === 'string' ? phone.trim() : previousCustomer.phone || '',
+        packageId: packageId || null,
+      },
       { new: true, runValidators: true }
     ).populate('packageId');
 
@@ -166,7 +229,19 @@ export async function PUT(request: Request) {
       entityType: 'customer',
       entityId: customer._id.toString(),
       entityLabel: customer.name,
-      summary: `Alamat atau paket pelanggan ${customer.name} diperbarui`,
+      summary: `Data kontak atau paket pelanggan ${customer.name} diperbarui`,
+      changes: {
+        before: {
+          address: previousCustomer.address || '',
+          phone: previousCustomer.phone || '',
+          packageId: previousCustomer.packageId?.toString() || null,
+        },
+        after: {
+          address: customer.address || '',
+          phone: customer.phone || '',
+          packageId: packageId || null,
+        },
+      },
     });
 
     return NextResponse.json(customer);

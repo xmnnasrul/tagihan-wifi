@@ -57,7 +57,7 @@ interface Billing {
   paidAmount: number;
   month: string;
   year: number;
-  status: 'TF' | 'Cash' | 'Nyicil' | 'Lunas';
+  status: 'TF' | 'Cash' | 'Nyicil' | 'Lunas' | 'Belum Bayar';
   installmentAmount: number;
   note: string;
   createdAt: string;
@@ -96,17 +96,18 @@ export default function CustomerDetailPage() {
   const searchParams = useSearchParams();
   const customerId = (params?.id as string) || '';
   const customerName = searchParams.get('name') || '';
-  const [customer, setCustomer] = useState<{ name: string; address: string; status?: 'active' | 'inactive'; packageId?: Package | string | null } | null>(null);
+  const [customer, setCustomer] = useState<{ name: string; address: string; phone?: string; status?: 'active' | 'inactive'; packageId?: Package | string | null } | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
   const [billings, setBillings] = useState<Billing[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [customerAddress, setCustomerAddress] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [customerPackageId, setCustomerPackageId] = useState('');
   const [billingMonth, setBillingMonth] = useState(months[new Date().getMonth()]);
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [billingYear, setBillingYear] = useState(String(new Date().getFullYear()));
-  const [billingStatus, setBillingStatus] = useState<'TF' | 'Cash' | 'Nyicil' | ''>('');
+  const [billingStatus, setBillingStatus] = useState<'TF' | 'Cash' | 'Nyicil' | 'Belum Bayar' | ''>('');
   const [billingAmount, setBillingAmount] = useState('');
   const [billingNote, setBillingNote] = useState('');
   const [savingBilling, setSavingBilling] = useState(false);
@@ -129,6 +130,7 @@ export default function CustomerDetailPage() {
       if (!res.ok || !data) throw new Error(data?.error || 'Pelanggan tidak ditemukan');
       setCustomer(data);
       setCustomerAddress(data.address || '');
+      setCustomerPhone(data.phone || '');
       setCustomerPackageId(typeof data.packageId === 'object' && data.packageId ? data.packageId._id : data.packageId || '');
       if (data.packageId && typeof data.packageId === 'object') setBillingAmount(String(data.packageId.price));
     } catch (error) {
@@ -178,7 +180,7 @@ export default function CustomerDetailPage() {
       const res = await fetch('/api/customers', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: customerId, address: customerAddress, packageId: customerPackageId }),
+        body: JSON.stringify({ id: customerId, address: customerAddress, phone: customerPhone, packageId: customerPackageId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Gagal memperbarui pelanggan');
@@ -221,7 +223,7 @@ export default function CustomerDetailPage() {
           month: billingMonth,
           year: Number(billingYear),
           status: billingStatus,
-          paidAmount: Number(billingAmount) || 0,
+          paidAmount: billingStatus === 'Belum Bayar' ? 0 : Number(billingAmount) || 0,
           installmentAmount: billingStatus === 'Nyicil' ? Number(billingAmount) : 0,
           note: billingNote,
         }),
@@ -316,7 +318,7 @@ export default function CustomerDetailPage() {
 
   const getPaymentHistory = (billing: Billing): PaymentHistory[] => billing.paymentHistory?.length
     ? billing.paymentHistory
-    : [{
+    : billing.status === 'Belum Bayar' ? [] : [{
         amount: billing.paidAmount || billing.packagePrice,
         addedAt: billing.createdAt,
         addedBy: 'Data lama',
@@ -343,16 +345,21 @@ export default function CustomerDetailPage() {
     : billings;
 
   const getStatusBadge = (status: string) => {
+    const baseClassName = 'whitespace-nowrap inline-flex items-center justify-center';
+
     if (status === 'TF' || status === 'Cash' || status === 'Lunas') {
       if (status === 'Lunas') {
-        return <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15">Lunas</Badge>;
+        return <Badge className={`${baseClassName} bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15`}>Lunas</Badge>;
       }
-      return <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15">{status === 'TF' ? 'Transfer' : 'Tunai'}</Badge>;
+      return <Badge className={`${baseClassName} bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15`}>{status === 'TF' ? 'Transfer' : 'Tunai'}</Badge>;
     }
     if (status === 'Nyicil') {
-      return <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/15">Nyicil</Badge>;
+      return <Badge className={`${baseClassName} bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/15`}>Nyicil</Badge>;
     }
-    return <Badge variant="outline">{status}</Badge>;
+    if (status === 'Belum Bayar') {
+      return <Badge className={`${baseClassName} border-red-500/20 bg-red-500/15 text-red-400 hover:bg-red-500/15`}>Belum Bayar</Badge>;
+    }
+    return <Badge variant="outline" className={baseClassName}>{status}</Badge>;
   };
 
   const formatAmountInput = (value: string) => {
@@ -373,7 +380,7 @@ export default function CustomerDetailPage() {
   const previousBilling = billings
     .filter((billing) => getBillingPeriod(billing.month, billing.year) < getBillingPeriod(billingMonth, Number(billingYear)))
     .sort((a, b) => getBillingPeriod(b.month, b.year) - getBillingPeriod(a.month, a.year))[0];
-  const previousOutstanding = previousBilling?.status === 'Nyicil'
+  const previousOutstanding = (previousBilling?.status === 'Nyicil' || previousBilling?.status === 'Belum Bayar')
     ? Math.max(0, (previousBilling.totalDue || previousBilling.packagePrice) - (previousBilling.paidAmount || 0))
     : 0;
   const currentDueAmount = selectedBilling?.totalDue || (currentPackage?.price ?? 0) + previousOutstanding;
@@ -387,7 +394,9 @@ export default function CustomerDetailPage() {
   }, 0);
 
   const totalOutstanding = billings.reduce((sum, b) => {
-    if (b.status === 'Nyicil') return sum + ((b.totalDue || b.packagePrice) - b.installmentAmount);
+    if (b.status === 'Nyicil' || b.status === 'Belum Bayar') {
+      return sum + Math.max(0, (b.totalDue || b.packagePrice) - (b.paidAmount || 0));
+    }
     return sum;
   }, 0);
 
@@ -477,6 +486,10 @@ export default function CustomerDetailPage() {
                   <Input id="customer-address" value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="customer-phone">HP</Label>
+                  <Input id="customer-phone" type="tel" value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} autoComplete="tel" />
+                </div>
+                <div className="space-y-2">
                   <Label>Paket</Label>
                   <Select value={customerPackageId} onValueChange={setCustomerPackageId}>
                     <SelectTrigger><SelectValue placeholder="Pilih paket" /></SelectTrigger>
@@ -496,6 +509,10 @@ export default function CustomerDetailPage() {
                 <div>
                   <p className="text-muted-foreground">Alamat</p>
                   <p className="mt-1 font-medium">{customer?.address || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">HP</p>
+                  <p className="mt-1 font-medium">{customer?.phone || '-'}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Paket aktif</p>
@@ -539,8 +556,9 @@ export default function CustomerDetailPage() {
                 <div className="space-y-2">
                   <Label>Status Pembayaran</Label>
                   <Select value={billingStatus} onValueChange={(value) => {
-                    const nextStatus = value as 'TF' | 'Cash' | 'Nyicil';
+                    const nextStatus = value as 'TF' | 'Cash' | 'Nyicil' | 'Belum Bayar';
                     setBillingStatus(nextStatus);
+                    if (nextStatus === 'Belum Bayar') setBillingAmount('');
                     if (currentPackage && (nextStatus === 'TF' || nextStatus === 'Cash')) {
                       setBillingAmount(String(currentRemainingAmount));
                     }
@@ -553,9 +571,11 @@ export default function CustomerDetailPage() {
                       <SelectItem value="TF">TF (Transfer)</SelectItem>
                       <SelectItem value="Cash">Cash (Tunai)</SelectItem>
                       <SelectItem value="Nyicil">Nyicil (Cicilan)</SelectItem>
+                      {!selectedBilling && <SelectItem value="Belum Bayar">Belum Bayar</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
+                {billingStatus !== 'Belum Bayar' && (
                 <div className="space-y-2">
                   <Label htmlFor="billing-amount">{billingStatus === 'Nyicil' ? 'Nominal Cicilan' : 'Nominal Dibayar'}</Label>
                   <Input
@@ -572,23 +592,24 @@ export default function CustomerDetailPage() {
                       : `Jumlah yang dibayar untuk ${currentPackage?.name ?? 'paket'} adalah ${formatRupiah(currentDueAmount)}.`}
                   </p>
                 </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="billing-note">Keterangan</Label>
                 <Textarea id="billing-note" value={billingNote} onChange={(event) => setBillingNote(event.target.value)} placeholder="Keterangan tambahan (opsional)" rows={3} />
               </div>
               <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2">
-                  <Button type="submit" disabled={savingBilling || !currentPackage}>
-                    {savingBilling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</> : 'Simpan Tagihan'}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={handleCancelBilling}>
-                    Batal
-                  </Button>
-                </div>
                 {currentPackage && (
                   <p className="text-sm text-muted-foreground">Total tagihan: {formatRupiah(currentDueAmount)}</p>
                 )}
+                <div className="flex items-center justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={handleCancelBilling}>
+                    Batal
+                  </Button>
+                  <Button type="submit" disabled={savingBilling || !currentPackage}>
+                    {savingBilling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</> : 'Simpan Tagihan'}
+                  </Button>
+                </div>
               </div>
             </form>
           </CardContent>
@@ -617,7 +638,7 @@ export default function CustomerDetailPage() {
         ) : (
           <Card className="border-border/60 min-w-0 overflow-hidden">
             <div className="overflow-x-auto scrollbar-thin">
-              <Table>
+              <Table className="min-w-[640px]">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Bulan</TableHead>
@@ -659,14 +680,14 @@ export default function CustomerDetailPage() {
                               <div className="animate-fade-in space-y-3 border-l-2 border-primary/40 px-4 py-4 sm:ml-6">
                                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Detail pembayaran</p>
                                 {paymentHistory.map((payment, paymentIndex) => (
-                                  <div key={`${billing._id}-${payment._id || paymentIndex}`} className="flex flex-col gap-2 rounded-md border border-border/60 bg-background/50 p-3 text-sm">
-                                    <div>
+                                  <div key={`${billing._id}-${payment._id || paymentIndex}`} className="flex flex-col gap-2 rounded-md border border-border/60 bg-background/50 p-3 text-sm sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0">
                                       <p className="font-medium">Pembayaran ke-{paymentIndex + 1}</p>
                                       <p className="text-xs text-muted-foreground">{formatDateTime(payment.addedAt)} oleh {payment.addedBy || 'Admin'}</p>
                                       <p className="mt-1 font-semibold">Nominal: {formatRupiah(payment.amount)}</p>
+                                      {payment.note && <p className="mt-1 text-xs text-muted-foreground">Catatan: {payment.note}</p>}
                                     </div>
-                                    <div className="self-start">{getStatusBadge(payment.status)}</div>
-                                    {payment.note && <p className="text-xs text-muted-foreground">Catatan: {payment.note}</p>}
+                                    <div className="shrink-0 self-start">{getStatusBadge(payment.status)}</div>
                                   </div>
                                 ))}
                               </div>

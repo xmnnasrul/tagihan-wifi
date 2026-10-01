@@ -18,18 +18,30 @@ export async function GET(request: Request) {
     await connectDB();
 
     const { searchParams } = new URL(request.url);
+    const now = new Date();
+    const currentDateParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: 'numeric',
+    }).formatToParts(now);
+    const currentMonthIndex = Number(currentDateParts.find((part) => part.type === 'month')?.value) - 1;
+    const currentYear = Number(currentDateParts.find((part) => part.type === 'year')?.value);
     const requestedMonth = searchParams.get('month');
     const requestedYear = searchParams.get('year');
     const month = requestedMonth && months.includes(requestedMonth)
       ? requestedMonth
-      : new Date().toLocaleString('id-ID', { month: 'long' });
+      : months[currentMonthIndex];
     const year = requestedYear && /^\d{4}$/.test(requestedYear)
       ? Number(requestedYear)
-      : new Date().getFullYear();
-
-    const totalCustomers = await Customer.countDocuments({ status: { $ne: 'inactive' } });
-
-    const currentBillings = await Billing.find({ year, month });
+      : currentYear;
+    const selectedMonthIndex = months.indexOf(month);
+    const selectedPeriodIsFuture = year > currentYear || (year === currentYear && selectedMonthIndex > currentMonthIndex);
+    const activeCustomerIds = await Customer.distinct('_id', { status: { $ne: 'inactive' } });
+    const currentBillings = await Billing.find({ year, month, customerId: { $in: activeCustomerIds } })
+      .select('customerId totalDue packagePrice carriedAmount paidAmount status installmentAmount')
+      .lean();
+    const archivedCustomers = await Customer.countDocuments({ status: 'inactive' });
+    const totalCustomers = activeCustomerIds.length;
     const totalBillings = currentBillings.length;
     const totalDue = currentBillings.reduce((sum, billing) => sum + getBillingTotalDue(billing), 0);
     const totalRevenue = currentBillings.reduce((sum, billing) => sum + getBillingPaidAmount(billing), 0);
@@ -40,18 +52,15 @@ export async function GET(request: Request) {
     const unpaidBillings = currentBillings.filter(
       (billing) => getBillingTotalDue(billing) > getBillingPaidAmount(billing)
     ).length;
+    const unpaidCustomers = selectedPeriodIsFuture
+      ? 0
+      : currentBillings.filter((billing) => billing.status === 'Belum Bayar').length;
     const paidBillings = totalBillings - unpaidBillings;
     const installmentBillings = currentBillings.filter((b) => b.status === 'Nyicil').length;
-
-    const allBillings = await Billing.find({});
-    const totalAllRevenue = allBillings.reduce((sum, b) => {
-      if (b.status === 'TF' || b.status === 'Cash' || b.status === 'Lunas') return sum + (b.paidAmount || b.packagePrice);
-      if (b.status === 'Nyicil') return sum + b.installmentAmount;
-      return sum;
-    }, 0);
-
     return NextResponse.json({
       totalCustomers,
+      archivedCustomers,
+      unpaidCustomers,
       totalBillings,
       paidBillings,
       unpaidBillings,
@@ -59,7 +68,10 @@ export async function GET(request: Request) {
       totalDue,
       outstandingAmount,
       totalRevenue,
-      totalAllRevenue,
+      billingStatuses: currentBillings.map((billing) => ({
+        customerId: billing.customerId.toString(),
+        status: billing.status,
+      })),
       currentMonth: month,
       currentYear: year,
     });

@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { History, Loader2 } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
+import { ChevronDown, History, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,8 +14,52 @@ interface AuditEntry {
   entityType: string;
   entityLabel: string;
   summary: string;
+  changes?: {
+    before: Record<string, string | number | boolean | null> | null;
+    after: Record<string, string | number | boolean | null> | null;
+  } | null;
   createdAt: string;
 }
+
+const changeFieldLabels: Record<string, string> = {
+  name: 'Nama',
+  address: 'Alamat',
+  packageId: 'ID paket',
+  status: 'Status',
+  archivedAt: 'Waktu arsip',
+  price: 'Harga paket',
+  speed: 'Kecepatan',
+  description: 'Deskripsi',
+  paidAmount: 'Total dibayar',
+  installmentAmount: 'Total cicilan',
+  totalDue: 'Total tagihan',
+  note: 'Catatan',
+  paymentCount: 'Jumlah pembayaran',
+  isActive: 'Status akun',
+  username: 'Username',
+  role: 'Peran',
+  credential: 'Password',
+  tokenVersion: 'Versi sesi',
+};
+
+const formatChangeValue = (field: string, value: string | number | boolean | null) => {
+  if (value === null) return 'Tidak ada';
+  if (field === 'isActive' && typeof value === 'boolean') return value ? 'Aktif' : 'Nonaktif';
+  if (field === 'status') {
+    const labels: Record<string, string> = {
+      TF: 'Transfer', Cash: 'Tunai', Nyicil: 'Nyicil', Lunas: 'Lunas',
+      'Belum Bayar': 'Belum Bayar', active: 'Aktif', inactive: 'Diarsipkan',
+    };
+    return labels[String(value)] || String(value);
+  }
+  if (['price', 'paidAmount', 'installmentAmount', 'totalDue'].includes(field) && typeof value === 'number') {
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
+  }
+  if (field === 'archivedAt' && typeof value === 'string') {
+    return new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  }
+  return String(value);
+};
 
 const categoryLabels: Record<string, string> = {
   all: 'Semua kategori',
@@ -34,12 +78,18 @@ const actionLabels: Record<string, string> = {
   'customer.updated': 'Pelanggan diperbarui',
   'customer.archived': 'Pelanggan diarsipkan',
   'customer.restored': 'Pelanggan dipulihkan',
+  'customer.deleted': 'Pelanggan dihapus permanen',
   'package.created': 'Paket ditambahkan',
   'package.updated': 'Paket diperbarui',
   'package.deleted': 'Paket dihapus',
   'admin.created': 'Admin ditambahkan',
   'admin.activated': 'Admin diaktifkan',
   'admin.deactivated': 'Admin dinonaktifkan',
+  'admin.password_reset': 'Password admin direset',
+  'admin.password_changed': 'Password admin diubah',
+  'user.created': 'Pengguna ditambahkan',
+  'user.activated': 'Pengguna diaktifkan',
+  'user.deactivated': 'Pengguna dinonaktifkan',
 };
 
 export default function AuditPage() {
@@ -50,6 +100,7 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
+  const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   const fetchItems = useCallback(async (requestedPage: number, replace: boolean) => {
     if (replace) setLoading(true);
@@ -71,6 +122,12 @@ export default function AuditPage() {
       setLoadingMore(false);
     }
   }, [category]);
+
+  const toggleExpanded = (id: string) => {
+    setExpandedItems((current) => current.includes(id)
+      ? current.filter((itemId) => itemId !== id)
+      : [...current, id]);
+  };
 
   useEffect(() => {
     void fetchItems(1, true);
@@ -109,7 +166,7 @@ export default function AuditPage() {
       ) : (
         <>
           <div className="overflow-x-auto rounded-md border border-border">
-            <Table>
+            <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-40">Waktu</TableHead>
@@ -119,22 +176,73 @@ export default function AuditPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item._id}>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(item.createdAt))}
-                    </TableCell>
-                    <TableCell className="font-medium">{item.actorUsername}</TableCell>
-                    <TableCell>
-                      <div>{actionLabels[item.action] || item.action}</div>
-                      <div className="text-xs text-muted-foreground">{categoryLabels[item.entityType] || item.entityType}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{item.entityLabel}</div>
-                      <div className="max-w-xl text-sm text-muted-foreground">{item.summary}</div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {items.map((item) => {
+                  const isExpanded = expandedItems.includes(item._id);
+                  const before = item.changes?.before || {};
+                  const after = item.changes?.after || {};
+                  const fields = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
+                  return (
+                    <Fragment key={item._id}>
+                      <TableRow key={item._id}>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-expanded={isExpanded}
+                            aria-label={`${isExpanded ? 'Tutup' : 'Buka'} rincian perubahan ${item.entityLabel}`}
+                            onClick={() => toggleExpanded(item._id)}
+                            className="h-auto gap-1 px-1 py-1 text-left font-normal text-muted-foreground"
+                          >
+                            <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            {new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(item.createdAt))}
+                          </Button>
+                        </TableCell>
+                        <TableCell className="font-medium">{item.actorUsername}</TableCell>
+                        <TableCell>
+                          <div>{actionLabels[item.action] || item.action}</div>
+                          <div className="text-xs text-muted-foreground">{categoryLabels[item.entityType] || item.entityType}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">{item.entityLabel}</div>
+                          <div className="max-w-xl text-sm text-muted-foreground">{item.summary}</div>
+                        </TableCell>
+                      </TableRow>
+                      {isExpanded && (
+                        <TableRow key={`${item._id}-changes`}>
+                          <TableCell colSpan={4} className="bg-muted/20">
+                            {fields.length === 0 ? (
+                              <p className="py-2 text-sm text-muted-foreground">Rincian sebelum/sesudah tidak tersedia untuk aktivitas lama ini.</p>
+                            ) : (
+                              <div className="space-y-2 py-1">
+                                <div className="hidden border-b border-border pb-2 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[minmax(120px,0.8fr)_1fr_1fr]">
+                                  <span>Data</span><span>Sebelum</span><span>Sesudah</span>
+                                </div>
+                                {fields.map((field) => {
+                                  const beforeExists = Object.prototype.hasOwnProperty.call(before, field);
+                                  const afterExists = Object.prototype.hasOwnProperty.call(after, field);
+                                  const beforeValue = beforeExists
+                                    ? formatChangeValue(field, before[field])
+                                    : item.changes?.before === null ? 'Belum ada' : '—';
+                                  const afterValue = afterExists
+                                    ? formatChangeValue(field, after[field])
+                                    : item.changes?.after === null ? 'Dihapus' : '—';
+                                  return (
+                                    <div key={field} className="grid gap-1 border-b border-border/60 py-2 last:border-0 sm:grid-cols-[minmax(120px,0.8fr)_1fr_1fr] sm:gap-3">
+                                      <span className="text-sm font-medium">{changeFieldLabels[field] || field}</span>
+                                      <span className="break-words text-sm text-muted-foreground"><span className="font-medium sm:hidden">Sebelum: </span>{beforeValue}</span>
+                                      <span className="break-words text-sm"><span className="font-medium text-muted-foreground sm:hidden">Sesudah: </span>{afterValue}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

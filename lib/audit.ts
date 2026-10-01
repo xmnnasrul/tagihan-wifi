@@ -1,5 +1,5 @@
 import { connectDB } from '@/lib/mongodb';
-import AuditLog, { AuditEntityType } from '@/lib/models/AuditLog';
+import AuditLog, { AuditChanges, AuditEntityType } from '@/lib/models/AuditLog';
 
 interface AuditEvent {
   actorUsername: string;
@@ -8,6 +8,7 @@ interface AuditEvent {
   entityId: string;
   entityLabel: string;
   summary: string;
+  changes?: AuditChanges;
 }
 
 export async function writeAuditLog(event: AuditEvent): Promise<void> {

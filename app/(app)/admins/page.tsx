@@ -130,14 +130,19 @@ export default function AdminsPage() {
 
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
-      <section className="max-w-xl space-y-4 border-b border-border pb-6">
-        <div className="flex items-center gap-2">
-          <UserPlus className="h-4 w-4 text-primary" />
-          <h2 className="font-semibold">Tambah Pengguna</h2>
+      <section className="mx-auto w-full max-w-[700px] rounded-[28px] border border-violet-500/20 bg-gradient-to-br from-card via-card to-violet-500/[0.03] p-4 shadow-[0_20px_60px_rgba(15,23,42,0.12)] ring-1 ring-border/80 sm:p-6">
+        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-violet-500/10 bg-violet-500/[0.04] p-3.5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-400">
+            <UserPlus className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Akun baru</p>
+            <h2 className="text-xl font-semibold">Tambah Pengguna</h2>
+          </div>
         </div>
-        <form onSubmit={handleCreate} className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="admin-username">Username</Label>
+        <form onSubmit={handleCreate} className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2 md:col-span-1">
+            <Label htmlFor="admin-username" className="text-sm font-medium">Username</Label>
             <Input
               id="admin-username"
               value={username}
@@ -146,11 +151,12 @@ export default function AdminsPage() {
               minLength={3}
               maxLength={32}
               pattern="[a-zA-Z0-9._-]+"
+              className="h-11 rounded-xl border-border/80 bg-background/80 shadow-sm focus-visible:ring-violet-500/30"
               required
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="admin-password">Password awal</Label>
+          <div className="space-y-2 md:col-span-1">
+            <Label htmlFor="admin-password" className="text-sm font-medium">Password awal</Label>
             <Input
               id="admin-password"
               type="password"
@@ -158,11 +164,12 @@ export default function AdminsPage() {
               onChange={(event) => setPassword(event.target.value)}
               autoComplete="new-password"
               minLength={10}
+              className="h-11 rounded-xl border-border/80 bg-background/80 shadow-sm focus-visible:ring-violet-500/30"
               required
             />
           </div>
-          <div className="sm:col-span-2">
-            <Button type="submit" disabled={saving}>
+          <div className="md:col-span-2 flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+            <Button type="submit" disabled={saving} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/20 hover:from-violet-500 hover:to-indigo-500 sm:w-auto">
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
               Buat akun pengguna
             </Button>
@@ -170,14 +177,19 @@ export default function AdminsPage() {
         </form>
       </section>
 
-      <section className="max-w-xl space-y-4 border-b border-border pb-6">
-        <div className="flex items-center gap-2">
-          <KeyRound className="h-4 w-4 text-primary" />
-          <h2 className="font-semibold">Ganti Password Anda</h2>
+      <section className="mx-auto w-full max-w-[700px] rounded-[28px] border border-violet-500/20 bg-gradient-to-br from-card via-card to-violet-500/[0.03] p-4 shadow-[0_20px_60px_rgba(15,23,42,0.12)] ring-1 ring-border/80 sm:p-6">
+        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-violet-500/10 bg-violet-500/[0.04] p-3.5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-400">
+            <KeyRound className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Keamanan akun</p>
+            <h2 className="text-xl font-semibold">Ganti Password Anda</h2>
+          </div>
         </div>
-        <form onSubmit={handleChangePassword} className="space-y-4">
+        <form onSubmit={handleChangePassword} className="space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="current-password">Password saat ini</Label>
+            <Label htmlFor="current-password" className="text-sm font-medium">Password saat ini</Label>
             <div className="relative">
               <Input
                 id="current-password"
@@ -185,7 +197,7 @@ export default function AdminsPage() {
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
                 autoComplete="current-password"
-                className="pr-10"
+                className="pr-10 h-11 rounded-xl border-border/80 bg-background/80 shadow-sm focus-visible:ring-violet-500/30"
                 required
               />
               <button
@@ -198,9 +210,9 @@ export default function AdminsPage() {
               </button>
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="new-password">Password baru</Label>
+              <Label htmlFor="new-password" className="text-sm font-medium">Password baru</Label>
               <div className="relative">
                 <Input
                   id="new-password"
@@ -208,7 +220,7 @@ export default function AdminsPage() {
                   value={newPassword}
                   onChange={(event) => setNewPassword(event.target.value)}
                   autoComplete="new-password"
-                  className="pr-10"
+                  className="pr-10 h-11 rounded-xl border-border/80 bg-background/80 shadow-sm focus-visible:ring-violet-500/30"
                   minLength={10}
                   required
                 />
@@ -223,7 +235,7 @@ export default function AdminsPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirm-password">Ulangi password baru</Label>
+              <Label htmlFor="confirm-password" className="text-sm font-medium">Ulangi password baru</Label>
               <div className="relative">
                 <Input
                   id="confirm-password"
@@ -231,7 +243,7 @@ export default function AdminsPage() {
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   autoComplete="new-password"
-                  className="pr-10"
+                  className="pr-10 h-11 rounded-xl border-border/80 bg-background/80 shadow-sm focus-visible:ring-violet-500/30"
                   minLength={10}
                   required
                 />
@@ -246,10 +258,12 @@ export default function AdminsPage() {
               </div>
             </div>
           </div>
-          <Button type="submit" disabled={changingPassword}>
-            {changingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-            Ganti password
-          </Button>
+          <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+            <Button type="submit" disabled={changingPassword} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/20 hover:from-violet-500 hover:to-indigo-500 sm:w-auto">
+              {changingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+              Ganti password
+            </Button>
+          </div>
         </form>
       </section>
 
@@ -266,7 +280,7 @@ export default function AdminsPage() {
           <p className="py-6 text-sm text-muted-foreground">Tidak ada akun admin.</p>
         ) : (
           <div className="overflow-x-auto rounded-md border border-border">
-            <Table>
+            <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Akun</TableHead>

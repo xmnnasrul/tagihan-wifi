@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Search, Users, ChevronRight, Loader2, Wifi, MapPin, CalendarDays, UserRound, FileText, Wallet, AlertCircle } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { Users, Loader2, FileText, Wallet, AlertCircle, Archive, Clock3, MapPin, Search, CalendarDays, UserRound, ChevronRight } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -15,10 +14,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  PolarAngleAxis,
+  RadialBar,
+  RadialBarChart,
+} from 'recharts';
+import { ChartContainer } from '@/components/ui/chart';
 
 interface Stats {
   totalCustomers: number;
+  archivedCustomers: number;
+  unpaidCustomers: number;
   totalBillings: number;
   paidBillings: number;
   unpaidBillings: number;
@@ -26,26 +34,19 @@ interface Stats {
   totalDue: number;
   outstandingAmount: number;
   totalRevenue: number;
-  totalAllRevenue: number;
+  billingStatuses: { customerId: string; status: string }[];
   currentMonth: string;
   currentYear: number;
 }
 
-interface Customer {
+interface DashboardCustomer {
   _id: string;
   name: string;
   address: string;
-  packageId: { _id: string; name: string; price: number; speed: string } | null;
+  packageId: { name: string; speed: string } | null;
   createdAt?: string;
   createdBy?: string;
 }
-
-interface BillingSummary {
-  status: string;
-  month: string;
-}
-
-type StatusFilter = 'all' | 'lunas' | 'nyicil';
 
 const months = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -53,30 +54,58 @@ const months = [
 ];
 
 const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+const progressChartConfig = {
+  progress: { label: 'Persentase Terkumpul', color: '#4ade80' },
+};
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [billings, setBillings] = useState<Record<string, BillingSummary[]>>({});
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [billingMonthFilter, setBillingMonthFilter] = useState<string>('all');
-  const [billingMonthPickerOpen, setBillingMonthPickerOpen] = useState(false);
-  const [statsMonth, setStatsMonth] = useState(months[new Date().getMonth()]);
+  const [statsMonth, setStatsMonth] = useState<string | null>(null);
   const [statsMonthPickerOpen, setStatsMonthPickerOpen] = useState(false);
-  const [statsYear, setStatsYear] = useState(String(new Date().getFullYear()));
+  const [statsYear, setStatsYear] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [monthlyBillingsReady, setMonthlyBillingsReady] = useState(false);
+  const [customers, setCustomers] = useState<DashboardCustomer[]>([]);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customersLoading, setCustomersLoading] = useState(true);
+  const [customersError, setCustomersError] = useState('');
 
   useEffect(() => {
+    const now = new Date();
+    setStatsMonth(months[now.getMonth()]);
+    setStatsYear(String(now.getFullYear()));
+  }, []);
+
+  useEffect(() => {
+    let isCurrentRequest = true;
+    async function ensureCurrentMonthBillings() {
+      try {
+        const response = await fetch('/api/billings/generate-month', { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Gagal membuat tagihan bulan ini');
+      } catch (err) {
+        if (isCurrentRequest) setError(err instanceof Error ? err.message : 'Gagal membuat tagihan bulan ini');
+      } finally {
+        if (isCurrentRequest) setMonthlyBillingsReady(true);
+      }
+    }
+    void ensureCurrentMonthBillings();
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const month = statsMonth;
+    const year = statsYear;
+    if (!monthlyBillingsReady || !month || !year) return;
+    const params = new URLSearchParams({ month, year });
     let isCurrentRequest = true;
     async function fetchStats() {
       setStatsLoading(true);
       setStats(null);
       try {
-        const params = new URLSearchParams({ month: statsMonth, year: statsYear });
         const response = await fetch(`/api/stats?${params.toString()}`);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Gagal memuat statistik');
@@ -91,65 +120,29 @@ export default function DashboardPage() {
     return () => {
       isCurrentRequest = false;
     };
-  }, [statsMonth, statsYear]);
+  }, [monthlyBillingsReady, statsMonth, statsYear]);
 
   useEffect(() => {
-    async function fetchData() {
+    let isCurrentRequest = true;
+    async function fetchCustomers() {
       try {
-        const customersRes = await fetch('/api/customers');
-        const customersData = await customersRes.json();
-        if (!customersRes.ok || !Array.isArray(customersData)) {
-          throw new Error(customersData.error || 'Gagal memuat data pelanggan');
+        const response = await fetch('/api/customers');
+        const data = await response.json();
+        if (!response.ok || !Array.isArray(data)) {
+          throw new Error(data.error || 'Gagal memuat data pelanggan');
         }
-        setCustomers(customersData);
-
-        const billingPromises = customersData.map((c: Customer) =>
-          fetch(`/api/billings?customerName=${encodeURIComponent(c.name)}`).then((r) => r.json())
-        );
-        const billingResults = await Promise.all(billingPromises);
-        const billingMap: Record<string, BillingSummary[]> = {};
-        customersData.forEach((c: Customer, i: number) => {
-          billingMap[c.name] = Array.isArray(billingResults[i])
-            ? billingResults[i].map((b: BillingSummary) => ({ status: b.status, month: b.month }))
-            : [];
-        });
-        setBillings(billingMap);
+        if (isCurrentRequest) setCustomers(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Gagal memuat data dashboard');
+        if (isCurrentRequest) setCustomersError(err instanceof Error ? err.message : 'Gagal memuat data pelanggan');
       } finally {
-        setLoading(false);
+        if (isCurrentRequest) setCustomersLoading(false);
       }
     }
-    fetchData();
+    void fetchCustomers();
+    return () => {
+      isCurrentRequest = false;
+    };
   }, []);
-
-  useEffect(() => {
-    const timeout = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(timeout);
-  }, [search]);
-
-  const filteredCustomers = useMemo(() => {
-    return customers.filter((c) => {
-      const searchableText = `${c.name} ${c.address ?? ''} ${c.packageId?.name ?? ''} ${c.packageId?.speed ?? ''}`.toLowerCase();
-      const matchesSearch = searchableText.includes(debouncedSearch.toLowerCase());
-
-      const allStatuses = billings[c.name] || [];
-      const statuses = billingMonthFilter === 'all'
-        ? allStatuses
-        : allStatuses.filter((billing) => billing.month === billingMonthFilter);
-      const hasPaid = statuses.some((billing) => billing.status === 'TF' || billing.status === 'Cash' || billing.status === 'Lunas');
-      const hasInstallment = statuses.some((billing) => billing.status === 'Nyicil');
-      const hasSelectedMonth = billingMonthFilter === 'all' || statuses.length > 0;
-      const matchStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'lunas' && hasPaid) ||
-        (statusFilter === 'nyicil' && hasInstallment);
-
-      return matchesSearch && matchStatus && hasSelectedMonth;
-    });
-  }, [customers, debouncedSearch, statusFilter, billingMonthFilter, billings]);
-
-  const visibleCustomers = debouncedSearch ? filteredCustomers : filteredCustomers.slice(0, 20);
 
   const formatRupiah = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
@@ -159,37 +152,38 @@ export default function DashboardPage() {
     ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
     : '-';
 
-  if (loading) {
-    return (
-      <div className="space-y-6" aria-label="Memuat dashboard">
-        <div className="space-y-2">
-          <div className="h-7 w-40 animate-pulse rounded-md bg-muted" />
-          <div className="h-4 w-72 animate-pulse rounded-md bg-muted" />
-        </div>
-        <div className="h-24 animate-pulse rounded-xl bg-card" />
-        <div className="h-20 animate-pulse rounded-xl bg-card" />
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="h-20 animate-pulse rounded-xl bg-card" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const normalizedCustomerSearch = customerSearch.trim().toLocaleLowerCase('id-ID');
+  const matchingCustomers = customers.filter((customer) =>
+    `${customer.name} ${customer.address || ''}`.toLocaleLowerCase('id-ID').includes(normalizedCustomerSearch)
+  );
+  const visibleCustomers = normalizedCustomerSearch ? matchingCustomers : matchingCustomers.slice(0, 10);
+  const collectedPercent = stats && stats.totalDue > 0
+    ? Math.min(100, Math.round((stats.totalRevenue / stats.totalDue) * 100))
+    : 0;
 
   const statCards = [
     {
       title: 'Pelanggan Aktif',
       value: stats?.totalCustomers ?? 0,
-      description: 'Pelanggan berjalan',
+      description: 'Pelanggan terdaftar',
       icon: Users,
       color: 'text-blue-400',
       bg: 'bg-blue-500/10',
+      href: '/customers/all',
+    },
+    {
+      title: 'Pelanggan Arsip',
+      value: stats?.archivedCustomers ?? 0,
+      description: 'Pelanggan masuk arsip',
+      icon: Archive,
+      color: 'text-amber-400',
+      bg: 'bg-amber-500/10',
+      href: '/archived',
     },
     {
       title: 'Total Tagihan',
       value: statsLoading ? 'Memuat...' : formatRupiah(stats?.totalDue ?? 0),
-      description: `${statsLoading ? 'Mengambil' : stats?.totalBillings ?? 0} tagihan ${statsMonth} ${statsYear}`,
+      description: `${statsLoading ? 'Mengambil' : stats?.totalBillings ?? 0} tagihan`,
       icon: FileText,
       color: 'text-cyan-400',
       bg: 'bg-cyan-500/10',
@@ -201,14 +195,25 @@ export default function DashboardPage() {
       icon: Wallet,
       color: 'text-emerald-400',
       bg: 'bg-emerald-500/10',
+      href: `/dashboard/billings/paid?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
     },
     {
       title: 'Sisa Belum Lunas',
       value: statsLoading ? 'Memuat...' : formatRupiah(stats?.outstandingAmount ?? 0),
-      description: `${statsLoading ? 'Menghitung' : stats?.unpaidBillings ?? 0} tagihan belum lunas`,
+      description: `${statsLoading ? 'Menghitung' : stats?.unpaidBillings ?? 0} tagihan`,
       icon: AlertCircle,
       color: 'text-amber-400',
       bg: 'bg-amber-500/10',
+      href: `/dashboard/billings/unpaid?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
+    },
+    {
+      title: 'Belum Bayar',
+      value: statsLoading ? 'Memuat...' : stats?.unpaidCustomers ?? 0,
+      description: 'Pelanggan pada periode',
+      icon: Clock3,
+      color: 'text-rose-400',
+      bg: 'bg-rose-500/10',
+      href: `/dashboard/billings/belum-bayar?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
     },
   ];
 
@@ -232,12 +237,12 @@ export default function DashboardPage() {
             aria-label="Pilih bulan periode keuangan"
             onClick={() => setStatsMonthPickerOpen(true)}
           >
-            {statsMonth}
+            {statsMonth ?? 'Memuat...'}
             <span className="text-xs text-muted-foreground">Pilih</span>
           </Button>
-          <Select value={statsYear} onValueChange={setStatsYear}>
+          <Select value={statsYear ?? ''} onValueChange={setStatsYear}>
             <SelectTrigger className="w-[110px]" aria-label="Tahun periode keuangan">
-              <SelectValue />
+              <SelectValue placeholder="..." />
             </SelectTrigger>
             <SelectContent>
               {Array.from({ length: 5 }, (_, index) => 2026 + index).map((year) => (
@@ -280,11 +285,14 @@ export default function DashboardPage() {
       )}
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4" aria-busy={statsLoading}>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6" aria-busy={statsLoading}>
         {statCards.map((stat, i) => {
           const Icon = stat.icon;
-          return (
-            <Card key={i} className="border-border/60 hover:border-border transition-colors">
+          const card = (
+            <Card className={cn(
+              'border-border/60 transition-colors',
+              stat.href && 'hover:border-border'
+            )}>
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between">
                   <div>
@@ -299,144 +307,156 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           );
+          return stat.href ? (
+            <Link
+              key={i}
+              href={stat.href}
+              className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {card}
+            </Link>
+          ) : <div key={i}>{card}</div>;
         })}
       </div>
 
-      {/* Search & Filters */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <Card className="border-border/60">
+        <CardContent className="space-y-4 pt-6">
+          <div>
+            <h2 className="text-lg font-semibold">Progres Pembayaran Tagihan</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{statsMonth ?? '...'} {statsYear ?? ''} · Persentase tagihan yang sudah terkumpul</p>
+          </div>
+          {statsLoading ? (
+            <div className="flex h-[300px] items-center justify-center gap-2 text-sm text-muted-foreground" aria-live="polite">
+              <Loader2 className="h-4 w-4 animate-spin" /> Memuat grafik...
+            </div>
+          ) : !stats || stats.totalDue === 0 ? (
+            <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+              Belum ada tagihan pada {statsMonth} {statsYear}.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid items-center gap-4 md:grid-cols-[minmax(0,1fr),220px]">
+                  <div className="relative mx-auto h-[280px] w-full max-w-[360px]">
+                    <ChartContainer config={progressChartConfig} className="h-full w-full aspect-auto" aria-label={`Progres pembayaran ${collectedPercent} persen`}>
+                      <RadialBarChart data={[{ name: 'Terkumpul', progress: collectedPercent }]} innerRadius="72%" outerRadius="96%" startAngle={90} endAngle={-270}>
+                        <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+                        <RadialBar dataKey="progress" cornerRadius={12} background fill="var(--color-progress)" />
+                      </RadialBarChart>
+                    </ChartContainer>
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                      <span className="text-3xl font-bold tabular-nums">{collectedPercent}%</span>
+                      <span className="text-xs text-muted-foreground">sudah terkumpul</span>
+                    </div>
+                  </div>
+                  <dl className="grid gap-3 text-sm">
+                    <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
+                      <dt className="text-muted-foreground">Total tagihan</dt>
+                      <dd className="font-medium">{formatRupiah(stats.totalDue)}</dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
+                      <dt className="text-muted-foreground">Terkumpul</dt>
+                      <dd className="font-medium text-emerald-400">{formatRupiah(stats.totalRevenue)}</dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <dt className="text-muted-foreground">Belum dibayar</dt>
+                      <dd className="font-medium text-rose-400">{formatRupiah(stats.outstandingAmount)}</dd>
+                    </div>
+                  </dl>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <section className="space-y-4" aria-label="Daftar pelanggan">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Cari nama, alamat, atau paket..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
+            type="search"
+            value={customerSearch}
+            onChange={(event) => setCustomerSearch(event.target.value)}
+            placeholder="Cari nama atau alamat pelanggan..."
+            aria-label="Cari pelanggan berdasarkan nama atau alamat"
+            className="pl-9"
           />
         </div>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Bulan</span>
-            <Button type="button" variant="outline" className="w-[150px] justify-between font-normal" onClick={() => setBillingMonthPickerOpen(true)}>
-              {billingMonthFilter === 'all' ? 'Semua Bulan' : billingMonthFilter}
-              <span className="text-xs text-muted-foreground">Pilih</span>
-            </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Status</span>
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-              <SelectTrigger className="w-[170px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua</SelectItem>
-                <SelectItem value="lunas">Lunas</SelectItem>
-                <SelectItem value="nyicil">Nyicil</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </div>
 
-      <Dialog open={billingMonthPickerOpen} onOpenChange={setBillingMonthPickerOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Filter Bulan Tagihan</DialogTitle>
-            <DialogDescription>Tampilkan pelanggan yang memiliki tagihan pada bulan tertentu.</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-3 gap-3">
-            <Button type="button" variant={billingMonthFilter === 'all' ? 'default' : 'outline'} onClick={() => {
-              setBillingMonthFilter('all');
-              setBillingMonthPickerOpen(false);
-            }}>
-              Semua
-            </Button>
-            {months.map((month, index) => (
-              <Button key={month} type="button" variant={billingMonthFilter === month ? 'default' : 'outline'} onClick={() => {
-                setBillingMonthFilter(month);
-                setBillingMonthPickerOpen(false);
-              }}>
-                {monthShortNames[index]}
-              </Button>
-            ))}
+        {customersError ? (
+          <p role="alert" className="text-sm text-destructive">{customersError}</p>
+        ) : customersLoading ? (
+          <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground" aria-live="polite">
+            <Loader2 className="h-4 w-4 animate-spin" /> Memuat pelanggan...
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Customer list */}
-      <div className="space-y-2">
-        <p className="text-xs text-muted-foreground">
-          {search.trim()
-            ? `${visibleCustomers.length} hasil pencarian`
-            : `Menampilkan ${visibleCustomers.length} dari ${filteredCustomers.length} pelanggan`}
-        </p>
-        {visibleCustomers.length === 0 ? (
-          <Card className="border-border/60">
-            <CardContent className="py-16 text-center">
-              <Wifi className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-muted-foreground">
-                {search ? 'Tidak ada pelanggan yang cocok dengan pencarian.' : 'Belum ada pelanggan. Tambahkan tagihan untuk memulai.'}
-              </p>
-            </CardContent>
-          </Card>
+        ) : visibleCustomers.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {normalizedCustomerSearch ? 'Tidak ada pelanggan yang cocok.' : 'Belum ada pelanggan aktif.'}
+          </p>
         ) : (
-          visibleCustomers.map((customer, index) => {
-            const statuses = billings[customer.name] || [];
-            const hasPaid = statuses.some((billing) => billing.status === 'TF' || billing.status === 'Cash' || billing.status === 'Lunas');
-            const hasInstallment = statuses.some((billing) => billing.status === 'Nyicil');
-
-            return (
-              <Link
-                key={customer._id}
-                href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}
-                className="block group animate-fade-in"
-                style={{ animationDelay: `${Math.min(index, 9) * 35}ms` }}
-              >
-                <Card className="border-border/60 hover:border-primary/40 hover:bg-accent/30 transition-all duration-200 cursor-pointer">
-                  <CardContent className="py-4">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-start gap-4 min-w-0 flex-1">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary font-semibold text-sm flex-shrink-0">
-                          {customer.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold truncate text-base">{customer.name}</p>
-                          <div className="flex items-start gap-1.5 mt-1 text-xs text-muted-foreground">
-                            <MapPin className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-                            <span className="truncate">{customer.address || 'Alamat belum diisi'}</span>
+          <>
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              {normalizedCustomerSearch
+                ? `${matchingCustomers.length} hasil pencarian, menampilkan ${visibleCustomers.length}`
+                : `${Math.min(customers.length, 10)} dari ${customers.length} pelanggan aktif`}
+            </p>
+            <ul className="mx-auto w-[96%] space-y-2">
+              {visibleCustomers.map((customer) => (
+                <li key={customer._id}>
+                  <Link
+                    href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}
+                    className="group block animate-fade-in"
+                  >
+                    <Card className="cursor-pointer border-border/60 transition-all duration-200 hover:border-primary/40 hover:bg-accent/30">
+                      <CardContent className="py-3">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 flex-1 items-start gap-4">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
+                              {customer.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-base font-semibold">{customer.name}</p>
+                              <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
+                                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">{customer.address || 'Alamat belum diisi'}</span>
+                              </div>
+                              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                                <span className="inline-flex items-center gap-1">
+                                  <CalendarDays className="h-3 w-3" /> {formatDateTime(customer.createdAt)}
+                                </span>
+                                <span className="inline-flex items-center gap-1">
+                                  <UserRound className="h-3 w-3" /> {customer.createdBy || 'Admin'}
+                                </span>
+                                {customer.packageId && <span>{customer.packageId.name} · {customer.packageId.speed}</span>}
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px] text-muted-foreground">
-                            <span className="inline-flex items-center gap-1">
-                              <CalendarDays className="h-3 w-3" />
-                              {formatDateTime(customer.createdAt)}
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                              <UserRound className="h-3 w-3" />
-                              {customer.createdBy || 'Admin'}
-                            </span>
+                          <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
+                            <div className="flex gap-1.5">
+                              {stats?.billingStatuses.some((billing) => billing.customerId === customer._id && ['TF', 'Cash', 'Lunas'].includes(billing.status)) && (
+                                <Badge className="border-emerald-500/20 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/15">Lunas</Badge>
+                              )}
+                              {stats?.billingStatuses.some((billing) => billing.customerId === customer._id && billing.status === 'Nyicil') && (
+                                <Badge className="border-amber-500/20 bg-amber-500/15 text-amber-400 hover:bg-amber-500/15">Nyicil</Badge>
+                              )}
+                              {stats?.billingStatuses.some((billing) => billing.customerId === customer._id && billing.status === 'Belum Bayar') && (
+                                <Badge className="border-red-500/20 bg-red-500/15 text-red-400 hover:bg-red-500/15">Belum Bayar</Badge>
+                              )}
+                              {stats && !stats.billingStatuses.some((billing) => billing.customerId === customer._id) && (
+                                <Badge variant="outline" className="text-muted-foreground">Baru</Badge>
+                              )}
+                            </div>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center justify-between gap-3 flex-shrink-0 sm:justify-end">
-                        <div className="flex gap-1.5">
-                          {hasPaid && <Badge variant="default" className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15">Lunas</Badge>}
-                          {hasInstallment && <Badge variant="default" className="bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/15">Nyicil</Badge>}
-                          {!hasPaid && !hasInstallment && statuses.length > 0 && (
-                            <Badge variant="default" className="bg-red-500/15 text-red-400 border-red-500/20 hover:bg-red-500/15">Belum Bayar</Badge>
-                          )}
-                          {statuses.length === 0 && (
-                            <Badge variant="outline" className="text-muted-foreground">Baru</Badge>
-                          )}
-                        </div>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            );
-          })
+                      </CardContent>
+                    </Card>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
-      </div>
+      </section>
+
     </div>
   );
 }

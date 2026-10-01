@@ -44,6 +44,10 @@ export async function POST(request: Request) {
       entityId: pkg._id.toString(),
       entityLabel: pkg.name,
       summary: `Paket ${pkg.name} dibuat dengan harga ${pkg.price}`,
+      changes: {
+        before: null,
+        after: { name: pkg.name, price: pkg.price, speed: pkg.speed, description: pkg.description || '' },
+      },
     });
     return NextResponse.json(pkg, { status: 201 });
   } catch (error) {
@@ -64,6 +68,10 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'ID paket wajib diisi' }, { status: 400 });
     }
 
+    const previousPackage = await Package.findById(id).lean();
+    if (!previousPackage) {
+      return NextResponse.json({ error: 'Paket tidak ditemukan' }, { status: 404 });
+    }
     const pkg = await Package.findByIdAndUpdate(
       id,
       { name, price: Number(price), speed, description: description || '' },
@@ -82,6 +90,15 @@ export async function PUT(request: Request) {
       entityId: pkg._id.toString(),
       entityLabel: pkg.name,
       summary: `Data paket ${pkg.name} diperbarui dengan harga ${pkg.price}`,
+      changes: {
+        before: {
+          name: previousPackage.name,
+          price: previousPackage.price,
+          speed: previousPackage.speed,
+          description: previousPackage.description || '',
+        },
+        after: { name: pkg.name, price: pkg.price, speed: pkg.speed, description: pkg.description || '' },
+      },
     });
 
     return NextResponse.json(pkg);
@@ -116,6 +133,10 @@ export async function DELETE(request: Request) {
       entityId: pkg._id.toString(),
       entityLabel: pkg.name,
       summary: `Paket ${pkg.name} dihapus`,
+      changes: {
+        before: { name: pkg.name, price: pkg.price, speed: pkg.speed, description: pkg.description || '' },
+        after: null,
+      },
     });
 
     return NextResponse.json({ message: 'Paket berhasil dihapus' });

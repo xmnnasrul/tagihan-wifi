@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Package as PackageIcon, Plus, Pencil, Trash2, Loader2, AlertCircle, X } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -144,7 +144,6 @@ export default function PackagesPage() {
   const formatRupiah = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
   };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -181,33 +180,47 @@ export default function PackagesPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {packages.map((pkg) => (
-            <Card key={pkg._id} className="border-border/60 hover:border-border transition-colors group">
-              <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                        <PackageIcon className="h-5 w-5" />
-                      </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(pkg)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteId(pkg._id)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-              </CardHeader>
-              <CardContent>
-                <h3 className="font-semibold text-base">{pkg.name}</h3>
-                <div className="flex items-center gap-2 mt-2">
-                  <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10">{pkg.speed}</Badge>
+            <Card key={pkg._id} className="group overflow-hidden border-border/60 transition-colors hover:border-primary/40">
+              <div className="flex items-center justify-between gap-3 bg-primary/10 px-4 py-3">
+                <span className="text-[10px] font-semibold tracking-[0.2em] text-primary uppercase">Paket Internet</span>
+                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-background text-primary shadow-sm">
+                  <PackageIcon className="h-4 w-4" />
                 </div>
-                <p className="text-2xl font-bold mt-3 tracking-tight">{formatRupiah(pkg.price)}</p>
-                {pkg.description && (
-                  <p className="text-xs text-muted-foreground mt-2">{pkg.description}</p>
-                )}
+              </div>
+
+              <CardContent className="space-y-4 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-base font-semibold">{pkg.name}</h3>
+                    <Badge className="mt-2 border-primary/20 bg-primary/10 text-primary hover:bg-primary/10">
+                      {pkg.speed}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(pkg)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      onClick={() => setDeleteId(pkg._id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-2xl font-bold tracking-tight text-primary">
+                    {formatRupiah(pkg.price)}
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">/bulan</span>
+                  </p>
+                  {pkg.description && <p className="mt-2 text-xs text-muted-foreground">{pkg.description}</p>}
+                </div>
               </CardContent>
             </Card>
           ))}

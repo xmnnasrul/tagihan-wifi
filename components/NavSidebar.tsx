@@ -3,18 +3,20 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield } from 'lucide-react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield, Users, UserCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/customers/all', label: 'Semua Pelanggan', icon: Users },
   { href: '/billing/add', label: 'Tambah Tagihan', icon: FilePlus },
   { href: '/packages', label: 'Manajemen Paket', icon: Package },
   { href: '/archived', label: 'Arsip', icon: Archive },
   { href: '/export', label: 'Ekspor Data', icon: Download },
   { href: '/audit', label: 'Log Aktivitas', icon: History },
   { href: '/admins', label: 'Pengelolaan Admin', icon: Shield },
+  { href: '/profile', label: 'Profil', icon: UserCircle2 },
 ];
 
 export default function NavSidebar() {
@@ -54,7 +56,7 @@ export default function NavSidebar() {
         </Link>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-1.5">
         {navItems.filter((item) => role === 'admin' || (item.href !== '/admins' && item.href !== '/audit')).map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
@@ -64,31 +66,31 @@ export default function NavSidebar() {
               href={item.href}
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-primary/10 text-primary'
+                  ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10'
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground'
               )}
             >
               <Icon className="h-4 w-4" />
-              {item.label}
+              <span>{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      <div className="px-3 py-4 border-t border-border">
-        <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate px-2 text-sm font-medium" title={username || 'Admin'}>
+      <div className="border-t border-border px-3 py-4">
+        <div className="flex items-center justify-between gap-2 overflow-hidden rounded-lg bg-muted/40 px-2.5 py-2">
+          <span className="min-w-0 truncate text-sm font-medium" title={username || 'Admin'}>
             {username || 'Admin'}
           </span>
           <Button
             variant="ghost"
             onClick={handleLogout}
-            className="shrink-0 justify-start gap-2 text-muted-foreground hover:text-destructive"
+            className="shrink-0 justify-start gap-2 px-2 text-muted-foreground hover:text-destructive"
           >
             <LogOut className="h-4 w-4" />
-            Keluar
+            <span className="hidden xl:inline">Keluar</span>
           </Button>
         </div>
       </div>
@@ -98,7 +100,7 @@ export default function NavSidebar() {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex w-64 flex-col border-r border-border bg-card/50 backdrop-blur-sm fixed inset-y-0 left-0 z-40">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col overflow-y-auto border-r border-border bg-card/30 backdrop-blur-md lg:flex">
         <NavContent />
       </aside>
 
@@ -110,7 +112,14 @@ export default function NavSidebar() {
             <span className="text-sm font-semibold">TAGIHAN</span>
           </Link>
         </div>
-        <Button variant="ghost" size="icon" onClick={() => setMobileOpen(!mobileOpen)}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setMobileOpen(!mobileOpen)}
+          aria-label={mobileOpen ? 'Tutup navigasi' : 'Buka navigasi'}
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-navigation"
+        >
           {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </Button>
       </div>
@@ -120,7 +129,8 @@ export default function NavSidebar() {
         <div className="lg:hidden fixed inset-0 z-40" onClick={() => setMobileOpen(false)}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
           <aside
-            className="absolute left-0 top-0 bottom-0 w-64 bg-card border-r border-border flex flex-col"
+            id="mobile-navigation"
+            className="absolute inset-y-0 left-0 flex max-h-[100dvh] w-64 flex-col overflow-y-auto overscroll-contain border-r border-border bg-card"
             onClick={(e) => e.stopPropagation()}
           >
             <NavContent />

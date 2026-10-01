@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
-import Billing from '@/lib/models/Billing';
+import Billing, { IBilling } from '@/lib/models/Billing';
 import Customer from '@/lib/models/Customer';
 import Package from '@/lib/models/Package';
 import { getCurrentUser, requireAuthenticatedUser } from '@/lib/session';
@@ -12,6 +12,15 @@ const billingMonths = [
 ];
 
 const getBillingPeriod = (month: string, year: number) => year * 12 + billingMonths.indexOf(month);
+
+const getBillingAuditSnapshot = (billing: IBilling) => ({
+  status: billing.status,
+  paidAmount: billing.paidAmount || 0,
+  installmentAmount: billing.installmentAmount || 0,
+  totalDue: billing.totalDue || billing.packagePrice + (billing.carriedAmount || 0),
+  note: billing.note || '',
+  paymentCount: billing.paymentHistory?.length || 0,
+});
 
 export async function GET(request: Request) {
   try {
@@ -25,6 +34,8 @@ export async function GET(request: Request) {
     const customerId = searchParams.get('customerId');
     const customerName = searchParams.get('customerName');
     const status = searchParams.get('status');
+    const activeOnly = searchParams.get('activeOnly') === 'true';
+    const summaryOnly = searchParams.get('summary') === 'true';
 
     const query: Record<string, unknown> = {};
     if (month) query.month = month;
@@ -32,6 +43,19 @@ export async function GET(request: Request) {
     if (customerId) query.customerId = customerId;
     if (customerName) query.customerName = { $regex: customerName, $options: 'i' };
     if (status && status !== 'all') query.status = status;
+    if (activeOnly) {
+      const activeCustomerIds = await Customer.distinct('_id', { status: { $ne: 'inactive' } });
+      query.customerId = { $in: activeCustomerIds };
+    }
+
+    if (summaryOnly) {
+      const summaries = await Billing.find(query).select('customerId status month').lean();
+      return NextResponse.json(summaries.map((billing) => ({
+        customerId: billing.customerId.toString(),
+        status: billing.status,
+        month: billing.month,
+      })));
+    }
 
     const billings = await Billing.find(query).sort({ year: -1, createdAt: -1 });
     return NextResponse.json(billings);
@@ -54,7 +78,7 @@ export async function POST(request: Request) {
     if (!customerId || !month || !year || !status) {
       return NextResponse.json({ error: 'Field wajib belum lengkap' }, { status: 400 });
     }
-    if (!['TF', 'Cash', 'Nyicil'].includes(status)) {
+    if (!['TF', 'Cash', 'Nyicil', 'Belum Bayar'].includes(status)) {
       return NextResponse.json({ error: 'Status pembayaran tidak valid' }, { status: 400 });
     }
 
@@ -69,8 +93,11 @@ export async function POST(request: Request) {
     }
 
     const existingBilling = await Billing.findOne({ customerId, month, year: Number(year) });
-    if (existingBilling && existingBilling.status !== 'Nyicil') {
+    if (existingBilling && !['Nyicil', 'Belum Bayar'].includes(existingBilling.status)) {
       return NextResponse.json({ error: `Tagihan bulan ${month} ${year} sudah selesai` }, { status: 400 });
+    }
+    if (existingBilling && status === 'Belum Bayar') {
+      return NextResponse.json({ error: `Tagihan bulan ${month} ${year} sudah ada` }, { status: 400 });
     }
 
     let carriedAmount = 0;
@@ -78,7 +105,7 @@ export async function POST(request: Request) {
       const targetPeriod = getBillingPeriod(month, Number(year));
       const previousBillings = await Billing.find({ customerId }).sort({ year: -1, createdAt: -1 });
       const previousBilling = previousBillings.find((billing) => getBillingPeriod(billing.month, billing.year) < targetPeriod);
-      if (previousBilling?.status === 'Nyicil') {
+      if (previousBilling?.status === 'Nyicil' || previousBilling?.status === 'Belum Bayar') {
         carriedAmount = Math.max(0, (previousBilling.totalDue || previousBilling.packagePrice) - (previousBilling.paidAmount || 0));
       }
     }
@@ -86,10 +113,12 @@ export async function POST(request: Request) {
     const totalDue = existingBilling?.totalDue || (existingBilling?.packagePrice ?? pkg.price) + carriedAmount;
     const previousPaid = existingBilling?.paidAmount || existingBilling?.installmentAmount || 0;
     const remainingDue = totalDue - previousPaid;
-    const paymentAmount = status === 'Nyicil'
-      ? Number(installmentAmount ?? paidAmount)
-      : Number(paidAmount) || remainingDue;
-    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+    const paymentAmount = status === 'Belum Bayar'
+      ? 0
+      : status === 'Nyicil'
+        ? Number(installmentAmount ?? paidAmount)
+        : Number(paidAmount) || remainingDue;
+    if (status !== 'Belum Bayar' && (!Number.isFinite(paymentAmount) || paymentAmount <= 0)) {
       return NextResponse.json({ error: 'Nominal pembayaran harus lebih dari 0' }, { status: 400 });
     }
     if (paymentAmount > remainingDue) {
@@ -97,6 +126,7 @@ export async function POST(request: Request) {
     }
 
     if (existingBilling) {
+      const before = getBillingAuditSnapshot(existingBilling);
       const totalPaid = previousPaid + paymentAmount;
       if (totalPaid > totalDue) {
         return NextResponse.json({ error: `Total cicilan tidak boleh melebihi total tagihan ${totalDue}` }, { status: 400 });
@@ -118,6 +148,7 @@ export async function POST(request: Request) {
         entityId: existingBilling._id.toString(),
         entityLabel: `${customer.name} - ${month} ${year}`,
         summary: `Pembayaran ${paymentAmount} ditambahkan; total dibayar ${totalPaid} dari ${totalDue}`,
+        changes: { before, after: getBillingAuditSnapshot(existingBilling) },
       });
       return NextResponse.json(existingBilling);
     }
@@ -133,16 +164,16 @@ export async function POST(request: Request) {
       paidAmount: paymentAmount,
       month,
       year: Number(year),
-      status: paymentAmount === totalDue ? 'Lunas' : 'Nyicil',
+      status: status === 'Belum Bayar' ? 'Belum Bayar' : paymentAmount === totalDue ? 'Lunas' : 'Nyicil',
       installmentAmount: paymentAmount === totalDue ? 0 : paymentAmount,
       note: note || '',
-      paymentHistory: [{
-        amount: paymentAmount,
-        addedAt: new Date(),
-        addedBy: adminName,
-        status: paymentAmount === totalDue ? 'Lunas' : 'Nyicil',
-        note: note || '',
-      }],
+      paymentHistory: status === 'Belum Bayar' ? [] : [{
+          amount: paymentAmount,
+          addedAt: new Date(),
+          addedBy: adminName,
+          status: paymentAmount === totalDue ? 'Lunas' : 'Nyicil',
+          note: note || '',
+        }],
     });
 
     await writeAuditLog({
@@ -151,7 +182,10 @@ export async function POST(request: Request) {
       entityType: 'billing',
       entityId: billing._id.toString(),
       entityLabel: `${customer.name} - ${month} ${year}`,
-      summary: `Tagihan dibuat dengan total ${totalDue}; pembayaran awal ${paymentAmount}`,
+      summary: status === 'Belum Bayar'
+        ? `Tagihan dibuat dengan total ${totalDue}; belum ada pembayaran`
+        : `Tagihan dibuat dengan total ${totalDue}; pembayaran awal ${paymentAmount}`,
+      changes: { before: null, after: getBillingAuditSnapshot(billing) },
     });
 
     return NextResponse.json(billing, { status: 201 });
@@ -177,13 +211,14 @@ export async function PUT(request: Request) {
     if (!billing) {
       return NextResponse.json({ error: 'Tagihan tidak ditemukan' }, { status: 404 });
     }
+    const before = getBillingAuditSnapshot(billing);
 
     let carriedAmount = billing.carriedAmount || 0;
     if (!billing.totalDue) {
       const targetPeriod = getBillingPeriod(billing.month, billing.year);
       const previousBillings = await Billing.find({ customerId: billing.customerId, _id: { $ne: billing._id } }).sort({ year: -1, createdAt: -1 });
       const previousBilling = previousBillings.find((item) => getBillingPeriod(item.month, item.year) < targetPeriod);
-      if (previousBilling?.status === 'Nyicil') {
+      if (previousBilling?.status === 'Nyicil' || previousBilling?.status === 'Belum Bayar') {
         carriedAmount = Math.max(0, (previousBilling.totalDue || previousBilling.packagePrice) - (previousBilling.paidAmount || 0));
       }
     }
@@ -240,6 +275,7 @@ export async function PUT(request: Request) {
         entityId: updatedBilling._id.toString(),
         entityLabel: `${updatedBilling.customerName} - ${updatedBilling.month} ${updatedBilling.year}`,
         summary: `Tagihan diubah; status ${updatedBilling.status}, total dibayar ${updatedBilling.paidAmount}`,
+        changes: { before, after: getBillingAuditSnapshot(updatedBilling) },
       });
     }
 
@@ -275,6 +311,7 @@ export async function DELETE(request: Request) {
       entityId: billing._id.toString(),
       entityLabel: `${billing.customerName} - ${billing.month} ${billing.year}`,
       summary: `Tagihan dihapus; total ${billing.totalDue || billing.packagePrice}, dibayar ${billing.paidAmount}`,
+      changes: { before: getBillingAuditSnapshot(billing), after: null },
     });
 
     return NextResponse.json({ message: 'Tagihan berhasil dihapus' });

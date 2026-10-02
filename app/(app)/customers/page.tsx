@@ -4,17 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, CalendarDays, ChevronRight, Loader2, MapPin, Search, UserRound, Wifi } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface Customer {
   _id: string;
@@ -27,30 +18,17 @@ interface Customer {
 
 interface BillingSummary {
   status: string;
-  month: string;
 }
 
 interface BillingSummaryResponse extends BillingSummary {
   customerId: string;
 }
 
-type StatusFilter = 'all' | 'lunas' | 'nyicil';
-
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
-
-const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [billings, setBillings] = useState<Record<string, BillingSummary[]>>({});
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [billingMonthFilter, setBillingMonthFilter] = useState('all');
-  const [billingMonthPickerOpen, setBillingMonthPickerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -75,7 +53,7 @@ export default function CustomersPage() {
         setCustomers(customerData);
         const billingMap: Record<string, BillingSummary[]> = {};
         (billingData as BillingSummaryResponse[]).forEach((billing) => {
-          (billingMap[billing.customerId] ||= []).push({ status: billing.status, month: billing.month });
+          (billingMap[billing.customerId] ||= []).push({ status: billing.status });
         });
         setBillings(billingMap);
       } catch (err) {
@@ -94,20 +72,8 @@ export default function CustomersPage() {
 
   const filteredCustomers = useMemo(() => customers.filter((customer) => {
     const searchableText = `${customer.name} ${customer.address ?? ''} ${customer.packageId?.name ?? ''} ${customer.packageId?.speed ?? ''}`.toLowerCase();
-    const matchesSearch = searchableText.includes(debouncedSearch.toLowerCase());
-    const allStatuses = billings[customer._id] || [];
-    const statuses = billingMonthFilter === 'all'
-      ? allStatuses
-      : allStatuses.filter((billing) => billing.month === billingMonthFilter);
-    const hasPaid = statuses.some((billing) => billing.status === 'TF' || billing.status === 'Cash' || billing.status === 'Lunas');
-    const hasInstallment = statuses.some((billing) => billing.status === 'Nyicil');
-    const hasSelectedMonth = billingMonthFilter === 'all' || statuses.length > 0;
-    const matchesStatus = statusFilter === 'all'
-      || (statusFilter === 'lunas' && hasPaid)
-      || (statusFilter === 'nyicil' && hasInstallment);
-
-    return matchesSearch && matchesStatus && hasSelectedMonth;
-  }), [customers, debouncedSearch, statusFilter, billingMonthFilter, billings]);
+    return searchableText.includes(debouncedSearch.toLowerCase());
+  }), [customers, debouncedSearch]);
 
   const formatDateTime = (value?: string) => value
     ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -140,8 +106,7 @@ export default function CustomersPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="relative flex-1">
+      <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Cari nama, alamat, atau paket..."
@@ -149,55 +114,7 @@ export default function CustomersPage() {
             onChange={(event) => setSearch(event.target.value)}
             className="pl-10"
           />
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Bulan</span>
-            <Button type="button" variant="outline" className="w-[150px] justify-between font-normal" onClick={() => setBillingMonthPickerOpen(true)}>
-              {billingMonthFilter === 'all' ? 'Semua Bulan' : billingMonthFilter}
-              <span className="text-xs text-muted-foreground">Pilih</span>
-            </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Status</span>
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-              <SelectTrigger className="w-[170px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua</SelectItem>
-                <SelectItem value="lunas">Lunas</SelectItem>
-                <SelectItem value="nyicil">Nyicil</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
       </div>
-
-      <Dialog open={billingMonthPickerOpen} onOpenChange={setBillingMonthPickerOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Filter Bulan Tagihan</DialogTitle>
-            <DialogDescription>Tampilkan pelanggan yang memiliki tagihan pada bulan tertentu.</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-3 gap-3">
-            <Button type="button" variant={billingMonthFilter === 'all' ? 'default' : 'outline'} onClick={() => {
-              setBillingMonthFilter('all');
-              setBillingMonthPickerOpen(false);
-            }}>
-              Semua
-            </Button>
-            {months.map((month, index) => (
-              <Button key={month} type="button" variant={billingMonthFilter === month ? 'default' : 'outline'} onClick={() => {
-                setBillingMonthFilter(month);
-                setBillingMonthPickerOpen(false);
-              }}>
-                {monthShortNames[index]}
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <div className="space-y-2">
         <p className="text-xs text-muted-foreground">

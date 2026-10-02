@@ -4,6 +4,8 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { ChevronDown, History, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
@@ -94,6 +96,7 @@ const actionLabels: Record<string, string> = {
 
 export default function AuditPage() {
   const [category, setCategory] = useState('all');
+  const [dateFilter, setDateFilter] = useState('');
   const [items, setItems] = useState<AuditEntry[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -109,6 +112,10 @@ export default function AuditPage() {
     try {
       const params = new URLSearchParams({ page: String(requestedPage) });
       if (category !== 'all') params.set('entityType', category);
+      if (dateFilter) {
+        params.set('date', dateFilter);
+        params.set('timezoneOffset', String(new Date().getTimezoneOffset()));
+      }
       const response = await fetch(`/api/audit?${params.toString()}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Gagal memuat log aktivitas');
@@ -121,7 +128,7 @@ export default function AuditPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [category]);
+  }, [category, dateFilter]);
 
   const toggleExpanded = (id: string) => {
     setExpandedItems((current) => current.includes(id)
@@ -140,15 +147,28 @@ export default function AuditPage() {
           <h1 className="text-2xl font-bold tracking-tight">Log Aktivitas</h1>
           <p className="mt-1 text-sm text-muted-foreground">Catatan perubahan data dan akun admin.</p>
         </div>
-        <div className="w-full sm:w-52">
-          <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger aria-label="Filter kategori aktivitas"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {Object.entries(categoryLabels).map(([value, label]) => (
-                <SelectItem key={value} value={value}>{label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:gap-3">
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor="audit-date" className="text-xs text-muted-foreground">Tanggal aktivitas</Label>
+            <Input
+              id="audit-date"
+              type="date"
+              value={dateFilter}
+              onChange={(event) => setDateFilter(event.target.value)}
+              className="min-w-0 w-full px-2 text-xs sm:px-3 sm:text-sm"
+            />
+          </div>
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor="audit-category" className="text-xs text-muted-foreground">Kategori</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger id="audit-category" aria-label="Filter kategori aktivitas" className="min-w-0 w-full px-2 sm:px-3"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(categoryLabels).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -161,7 +181,7 @@ export default function AuditPage() {
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
           <History className="h-8 w-8 opacity-50" />
-          <p className="text-sm">Belum ada aktivitas pada kategori ini.</p>
+          <p className="text-sm">Tidak ada aktivitas untuk filter yang dipilih.</p>
         </div>
       ) : (
         <>

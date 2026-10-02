@@ -49,11 +49,13 @@ export async function GET(request: Request) {
     }
 
     if (summaryOnly) {
-      const summaries = await Billing.find(query).select('customerId status month').lean();
+      const summaries = await Billing.find(query).select('customerId status month year createdAt').lean();
       return NextResponse.json(summaries.map((billing) => ({
         customerId: billing.customerId.toString(),
         status: billing.status,
         month: billing.month,
+        year: billing.year,
+        createdAt: billing.createdAt,
       })));
     }
 
@@ -132,7 +134,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `Total cicilan tidak boleh melebihi total tagihan ${totalDue}` }, { status: 400 });
       }
       const isPaidInFull = totalPaid === totalDue;
-      const nextStatus = isPaidInFull ? 'Lunas' : 'Nyicil';
+      const nextStatus = isPaidInFull
+        ? (status === 'TF' || status === 'Cash' ? status : 'Lunas')
+        : 'Nyicil';
       existingBilling.status = nextStatus;
       existingBilling.totalDue = totalDue;
       existingBilling.paidAmount = totalPaid;
@@ -153,6 +157,11 @@ export async function POST(request: Request) {
       return NextResponse.json(existingBilling);
     }
 
+    const finalStatus = status === 'Belum Bayar'
+      ? 'Belum Bayar'
+      : paymentAmount === totalDue
+        ? (status === 'TF' || status === 'Cash' ? status : 'Lunas')
+        : 'Nyicil';
     const billing = await Billing.create({
       customerId: customer._id,
       customerName: customer.name,
@@ -164,14 +173,14 @@ export async function POST(request: Request) {
       paidAmount: paymentAmount,
       month,
       year: Number(year),
-      status: status === 'Belum Bayar' ? 'Belum Bayar' : paymentAmount === totalDue ? 'Lunas' : 'Nyicil',
+      status: finalStatus,
       installmentAmount: paymentAmount === totalDue ? 0 : paymentAmount,
       note: note || '',
       paymentHistory: status === 'Belum Bayar' ? [] : [{
           amount: paymentAmount,
           addedAt: new Date(),
           addedBy: adminName,
-          status: paymentAmount === totalDue ? 'Lunas' : 'Nyicil',
+          status: finalStatus as 'TF' | 'Cash' | 'Nyicil' | 'Lunas',
           note: note || '',
         }],
     });

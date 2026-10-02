@@ -340,9 +340,10 @@ export default function CustomerDetailPage() {
     openBillingDetails(billingId);
   };
 
+  const sortedBillings = [...billings].sort((a, b) => getBillingPeriod(b.month, b.year) - getBillingPeriod(a.month, a.year));
   const visibleBillings = selectedBillingId
-    ? billings.filter((billing) => billing._id === selectedBillingId)
-    : billings;
+    ? sortedBillings.filter((billing) => billing._id === selectedBillingId)
+    : sortedBillings;
 
   const getStatusBadge = (status: string) => {
     const baseClassName = 'whitespace-nowrap inline-flex items-center justify-center';
@@ -618,9 +619,9 @@ export default function CustomerDetailPage() {
 
       {/* Billing history */}
       <div>
-        <h2 className="text-lg font-semibold mb-4">Riwayat Tagihan</h2>
+        <h2 className="mb-4 text-lg font-semibold">Riwayat Tagihan</h2>
 
-        {billings.length === 0 ? (
+        {sortedBillings.length === 0 ? (
           <Card className="border-border/60">
             <CardContent className="py-16 text-center">
               <AlertCircle className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />

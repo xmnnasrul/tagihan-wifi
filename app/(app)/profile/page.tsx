@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, KeyRound, Loader2, Shield, UserCircle2 } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Loader2, Pencil, Shield, UserCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -19,7 +19,9 @@ interface CurrentUser {
 export default function ProfilePage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(true);
+  const [changingUsername, setChangingUsername] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -40,6 +42,7 @@ export default function ProfilePage() {
 
         const data = await response.json();
         setCurrentUser(data.user ?? null);
+        setUsername(data.user?.username ?? '');
       } catch {
         router.replace('/login');
       } finally {
@@ -49,6 +52,29 @@ export default function ProfilePage() {
 
     void fetchCurrentUser();
   }, [router]);
+
+  const handleChangeUsername = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setChangingUsername(true);
+    try {
+      const response = await fetch('/api/auth/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Gagal mengubah username');
+
+      setUsername(data.username);
+      setCurrentUser((user) => user ? { ...user, username: data.username } : user);
+      window.dispatchEvent(new Event('profile-updated'));
+      toast.success(data.message || 'Username berhasil diubah');
+    } catch (renameError) {
+      toast.error(renameError instanceof Error ? renameError.message : 'Gagal mengubah username');
+    } finally {
+      setChangingUsername(false);
+    }
+  };
 
   const handleChangePassword = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -97,22 +123,22 @@ export default function ProfilePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Profil Saya</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Kelola akun Anda dan ubah password sesuai kebutuhan.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Kelola username dan password akun Anda.</p>
       </div>
 
-      <div className="mx-auto w-full max-w-[680px] rounded-[28px] border border-violet-500/20 bg-gradient-to-br from-card via-card to-violet-500/[0.03] p-6 shadow-[0_20px_60px_rgba(15,23,42,0.12)] ring-1 ring-border/80 xl:p-7">
-        <div className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-violet-500/10 bg-violet-500/[0.04] p-3.5">
+      <div className="mx-auto w-full max-w-[680px] space-y-6 rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
+        <div className="flex items-center justify-between gap-4 border-b border-border pb-4">
           <div>
             <p className="text-sm text-muted-foreground">Keamanan akun</p>
             <h2 className="text-2xl font-semibold tracking-tight">Ganti Password</h2>
           </div>
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-400 shadow-inner shadow-violet-500/10">
+          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
             <Shield className="h-5 w-5" />
           </div>
         </div>
 
-        <div className="mb-6 flex items-center gap-3 rounded-2xl border border-border bg-gradient-to-r from-muted/50 to-transparent p-3.5 shadow-sm">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-violet-500/15 text-primary shadow-sm">
+        <div className="flex items-center gap-3 rounded-md border border-border bg-muted/30 p-3.5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
             <UserCircle2 className="h-6 w-6" />
           </div>
           <div>
@@ -122,6 +148,29 @@ export default function ProfilePage() {
             </Badge>
           </div>
         </div>
+
+        <form onSubmit={handleChangeUsername} className="space-y-3 rounded-md border border-border bg-background/50 p-4">
+          <div className="space-y-2">
+            <Label htmlFor="profile-username" className="text-sm font-medium">Username</Label>
+            <Input
+              id="profile-username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="username"
+              minLength={3}
+              maxLength={32}
+              pattern="[a-zA-Z0-9._-]+"
+              className="h-11 focus-visible:ring-primary/30"
+              required
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button type="submit" disabled={changingUsername} className="w-full sm:w-auto">
+              {changingUsername ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Pencil className="mr-2 h-4 w-4" />}
+              Simpan Username
+            </Button>
+          </div>
+        </form>
 
         {error && (
           <Alert variant="destructive" className="mb-5">
@@ -139,7 +188,7 @@ export default function ProfilePage() {
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
                 autoComplete="current-password"
-                className="pr-10 h-11 rounded-xl border-border/80 bg-background/80 shadow-sm focus-visible:ring-violet-500/30"
+                className="pr-10 h-11 focus-visible:ring-primary/30"
                 placeholder="Masukkan password lama"
                 required
               />
@@ -164,7 +213,7 @@ export default function ProfilePage() {
                 onChange={(event) => setNewPassword(event.target.value)}
                 autoComplete="new-password"
                 minLength={10}
-                className="pr-10 h-11 rounded-xl border-border/80 bg-background/80 shadow-sm focus-visible:ring-violet-500/30"
+                className="pr-10 h-11 focus-visible:ring-primary/30"
                 placeholder="Minimal 10 karakter"
                 required
               />
@@ -189,7 +238,7 @@ export default function ProfilePage() {
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 autoComplete="new-password"
                 minLength={10}
-                className="pr-10 h-11 rounded-xl border-border/80 bg-background/80 shadow-sm focus-visible:ring-violet-500/30"
+                className="pr-10 h-11 focus-visible:ring-primary/30"
                 placeholder="Ulangi password baru"
                 required
               />
@@ -205,7 +254,7 @@ export default function ProfilePage() {
           </div>
 
           <div className="flex justify-end pt-2">
-            <Button type="submit" disabled={changingPassword} className="min-w-[180px] rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/20 hover:from-violet-500 hover:to-indigo-500">
+            <Button type="submit" disabled={changingPassword} className="min-w-[180px]">
               {changingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
               Simpan Password
             </Button>

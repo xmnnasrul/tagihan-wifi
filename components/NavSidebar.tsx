@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield, Users, UserCircle2 } from 'lucide-react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield, Users, UserCircle2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/customers/all', label: 'Semua Pelanggan', icon: Users },
+  { href: '/arrears', label: 'Laporan Tunggakan', icon: FileText },
   { href: '/billing/add', label: 'Tambah Tagihan', icon: FilePlus },
   { href: '/packages', label: 'Manajemen Paket', icon: Package },
   { href: '/archived', label: 'Arsip', icon: Archive },
@@ -27,14 +28,21 @@ export default function NavSidebar() {
   const [role, setRole] = useState('');
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then(async (response) => {
+    const fetchCurrentUser = async () => {
+      try {
+        const response = await fetch('/api/auth/me');
         if (!response.ok) return;
         const data = await response.json();
         setUsername(typeof data.user?.username === 'string' ? data.user.username : '');
         setRole(typeof data.user?.role === 'string' ? data.user.role : '');
-      })
-      .catch(() => setUsername(''));
+      } catch {
+        setUsername('');
+      }
+    };
+
+    void fetchCurrentUser();
+    window.addEventListener('profile-updated', fetchCurrentUser);
+    return () => window.removeEventListener('profile-updated', fetchCurrentUser);
   }, []);
 
   const handleLogout = async () => {

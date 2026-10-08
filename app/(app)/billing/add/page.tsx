@@ -125,9 +125,9 @@ export default function AddCustomerPage() {
               </div>
             </div>
 
-            <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => router.push('/dashboard')} className="w-full sm:w-auto">Batal</Button>
-              <Button type="submit" disabled={loading} className="w-full sm:w-auto">
+            <div className="flex flex-row gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => router.push('/dashboard')} className="flex-1">Batal</Button>
+              <Button type="submit" disabled={loading} className="flex-1">
                 {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</> : 'Simpan Pelanggan'}
               </Button>
             </div>

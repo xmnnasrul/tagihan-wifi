@@ -91,7 +91,7 @@ export default function ExportPage() {
       </Card>
 
       <Dialog open={monthPickerOpen} onOpenChange={setMonthPickerOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="rounded-2xl sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Pilih Bulan Tagihan</DialogTitle>
             <DialogDescription>Pilih satu bulan atau semua data.</DialogDescription>

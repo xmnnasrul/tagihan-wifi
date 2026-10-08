@@ -3,9 +3,10 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield, Users, UserCircle2, FileText } from 'lucide-react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield, Users, UserCircle2, FileText, Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useTheme } from 'next-themes';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -26,8 +27,12 @@ export default function NavSidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [username, setUsername] = useState('');
   const [role, setRole] = useState('');
+  const [themeReady, setThemeReady] = useState(false);
+  const { resolvedTheme, setTheme } = useTheme();
+  const isDarkTheme = themeReady && resolvedTheme === 'dark';
 
   useEffect(() => {
+    setThemeReady(true);
     const fetchCurrentUser = async () => {
       try {
         const response = await fetch('/api/auth/me');
@@ -88,6 +93,17 @@ export default function NavSidebar() {
       </nav>
 
       <div className="border-t border-border px-3 py-4">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setTheme(isDarkTheme ? 'light' : 'dark')}
+          disabled={!themeReady}
+          aria-label={`Ganti ke mode ${isDarkTheme ? 'terang' : 'gelap'}`}
+          className="mb-3 w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+        >
+          {isDarkTheme ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          <span>{isDarkTheme ? 'Mode terang' : 'Mode gelap'}</span>
+        </Button>
         <div className="flex items-center justify-between gap-2 overflow-hidden rounded-lg bg-muted/40 px-2.5 py-2">
           <span className="min-w-0 truncate text-sm font-medium" title={username || 'Admin'}>
             {username || 'Admin'}

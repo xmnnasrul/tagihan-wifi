@@ -5,6 +5,7 @@ import Customer from '@/lib/models/Customer';
 import Package from '@/lib/models/Package';
 import { getCurrentUser, requireAuthenticatedUser } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
+import { applyPaymentToPreviousBillings } from '@/lib/billing-amounts';
 
 const billingMonths = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -102,6 +103,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Tagihan bulan ${month} ${year} sudah ada` }, { status: 400 });
     }
 
+    const previousBillings = await Billing.find({ customerId }).sort({ year: 1, createdAt: 1 });
+    const targetPeriod = getBillingPeriod(month, Number(year));
+    const olderOutstandingBillings = previousBillings.filter((bill) => {
+      const billPeriod = getBillingPeriod(bill.month, bill.year);
+      return billPeriod < targetPeriod && ['Belum Bayar', 'Nyicil'].includes(bill.status);
+    });
+
     let carriedAmount = 0;
     if (!existingBilling) {
       const targetPeriod = getBillingPeriod(month, Number(year));
@@ -145,6 +153,24 @@ export async function POST(request: Request) {
       existingBilling.paymentHistory = existingBilling.paymentHistory || [];
       existingBilling.paymentHistory.push({ amount: paymentAmount, addedAt: new Date(), addedBy: adminName, status: nextStatus, note: note || '' });
       await existingBilling.save();
+
+      const { billings: settledPreviousBillings } = applyPaymentToPreviousBillings(olderOutstandingBillings, paymentAmount, {
+        addedBy: adminName,
+        note: `Pelunasan otomatis dari pembayaran ${month} ${year}`,
+        appliedAt: new Date(),
+      });
+
+      for (const settledBilling of settledPreviousBillings) {
+        const currentDoc = await Billing.findById(settledBilling._id);
+        if (!currentDoc) continue;
+
+        currentDoc.status = settledBilling.status;
+        currentDoc.paidAmount = settledBilling.paidAmount;
+        currentDoc.installmentAmount = settledBilling.installmentAmount;
+        currentDoc.paymentHistory = settledBilling.paymentHistory;
+        await currentDoc.save();
+      }
+
       await writeAuditLog({
         actorUsername: adminName,
         action: 'billing.payment_added',
@@ -184,6 +210,23 @@ export async function POST(request: Request) {
           note: note || '',
         }],
     });
+
+    const { billings: settledPreviousBillings } = applyPaymentToPreviousBillings(olderOutstandingBillings, paymentAmount, {
+      addedBy: adminName,
+      note: `Pelunasan otomatis dari pembayaran ${month} ${year}`,
+      appliedAt: new Date(),
+    });
+
+    for (const settledBilling of settledPreviousBillings) {
+      const currentDoc = await Billing.findById(settledBilling._id);
+      if (!currentDoc) continue;
+
+      currentDoc.status = settledBilling.status;
+      currentDoc.paidAmount = settledBilling.paidAmount;
+      currentDoc.installmentAmount = settledBilling.installmentAmount;
+      currentDoc.paymentHistory = settledBilling.paymentHistory;
+      await currentDoc.save();
+    }
 
     await writeAuditLog({
       actorUsername: adminName,

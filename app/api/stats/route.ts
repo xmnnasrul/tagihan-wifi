@@ -3,7 +3,7 @@ import { connectDB } from '@/lib/mongodb';
 import Customer from '@/lib/models/Customer';
 import Billing from '@/lib/models/Billing';
 import { requireAuthenticatedUser } from '@/lib/session';
-import { getBillingPaidAmount, getBillingTotalDue } from '@/lib/billing-amounts';
+import { getMonthlyBillingAmounts } from '@/lib/billing-amounts';
 
 const months = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -43,15 +43,11 @@ export async function GET(request: Request) {
     const archivedCustomers = await Customer.countDocuments({ status: 'inactive' });
     const totalCustomers = activeCustomerIds.length;
     const totalBillings = currentBillings.length;
-    const totalDue = currentBillings.reduce((sum, billing) => sum + getBillingTotalDue(billing), 0);
-    const totalRevenue = currentBillings.reduce((sum, billing) => sum + getBillingPaidAmount(billing), 0);
-    const outstandingAmount = currentBillings.reduce(
-      (sum, billing) => sum + Math.max(0, getBillingTotalDue(billing) - getBillingPaidAmount(billing)),
-      0
-    );
-    const unpaidBillings = currentBillings.filter(
-      (billing) => getBillingTotalDue(billing) > getBillingPaidAmount(billing)
-    ).length;
+    const monthlyAmounts = currentBillings.map(getMonthlyBillingAmounts);
+    const totalDue = monthlyAmounts.reduce((sum, amounts) => sum + amounts.due, 0);
+    const totalRevenue = monthlyAmounts.reduce((sum, amounts) => sum + amounts.paid, 0);
+    const outstandingAmount = monthlyAmounts.reduce((sum, amounts) => sum + amounts.outstanding, 0);
+    const unpaidBillings = monthlyAmounts.filter((amounts) => amounts.outstanding > 0).length;
     const unpaidCustomers = selectedPeriodIsFuture
       ? 0
       : currentBillings.filter((billing) => billing.status === 'Belum Bayar').length;

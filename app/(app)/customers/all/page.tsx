@@ -199,20 +199,24 @@ export default function AllCustomersPage() {
             </div>
             <div className="min-w-0 space-y-1.5">
               <span className="text-xs font-medium text-muted-foreground">Tanggal input</span>
-              <Input
-                type="date"
-                aria-label="Tanggal input tagihan"
-                value={billingInputDateFilter}
-                onChange={(event) => setBillingInputDateFilter(event.target.value)}
-                className="min-w-0 w-full px-2 sm:px-3"
-              />
+              <div className="relative">
+                <Input
+                  type="date"
+                  aria-label="Tanggal input tagihan"
+                  value={billingInputDateFilter}
+                  data-empty={billingInputDateFilter === ""}
+                  onChange={(event) => setBillingInputDateFilter(event.target.value)}
+                  className="date-input-calendar min-w-0 w-full px-2 pr-9 sm:px-3"
+                />
+                <CalendarDays aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <Dialog open={billingMonthPickerOpen} onOpenChange={setBillingMonthPickerOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="rounded-2xl sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Filter Bulan Tagihan</DialogTitle>
             <DialogDescription>Tampilkan pelanggan dengan tagihan pada bulan tertentu.</DialogDescription>

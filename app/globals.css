@@ -4,6 +4,36 @@
 
 @layer base {
   :root {
+    color-scheme: light;
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 199 89% 38%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 94%;
+    --secondary-foreground: 222 47% 15%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 42%;
+    --accent: 210 40% 92%;
+    --accent-foreground: 222 47% 15%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214 32% 88%;
+    --input: 214 32% 84%;
+    --ring: 199 89% 38%;
+    --chart-1: 199 89% 38%;
+    --chart-2: 142 60% 35%;
+    --chart-3: 38 85% 42%;
+    --chart-4: 0 65% 48%;
+    --chart-5: 280 55% 48%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    color-scheme: dark;
     --background: 222 47% 5%;
     --foreground: 210 40% 98%;
     --card: 222 47% 7%;
@@ -36,6 +66,9 @@
   * {
     @apply border-border;
   }
+  a {
+    @apply transition-colors duration-200;
+  }
   body {
     @apply bg-background text-foreground;
     overflow-x: hidden;
@@ -43,7 +76,30 @@
   }
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @layer utilities {
+  .date-input-calendar::-webkit-calendar-picker-indicator {
+    opacity: 0;
+  }
+  input[type="date"][data-empty="true"]::-webkit-datetime-edit {
+    color: transparent;
+  }
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
     height: 6px;

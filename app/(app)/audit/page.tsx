@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
-import { ChevronDown, History, Loader2 } from 'lucide-react';
+import { CalendarDays, ChevronDown, History, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -150,13 +150,17 @@ export default function AuditPage() {
         <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:gap-3">
           <div className="min-w-0 space-y-1.5">
             <Label htmlFor="audit-date" className="text-xs text-muted-foreground">Tanggal aktivitas</Label>
-            <Input
-              id="audit-date"
-              type="date"
-              value={dateFilter}
-              onChange={(event) => setDateFilter(event.target.value)}
-              className="min-w-0 w-full px-2 text-xs sm:px-3 sm:text-sm"
-            />
+            <div className="relative">
+              <Input
+                id="audit-date"
+                type="date"
+                value={dateFilter}
+                data-empty={dateFilter === ""}
+                onChange={(event) => setDateFilter(event.target.value)}
+                className="date-input-calendar min-w-0 w-full px-2 pr-9 text-xs sm:px-3 sm:text-sm"
+              />
+              <CalendarDays aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            </div>
           </div>
           <div className="min-w-0 space-y-1.5">
             <Label htmlFor="audit-category" className="text-xs text-muted-foreground">Kategori</Label>

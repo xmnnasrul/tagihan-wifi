@@ -44,6 +44,12 @@
 }
 
 @layer utilities {
+  .date-input-calendar::-webkit-calendar-picker-indicator {
+    opacity: 0;
+  }
+  input[type="date"][data-empty="true"]::-webkit-datetime-edit {
+    color: transparent;
+  }
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
     height: 6px;

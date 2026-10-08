@@ -255,7 +255,7 @@ export default function DashboardPage() {
       </div>
 
       <Dialog open={statsMonthPickerOpen} onOpenChange={setStatsMonthPickerOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="rounded-2xl sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Pilih Bulan</DialogTitle>
             <DialogDescription>Pilih bulan untuk ringkasan keuangan.</DialogDescription>

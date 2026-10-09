@@ -1,26 +1,36 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { verifyToken, COOKIE_NAME, signToken } from '@/lib/auth';
+import { COOKIE_NAME, signToken } from '@/lib/auth';
 import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
-import { getCurrentUser, requireAuthenticatedUser } from '@/lib/session';
+import { getCurrentUser, requireAdmin, requireAuthenticatedUser } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
+import { getPrimaryRole, normalizeUserRoles } from '@/lib/roles';
 
 export async function GET() {
-  const token = cookies().get(COOKIE_NAME)?.value;
-  if (!token) {
-    return NextResponse.json({ user: null }, { status: 401 });
-  }
-  const payload = verifyToken(token);
-  if (!payload) {
-    return NextResponse.json({ user: null }, { status: 401 });
-  }
-  return NextResponse.json({ user: payload });
+  const authError = await requireAuthenticatedUser();
+  if (authError) return authError;
+
+  const payload = await getCurrentUser();
+  if (!payload) return NextResponse.json({ user: null }, { status: 401 });
+
+  await connectDB();
+  const account = await User.findOne({ username: payload.username, isActive: { $ne: false } })
+    .select('username role roles tokenVersion')
+    .lean();
+  if (!account) return NextResponse.json({ user: null }, { status: 401 });
+
+  const roles = normalizeUserRoles(account.role, account.roles);
+  return NextResponse.json({ user: {
+    username: account.username,
+    role: getPrimaryRole(roles),
+    roles,
+    tokenVersion: account.tokenVersion || 0,
+  } });
 }
 
 export async function PATCH(request: Request) {
   try {
-    const authError = await requireAuthenticatedUser();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     const currentUser = await getCurrentUser();
@@ -56,7 +66,8 @@ export async function PATCH(request: Request) {
 
     account.username = username;
     await account.save();
-    const role = account.role || 'admin';
+    const roles = normalizeUserRoles(account.role, account.roles);
+    const role = getPrimaryRole(roles);
     await writeAuditLog({
       actorUsername: previousUsername,
       action: role === 'admin' ? 'admin.username_updated' : 'user.username_updated',
@@ -71,6 +82,7 @@ export async function PATCH(request: Request) {
     response.cookies.set(COOKIE_NAME, signToken({
       username,
       role,
+      roles,
       tokenVersion: account.tokenVersion || 0,
     }), {
       httpOnly: true,

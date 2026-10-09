@@ -3,14 +3,16 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield, Users, UserCircle2, FileText, Moon, Sun } from 'lucide-react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield, Users, UserCircle2, FileText, Moon, Sun, WalletCards } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useTheme } from 'next-themes';
+import { useCurrentUser } from '@/components/CurrentUserProvider';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/customers/all', label: 'Semua Pelanggan', icon: Users },
+  { href: '/collector', label: 'Setoran Collector', icon: WalletCards },
   { href: '/arrears', label: 'Laporan Tunggakan', icon: FileText },
   { href: '/billing/add', label: 'Tambah Tagihan', icon: FilePlus },
   { href: '/packages', label: 'Manajemen Paket', icon: Package },
@@ -25,29 +27,17 @@ export default function NavSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [username, setUsername] = useState('');
-  const [role, setRole] = useState('');
   const [themeReady, setThemeReady] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
+  const currentUser = useCurrentUser();
+  const username = currentUser?.username || '';
+  const roles = currentUser?.roles || [];
+  const isAdmin = roles.includes('admin');
+  const canAccessCollector = isAdmin || roles.includes('collector');
   const isDarkTheme = themeReady && resolvedTheme === 'dark';
 
   useEffect(() => {
     setThemeReady(true);
-    const fetchCurrentUser = async () => {
-      try {
-        const response = await fetch('/api/auth/me');
-        if (!response.ok) return;
-        const data = await response.json();
-        setUsername(typeof data.user?.username === 'string' ? data.user.username : '');
-        setRole(typeof data.user?.role === 'string' ? data.user.role : '');
-      } catch {
-        setUsername('');
-      }
-    };
-
-    void fetchCurrentUser();
-    window.addEventListener('profile-updated', fetchCurrentUser);
-    return () => window.removeEventListener('profile-updated', fetchCurrentUser);
   }, []);
 
   const handleLogout = async () => {
@@ -70,7 +60,7 @@ export default function NavSidebar() {
       </div>
 
       <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-1.5">
-        {navItems.filter((item) => role === 'admin' || (item.href !== '/admins' && item.href !== '/audit')).map((item) => {
+        {navItems.filter((item) => (isAdmin || (item.href !== '/admins' && item.href !== '/audit' && item.href !== '/billing/add')) && (item.href !== '/collector' || canAccessCollector)).map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
           return (

@@ -22,6 +22,7 @@ import {
   RadialBarChart,
 } from 'recharts';
 import { ChartContainer } from '@/components/ui/chart';
+import { useCurrentUser } from '@/components/CurrentUserProvider';
 
 interface Stats {
   totalCustomers: number;
@@ -59,6 +60,7 @@ const progressChartConfig = {
 };
 
 export default function DashboardPage() {
+  const currentUser = useCurrentUser();
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState('');
   const [statsMonth, setStatsMonth] = useState<string | null>(null);
@@ -78,6 +80,12 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (!currentUser) return;
+    if (!currentUser.roles.includes('admin')) {
+      setMonthlyBillingsReady(true);
+      return;
+    }
+
     let isCurrentRequest = true;
     async function ensureCurrentMonthBillings() {
       try {
@@ -94,7 +102,7 @@ export default function DashboardPage() {
     return () => {
       isCurrentRequest = false;
     };
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     const month = statsMonth;

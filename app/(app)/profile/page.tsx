@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 interface CurrentUser {
   username: string;
   role: string;
+  roles: string[];
 }
 
 export default function ProfilePage() {
@@ -41,7 +42,7 @@ export default function ProfilePage() {
         }
 
         const data = await response.json();
-        setCurrentUser(data.user ?? null);
+        setCurrentUser(data.user ? { ...data.user, roles: Array.isArray(data.user.roles) ? data.user.roles : [data.user.role] } : null);
         setUsername(data.user?.username ?? '');
       } catch {
         router.replace('/login');
@@ -119,11 +120,13 @@ export default function ProfilePage() {
     return null;
   }
 
+  const isAdmin = currentUser.roles.includes('admin');
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Profil Saya</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Kelola username dan password akun Anda.</p>
+        <p className="mt-1 text-sm text-muted-foreground">{isAdmin ? 'Kelola username dan password akun Anda.' : 'Kelola keamanan password akun Anda.'}</p>
       </div>
 
       <div className="mx-auto w-full max-w-[680px] space-y-6 rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
@@ -143,13 +146,13 @@ export default function ProfilePage() {
           </div>
           <div>
             <p className="text-base font-semibold tracking-tight">{currentUser.username}</p>
-            <Badge variant={currentUser.role === 'admin' ? 'default' : 'secondary'} className="mt-1 rounded-full px-2.5 py-0.5">
-              {currentUser.role === 'admin' ? 'Admin' : 'User'}
+            <Badge variant={isAdmin ? 'default' : 'secondary'} className="mt-1 rounded-full px-2.5 py-0.5">
+              {currentUser.roles.map((role) => role === 'admin' ? 'Admin' : role === 'collector' ? 'Collector' : 'User').join(' · ')}
             </Badge>
           </div>
         </div>
 
-        <form onSubmit={handleChangeUsername} className="space-y-3 rounded-md border border-border bg-background/50 p-4">
+        {isAdmin && <form onSubmit={handleChangeUsername} className="space-y-3 rounded-md border border-border bg-background/50 p-4">
           <div className="space-y-2">
             <Label htmlFor="profile-username" className="text-sm font-medium">Username</Label>
             <Input
@@ -170,7 +173,7 @@ export default function ProfilePage() {
               Simpan Username
             </Button>
           </div>
-        </form>
+        </form>}
 
         {error && (
           <Alert variant="destructive" className="mb-5">

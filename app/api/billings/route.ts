@@ -3,7 +3,7 @@ import { connectDB } from '@/lib/mongodb';
 import Billing, { IBilling } from '@/lib/models/Billing';
 import Customer from '@/lib/models/Customer';
 import Package from '@/lib/models/Package';
-import { getCurrentUser, requireAuthenticatedUser } from '@/lib/session';
+import { getCurrentUser, requireAdmin, requireAuthenticatedUser, requireCollectorOrAdmin } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
 import { applyPaymentToPreviousBillings } from '@/lib/billing-amounts';
 
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const authError = await requireAuthenticatedUser();
+    const authError = await requireCollectorOrAdmin();
     if (authError) return authError;
 
     await connectDB();
@@ -83,6 +83,10 @@ export async function POST(request: Request) {
     }
     if (!['TF', 'Cash', 'Nyicil', 'Belum Bayar'].includes(status)) {
       return NextResponse.json({ error: 'Status pembayaran tidak valid' }, { status: 400 });
+    }
+    if (status === 'Belum Bayar') {
+      const adminError = await requireAdmin();
+      if (adminError) return adminError;
     }
 
     const customer = await Customer.findById(customerId).populate('packageId');
@@ -248,7 +252,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const authError = await requireAuthenticatedUser();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     await connectDB();
@@ -317,7 +321,7 @@ export async function PUT(request: Request) {
     }
     if (note !== undefined) updateData.note = note;
 
-    const updatedBilling = await Billing.findByIdAndUpdate(id, updateData, { new: true });
+    const updatedBilling = await Billing.findByIdAndUpdate(id, updateData, { returnDocument: 'after' });
     const actor = await getCurrentUser();
     if (updatedBilling) {
       await writeAuditLog({
@@ -339,7 +343,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const authError = await requireAuthenticatedUser();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     await connectDB();

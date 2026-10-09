@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useCurrentUser } from '@/components/CurrentUserProvider';
 
 interface AuditEntry {
   _id: string;
@@ -95,6 +96,8 @@ const actionLabels: Record<string, string> = {
 };
 
 export default function AuditPage() {
+  const currentUser = useCurrentUser();
+  const canViewAudit = currentUser?.roles.includes('admin') ?? false;
   const [category, setCategory] = useState('all');
   const [dateFilter, setDateFilter] = useState('');
   const [items, setItems] = useState<AuditEntry[]>([]);
@@ -137,8 +140,12 @@ export default function AuditPage() {
   };
 
   useEffect(() => {
-    void fetchItems(1, true);
-  }, [fetchItems]);
+    if (canViewAudit) void fetchItems(1, true);
+  }, [canViewAudit, fetchItems]);
+
+  if (!canViewAudit) {
+    return <div role="alert" className="rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground">Log aktivitas hanya dapat diakses admin.</div>;
+  }
 
   return (
     <div className="space-y-6">

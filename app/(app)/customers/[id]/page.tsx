@@ -45,6 +45,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import PageSkeleton from '@/components/PageSkeleton';
+import { useCurrentUser } from '@/components/CurrentUserProvider';
 
 interface Billing {
   _id: string;
@@ -91,6 +92,8 @@ const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu',
 const getBillingPeriod = (month: string, year: number) => year * 12 + months.indexOf(month);
 
 export default function CustomerDetailPage() {
+  const currentUser = useCurrentUser();
+  const canManageData = currentUser?.roles.includes('admin') ?? false;
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
@@ -408,7 +411,7 @@ export default function CustomerDetailPage() {
           <ArrowLeft className="h-4 w-4" />
           {isArchived ? 'Kembali ke Arsip' : 'Kembali ke Dashboard'}
         </Link>
-        {!isArchived && (
+        {!isArchived && canManageData && (
           <Button variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" onClick={handleArchiveCustomer}>
             <Archive className="h-4 w-4 mr-2" />
             Arsipkan Pelanggan
@@ -472,7 +475,7 @@ export default function CustomerDetailPage() {
               <CardTitle className="text-lg">Data Pelanggan</CardTitle>
               <CardDescription>Perubahan paket berlaku untuk tagihan baru. Riwayat lama tetap memakai harga sebelumnya.</CardDescription>
             </div>
-            {!isArchived && (
+            {!isArchived && canManageData && (
               <Button type="button" variant="outline" size="sm" onClick={() => setEditingCustomer((value) => !value)}>
                 <Pencil className="h-4 w-4 mr-2" />
                 {editingCustomer ? 'Batal' : 'Edit'}
@@ -528,7 +531,7 @@ export default function CustomerDetailPage() {
           </CardContent>
         </Card>
 
-        {!isArchived && showBillingForm && <Card className="border-border/60 min-w-0" id="billing-form">
+        {canManageData && !isArchived && showBillingForm && <Card className="border-border/60 min-w-0" id="billing-form">
           <CardHeader>
             <CardTitle className="text-lg">Tambah Tagihan Bulanan</CardTitle>
             <CardDescription>Nama, alamat, dan paket diambil otomatis dari data pelanggan.</CardDescription>
@@ -626,7 +629,7 @@ export default function CustomerDetailPage() {
             <CardContent className="py-16 text-center">
               <AlertCircle className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-muted-foreground">Belum ada riwayat tagihan untuk pelanggan ini.</p>
-              {!isArchived && (
+              {!isArchived && canManageData && (
                 <Button type="button" className="mt-4" onClick={() => {
                   setCanDismissBillingForm(true);
                   setShowBillingForm(true);
@@ -663,7 +666,7 @@ export default function CustomerDetailPage() {
                       <TableCell className="text-right">{formatRupiah(billing.paidAmount || billing.installmentAmount || 0)}</TableCell>
                       <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{billing.note || '-'}</TableCell>
                       <TableCell>
-                        {!isArchived && (
+                        {!isArchived && canManageData && (
                           <div className="flex gap-1">
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(event) => { event.stopPropagation(); openEdit(billing); }}>
                               <Pencil className="h-3.5 w-3.5" />
@@ -730,7 +733,7 @@ export default function CustomerDetailPage() {
       </Dialog>
 
       {/* Delete confirmation */}
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+      {canManageData && <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Tagihan?</AlertDialogTitle>
@@ -748,10 +751,10 @@ export default function CustomerDetailPage() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog>}
 
       {/* Edit dialog */}
-      <Dialog open={!!editBilling} onOpenChange={(open) => !open && setEditBilling(null)}>
+      {canManageData && <Dialog open={!!editBilling} onOpenChange={(open) => !open && setEditBilling(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Tagihan</DialogTitle>
@@ -816,7 +819,7 @@ export default function CustomerDetailPage() {
             </DialogFooter>
           </form>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
     </div>
   );
 }

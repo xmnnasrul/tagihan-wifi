@@ -3,7 +3,7 @@ import type { IBilling } from '@/lib/models/Billing';
 type BillingAmounts = Pick<IBilling, 'totalDue' | 'packagePrice' | 'carriedAmount' | 'paidAmount' | 'installmentAmount' | 'status'>;
 
 type BillingSettlementItem = BillingAmounts & {
-  paymentHistory?: Array<{ amount: number; addedAt?: Date | string; addedBy?: string; status?: string; note?: string }>;
+  paymentHistory?: Array<{ amount: number; addedAt?: Date | string; addedBy?: string; status?: string; note?: string; isSettlementAllocation?: boolean }>;
 };
 
 export function getBillingTotalDue(billing: BillingAmounts): number {
@@ -58,6 +58,7 @@ export function applyPaymentToPreviousBillings<T extends BillingSettlementItem>(
       addedBy: options.addedBy || 'Sistem',
       status: settledStatus === 'Lunas' ? 'Lunas' : 'Nyicil',
       note: options.note || 'Pelunasan tunggakan otomatis',
+      isSettlementAllocation: true,
     });
 
     remaining -= applied;

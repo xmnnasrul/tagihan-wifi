@@ -9,6 +9,7 @@ export interface IPaymentHistory {
   addedBy: string;
   status: PaymentHistoryStatus;
   note: string;
+  isSettlementAllocation?: boolean;
 }
 
 export interface IBilling extends Document {
@@ -51,6 +52,7 @@ const BillingSchema = new Schema<IBilling>(
       addedBy: { type: String, default: '' },
       status: { type: String, enum: ['TF', 'Cash', 'Nyicil', 'Lunas'], required: true },
       note: { type: String, default: '' },
+      isSettlementAllocation: { type: Boolean, default: false },
     }],
   },
   { timestamps: true }

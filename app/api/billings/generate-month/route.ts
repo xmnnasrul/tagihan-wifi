@@ -3,7 +3,7 @@ import { connectDB } from '@/lib/mongodb';
 import Billing from '@/lib/models/Billing';
 import Customer from '@/lib/models/Customer';
 import Package from '@/lib/models/Package';
-import { getCurrentUser, requireAuthenticatedUser } from '@/lib/session';
+import { getCurrentUser, requireAdmin } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
 import { getBillingPaidAmount, getBillingTotalDue } from '@/lib/billing-amounts';
 
@@ -22,7 +22,7 @@ interface PackageDetails {
 
 export async function POST() {
   try {
-    const authError = await requireAuthenticatedUser();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     await connectDB();

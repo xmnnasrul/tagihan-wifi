@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { verifyToken, COOKIE_NAME, TokenPayload } from './auth';
 import { connectDB } from './mongodb';
 import User from './models/User';
+import { normalizeUserRoles, UserRole } from './roles';
 
 export async function getCurrentUser(): Promise<TokenPayload | null> {
   const cookieStore = cookies();
@@ -39,14 +40,23 @@ export async function requireAuthenticatedUser(): Promise<NextResponse | null> {
   return null;
 }
 
-export async function requireAdmin(): Promise<NextResponse | null> {
+export async function requireAnyRole(allowedRoles: UserRole[]): Promise<NextResponse | null> {
   const authError = await requireAuthenticatedUser();
   if (authError) return authError;
 
   const user = await getCurrentUser();
-  if (user?.role !== 'admin') {
-    return NextResponse.json({ error: 'Akses admin diperlukan' }, { status: 403 });
+  const roles = normalizeUserRoles(user?.role, user?.roles);
+  if (!allowedRoles.some((role) => roles.includes(role))) {
+    return NextResponse.json({ error: 'Akses tidak diizinkan untuk role akun ini' }, { status: 403 });
   }
 
   return null;
+}
+
+export async function requireAdmin(): Promise<NextResponse | null> {
+  return requireAnyRole(['admin']);
+}
+
+export async function requireCollectorOrAdmin(): Promise<NextResponse | null> {
+  return requireAnyRole(['admin', 'collector']);
 }

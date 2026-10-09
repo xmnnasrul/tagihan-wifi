@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useCurrentUser } from '@/components/CurrentUserProvider';
 
 interface Package {
   _id: string;
@@ -19,6 +20,8 @@ interface Package {
 }
 
 export default function AddCustomerPage() {
+  const currentUser = useCurrentUser();
+  const canManageData = currentUser?.roles.includes('admin') ?? false;
   const router = useRouter();
   const [packages, setPackages] = useState<Package[]>([]);
   const [name, setName] = useState('');
@@ -71,6 +74,17 @@ export default function AddCustomerPage() {
       setLoading(false);
     }
   };
+
+  if (!canManageData) {
+    return (
+      <Card className="mx-auto max-w-xl border-border/60">
+        <CardHeader>
+          <CardTitle>Akses hanya baca</CardTitle>
+          <CardDescription>Akun role user dapat melihat dan mencari data, tetapi tidak dapat menambahkan pelanggan atau tagihan.</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">

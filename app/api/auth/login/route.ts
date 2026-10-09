@@ -3,6 +3,7 @@ import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
 import { signToken, COOKIE_NAME } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
+import { getPrimaryRole, normalizeUserRoles } from '@/lib/roles';
 
 export async function POST(request: Request) {
   try {
@@ -23,13 +24,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Username atau password salah' }, { status: 401 });
     }
 
+    const roles = normalizeUserRoles(user.role, user.roles);
+    const role = getPrimaryRole(roles);
     const token = signToken({
       username: user.username,
-      role: user.role,
+      role,
+      roles,
       tokenVersion: user.tokenVersion || 0,
     });
 
-    const response = NextResponse.json({ message: 'Login berhasil', user: { username: user.username, role: user.role } });
+    const response = NextResponse.json({ message: 'Login berhasil', user: { username: user.username, role, roles } });
     response.cookies.set(COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

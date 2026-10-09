@@ -3,6 +3,7 @@ import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
 import Package from '@/lib/models/Package';
 import bcrypt from 'bcryptjs';
+import { requireAdmin } from '@/lib/session';
 
 export async function POST(request: Request) {
   try {
@@ -14,6 +15,10 @@ export async function POST(request: Request) {
     }
 
     await connectDB();
+    if (await User.exists({})) {
+      const authError = await requireAdmin();
+      if (authError) return authError;
+    }
 
     const existingAdmin = await User.findOne({ username: 'admin' });
     if (!existingAdmin) {

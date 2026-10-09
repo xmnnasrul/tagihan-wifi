@@ -26,6 +26,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useCurrentUser } from '@/components/CurrentUserProvider';
 
 interface Package {
   _id: string;
@@ -36,6 +37,8 @@ interface Package {
 }
 
 export default function PackagesPage() {
+  const currentUser = useCurrentUser();
+  const canManageData = currentUser?.roles.includes('admin') ?? false;
   const [packages, setPackages] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -159,10 +162,12 @@ export default function PackagesPage() {
           <h1 className="text-2xl font-bold tracking-tight">Manajemen Paket</h1>
           <p className="text-sm text-muted-foreground mt-1">Kelola daftar paket internet</p>
         </div>
-        <Button onClick={openAdd} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Tambah Paket
-        </Button>
+        {canManageData && (
+          <Button onClick={openAdd} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Tambah Paket
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -176,7 +181,7 @@ export default function PackagesPage() {
         <Card className="border-border/60">
           <CardContent className="py-16 text-center">
             <PackageIcon className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-muted-foreground">Belum ada paket. Klik &quot;Tambah Paket&quot; untuk memulai.</p>
+            <p className="text-muted-foreground">{canManageData ? 'Belum ada paket. Klik "Tambah Paket" untuk memulai.' : 'Belum ada paket yang tersedia.'}</p>
           </CardContent>
         </Card>
       ) : (
@@ -199,19 +204,22 @@ export default function PackagesPage() {
                     </Badge>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(pkg)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={() => setDeleteId(pkg._id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                  {canManageData && (
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(pkg)} aria-label={`Edit ${pkg.name}`}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => setDeleteId(pkg._id)}
+                        aria-label={`Hapus ${pkg.name}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -228,7 +236,7 @@ export default function PackagesPage() {
       )}
 
       {/* Add/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {canManageData && <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingPkg ? 'Edit Paket' : 'Tambah Paket Baru'}</DialogTitle>
@@ -293,10 +301,10 @@ export default function PackagesPage() {
             </DialogFooter>
           </form>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
 
       {/* Delete confirmation */}
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+      {canManageData && <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Paket?</AlertDialogTitle>
@@ -314,7 +322,7 @@ export default function PackagesPage() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog>}
     </div>
   );
 }

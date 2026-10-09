@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import type { UserRole } from '@/lib/roles';
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -13,6 +14,7 @@ const COOKIE_NAME = 'auth_token';
 export interface TokenPayload {
   username: string;
   role: string;
+  roles?: UserRole[];
   tokenVersion?: number;
 }
 

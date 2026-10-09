@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Package from '@/lib/models/Package';
-import { getCurrentUser, requireAuthenticatedUser } from '@/lib/session';
+import { getCurrentUser, requireAdmin, requireAuthenticatedUser } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
 
 export async function GET() {
@@ -19,7 +19,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const authError = await requireAuthenticatedUser();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     await connectDB();
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const authError = await requireAuthenticatedUser();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     await connectDB();
@@ -75,7 +75,7 @@ export async function PUT(request: Request) {
     const pkg = await Package.findByIdAndUpdate(
       id,
       { name, price: Number(price), speed, description: description || '' },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!pkg) {
@@ -109,7 +109,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const authError = await requireAuthenticatedUser();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     await connectDB();

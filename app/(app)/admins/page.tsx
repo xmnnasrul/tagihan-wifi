@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { KeyRound, Loader2, Shield, Trash2, UserPlus, UserRoundX } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { KeyRound, Loader2, Pencil, Shield, Trash2, UserPlus, UserRoundX } from 'lucide-react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -9,25 +10,46 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useCurrentUser } from '@/components/CurrentUserProvider';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { USER_ROLES, UserRole } from '@/lib/roles';
+
+const roleLabels: Record<UserRole, string> = { user: 'User (hanya baca)', collector: 'Collector', admin: 'Admin' };
+
+function updateRoles(currentRoles: UserRole[], role: UserRole, checked: boolean): UserRole[] {
+  if (role === 'user') return checked ? ['user'] : currentRoles.some((item) => item !== 'user') ? currentRoles.filter((item) => item !== 'user') : ['user'];
+  const nextRoles = currentRoles.filter((item) => item !== 'user' && item !== role);
+  if (checked) nextRoles.push(role);
+  return nextRoles.length ? nextRoles : ['user'];
+}
 
 interface Admin {
   _id: string;
   username: string;
   role: string;
+  roles: UserRole[];
   isActive: boolean;
   createdAt: string;
 }
 
 export default function AdminsPage() {
+  const router = useRouter();
+  const currentUser = useCurrentUser();
+  const canManageAccounts = currentUser?.roles.includes('admin') ?? false;
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [currentUsername, setCurrentUsername] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [newAccountRoles, setNewAccountRoles] = useState<UserRole[]>(['user']);
+  const [roleEditingAccount, setRoleEditingAccount] = useState<Admin | null>(null);
+  const [roleDraft, setRoleDraft] = useState<UserRole[]>([]);
+  const [savingRoles, setSavingRoles] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const fetchAdmins = async () => {
+  const fetchAdmins = useCallback(async () => {
     try {
       const response = await fetch('/api/admins');
       const data = await response.json();
@@ -39,11 +61,11 @@ export default function AdminsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void fetchAdmins();
-  }, []);
+    if (canManageAccounts) void fetchAdmins();
+  }, [canManageAccounts, fetchAdmins]);
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -53,18 +75,52 @@ export default function AdminsPage() {
       const response = await fetch('/api/admins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, roles: newAccountRoles }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Gagal membuat akun admin');
       setUsername('');
       setPassword('');
+      setNewAccountRoles(['user']);
       toast.success('Akun pengguna berhasil dibuat');
       await fetchAdmins();
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Gagal membuat akun admin');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openRoleEditor = (admin: Admin) => {
+    setRoleEditingAccount(admin);
+    setRoleDraft(admin.roles);
+  };
+
+  const handleSaveRoles = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!roleEditingAccount) return;
+    setSavingRoles(true);
+    try {
+      const response = await fetch('/api/admins', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: roleEditingAccount._id, roles: roleDraft }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Gagal mengubah role akun');
+      toast.success(data.message || 'Role akun diperbarui');
+      setRoleEditingAccount(null);
+      if (data.requiresLogin) {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        router.replace('/login');
+        router.refresh();
+        return;
+      }
+      await fetchAdmins();
+    } catch (roleError) {
+      setError(roleError instanceof Error ? roleError.message : 'Gagal mengubah role akun');
+    } finally {
+      setSavingRoles(false);
     }
   };
 
@@ -88,8 +144,8 @@ export default function AdminsPage() {
   };
 
   const handleDeleteUser = async (admin: Admin) => {
-    if (admin.role !== 'user') {
-      toast.error('Hanya akun user yang bisa dihapus');
+    if (admin.roles.includes('admin')) {
+      toast.error('Akun dengan role admin tidak bisa dihapus');
       return;
     }
 
@@ -101,13 +157,17 @@ export default function AdminsPage() {
         method: 'DELETE',
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Gagal menghapus akun user');
+      if (!response.ok) throw new Error(data.error || 'Gagal menghapus akun');
       toast.success(data.message);
       await fetchAdmins();
     } catch (deleteError) {
-      toast.error(deleteError instanceof Error ? deleteError.message : 'Gagal menghapus akun user');
+      toast.error(deleteError instanceof Error ? deleteError.message : 'Gagal menghapus akun');
     }
   };
+
+  if (!canManageAccounts) {
+    return <div role="alert" className="rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground">Halaman pengelolaan akun hanya dapat diakses admin.</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -156,6 +216,22 @@ export default function AdminsPage() {
               required
             />
           </div>
+          <fieldset className="space-y-3 rounded-md border border-border p-3 md:col-span-2">
+            <legend className="px-1 text-sm font-medium">Role akun</legend>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {USER_ROLES.map((role) => (
+                <label key={role} htmlFor={`new-role-${role}`} className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
+                    id={`new-role-${role}`}
+                    checked={newAccountRoles.includes(role)}
+                    onCheckedChange={(checked) => setNewAccountRoles((current) => updateRoles(current, role, checked === true))}
+                  />
+                  {roleLabels[role]}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">Pilih Admin dan Collector sekaligus bila akun perlu mengelola data sekaligus mencatat setoran.</p>
+          </fieldset>
           <div className="md:col-span-2 flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
             <Button type="submit" disabled={saving} className="w-full sm:w-auto">
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
@@ -195,7 +271,9 @@ export default function AdminsPage() {
                       {admin.username}{admin.username === currentUsername ? ' (Anda)' : ''}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={admin.role === 'admin' ? 'default' : 'secondary'}>{admin.role}</Badge>
+                      <div className="flex flex-wrap gap-1">
+                        {admin.roles.map((role) => <Badge key={role} variant={role === 'admin' ? 'default' : 'secondary'}>{roleLabels[role]}</Badge>)}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant={admin.isActive ? 'default' : 'secondary'}>
@@ -211,13 +289,21 @@ export default function AdminsPage() {
                           type="button"
                           variant="outline"
                           size="sm"
+                          onClick={() => openRoleEditor(admin)}
+                        >
+                          <Pencil className="mr-2 h-4 w-4" />Role
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
                           disabled={admin.username === currentUsername && admin.isActive}
                           onClick={() => void handleToggle(admin)}
                         >
                           {admin.isActive ? <UserRoundX className="mr-2 h-4 w-4" /> : <Shield className="mr-2 h-4 w-4" />}
                           {admin.isActive ? 'Nonaktifkan' : 'Aktifkan'}
                         </Button>
-                        {admin.role === 'user' && (
+                        {!admin.roles.includes('admin') && (
                           <Button type="button" variant="destructive" size="sm" onClick={() => void handleDeleteUser(admin)}>
                             <Trash2 className="mr-2 h-4 w-4" /> Hapus
                           </Button>
@@ -231,6 +317,35 @@ export default function AdminsPage() {
           </div>
         )}
       </section>
+
+      <Dialog open={Boolean(roleEditingAccount)} onOpenChange={(open) => !open && !savingRoles && setRoleEditingAccount(null)}>
+        <DialogContent className="rounded-2xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Atur role akun</DialogTitle>
+            <DialogDescription>{roleEditingAccount?.username}. Perubahan role akan mengakhiri sesi akun tersebut.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveRoles} className="space-y-5">
+            <div className="space-y-3">
+              {USER_ROLES.map((role) => (
+                <label key={role} htmlFor={`edit-role-${role}`} className="flex cursor-pointer items-center gap-3 rounded-md border border-border p-3 text-sm">
+                  <Checkbox
+                    id={`edit-role-${role}`}
+                    checked={roleDraft.includes(role)}
+                    onCheckedChange={(checked) => setRoleDraft((current) => updateRoles(current, role, checked === true))}
+                  />
+                  <span>{roleLabels[role]}</span>
+                </label>
+              ))}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setRoleEditingAccount(null)} disabled={savingRoles}>Batal</Button>
+              <Button type="submit" disabled={savingRoles}>
+                {savingRoles ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Menyimpan...</> : 'Simpan role'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Eye, Loader2, RotateCcw, Trash2, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useCurrentUser } from '@/components/CurrentUserProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -28,6 +29,8 @@ interface ArchivedCustomer {
 }
 
 export default function ArchivedCustomersPage() {
+  const currentUser = useCurrentUser();
+  const canManageData = currentUser?.roles.includes('admin') ?? false;
   const [customers, setCustomers] = useState<ArchivedCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -151,14 +154,18 @@ export default function ArchivedCustomersPage() {
                         Lihat riwayat
                       </Link>
                     </Button>
-                    <Button variant="outline" onClick={() => handleRestore(customer._id)} className="w-full justify-start sm:w-auto">
-                      <RotateCcw className="h-4 w-4 mr-2" />
-                      Pulihkan
-                    </Button>
-                    <Button variant="destructive" onClick={() => setCustomerToDelete(customer)} className="w-full justify-start sm:w-auto">
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Hapus pelanggan
-                    </Button>
+                    {canManageData && (
+                      <>
+                        <Button variant="outline" onClick={() => handleRestore(customer._id)} className="w-full justify-start sm:w-auto">
+                          <RotateCcw className="h-4 w-4 mr-2" />
+                          Pulihkan
+                        </Button>
+                        <Button variant="destructive" onClick={() => setCustomerToDelete(customer)} className="w-full justify-start sm:w-auto">
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Hapus pelanggan
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -167,7 +174,7 @@ export default function ArchivedCustomersPage() {
         </div>
       )}
 
-      <AlertDialog open={!!customerToDelete} onOpenChange={(open) => !open && !deleting && setCustomerToDelete(null)}>
+      {canManageData && <AlertDialog open={!!customerToDelete} onOpenChange={(open) => !open && !deleting && setCustomerToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus pelanggan permanen?</AlertDialogTitle>
@@ -189,7 +196,7 @@ export default function ArchivedCustomersPage() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog>}
     </div>
   );
 }

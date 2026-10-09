@@ -3,7 +3,7 @@ import { connectDB } from '@/lib/mongodb';
 import Customer from '@/lib/models/Customer';
 import Package from '@/lib/models/Package';
 import Billing from '@/lib/models/Billing';
-import { getCurrentUser, requireAuthenticatedUser } from '@/lib/session';
+import { getCurrentUser, requireAdmin, requireAuthenticatedUser } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
 
 export async function GET(request: Request) {
@@ -16,6 +16,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const archivedOnly = searchParams.get('archived') === 'true';
     const id = searchParams.get('id');
+    const search = searchParams.get('search')?.trim();
     const filter: Record<string, any> = id
       ? {}
       : archivedOnly
@@ -23,6 +24,15 @@ export async function GET(request: Request) {
         : { status: { $ne: 'inactive' } };
 
     if (id) filter._id = id;
+    if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const searchRegex = new RegExp(escapedSearch, 'i');
+      filter.$or = [
+        { name: searchRegex },
+        { address: searchRegex },
+        { phone: searchRegex },
+      ];
+    }
 
     // Ensure the referenced Package model is registered before populate() executes.
     await Package.findOne({}).lean();
@@ -37,7 +47,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const authError = await requireAuthenticatedUser();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     await connectDB();
@@ -99,7 +109,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const authError = await requireAuthenticatedUser();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     await connectDB();
@@ -193,7 +203,7 @@ export async function DELETE(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const authError = await requireAuthenticatedUser();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     await connectDB();
@@ -215,7 +225,7 @@ export async function PUT(request: Request) {
         phone: typeof phone === 'string' ? phone.trim() : previousCustomer.phone || '',
         packageId: packageId || null,
       },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     ).populate('packageId');
 
     if (!customer) {

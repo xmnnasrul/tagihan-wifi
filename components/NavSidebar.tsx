@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useTheme } from 'next-themes';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
+import { THEME_PREFERENCE_KEY } from '@/components/ThemeProvider';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -43,6 +44,12 @@ export default function NavSidebar() {
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
+  };
+
+  const handleThemeToggle = () => {
+    const nextTheme = isDarkTheme ? 'light' : 'dark';
+    window.localStorage.setItem(THEME_PREFERENCE_KEY, nextTheme);
+    setTheme(nextTheme);
   };
 
   const NavContent = () => (
@@ -86,7 +93,7 @@ export default function NavSidebar() {
         <Button
           type="button"
           variant="ghost"
-          onClick={() => setTheme(isDarkTheme ? 'light' : 'dark')}
+          onClick={handleThemeToggle}
           disabled={!themeReady}
           aria-label={`Ganti ke mode ${isDarkTheme ? 'terang' : 'gelap'}`}
           className="mb-3 w-full justify-start gap-2 text-muted-foreground hover:text-foreground"

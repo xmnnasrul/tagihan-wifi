@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Billing from '@/lib/models/Billing';
-import { getBillingPaidAmount } from '@/lib/billing-amounts';
+import { getBillingOutstandingAmount, getBillingPaidAmount, getBillingTotalDue } from '@/lib/billing-amounts';
 import { requireAuthenticatedUser } from '@/lib/session';
 
 const months = [
@@ -31,12 +31,10 @@ export async function GET() {
 
     const report = Array.from(billingsByCustomer.entries()).flatMap(([customerId, customerBillings]) => {
       const sortedBillings = [...customerBillings].sort((a, b) => getPeriodIndex(a.year, a.month) - getPeriodIndex(b.year, b.month));
-      let remainingPayments = sortedBillings.reduce((sum, billing) => sum + getBillingPaidAmount(billing), 0);
       const outstandingPeriods = sortedBillings.flatMap((billing) => {
-        const billedAmount = Math.max(0, Number(billing.packagePrice) || 0);
-        const paidAmount = Math.min(billedAmount, remainingPayments);
-        remainingPayments = Math.max(0, remainingPayments - paidAmount);
-        const outstandingAmount = Math.max(0, billedAmount - paidAmount);
+        const billedAmount = Math.max(0, getBillingTotalDue(billing));
+        const paidAmount = Math.min(billedAmount, getBillingPaidAmount(billing));
+        const outstandingAmount = getBillingOutstandingAmount(billing);
         if (outstandingAmount === 0) return [];
 
         return [{

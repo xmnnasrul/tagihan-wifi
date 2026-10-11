@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import CollectionVisit from '@/lib/models/CollectionVisit';
 import Customer from '@/lib/models/Customer';
-import { getCurrentUser, requireAdmin, requireAuthenticatedUser, requireCollectorOrAdmin } from '@/lib/session';
+import { getCurrentUser, requireAuthenticatedUser, requireCollectorOrAdmin } from '@/lib/session';
 
 const months = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',

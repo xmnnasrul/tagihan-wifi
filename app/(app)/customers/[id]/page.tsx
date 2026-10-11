@@ -3,7 +3,7 @@
 import { Fragment, useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, User, MapPin, Wifi, Loader2, Trash2, Pencil, Check, Clock, AlertCircle, Archive } from 'lucide-react';
+import { ArrowLeft, MapPin, Wifi, Loader2, Trash2, Pencil, AlertCircle, Archive } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -46,6 +46,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import PageSkeleton from '@/components/PageSkeleton';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
+import { getBillingOutstandingAmount, getBillingPaidAmount, getBillingTotalDue } from '@/lib/billing-amounts';
 
 interface Billing {
   _id: string;
@@ -72,6 +73,7 @@ interface PaymentHistory {
   addedBy: string;
   status: 'TF' | 'Cash' | 'Nyicil' | 'Lunas';
   note: string;
+  isSettlementAllocation?: boolean;
 }
 
 interface Package {
@@ -381,28 +383,15 @@ export default function CustomerDetailPage() {
   const isArchived = customer?.status === 'inactive';
   const currentPackage = customer?.packageId && typeof customer.packageId === 'object' ? customer.packageId : null;
   const selectedBilling = billings.find((billing) => billing.month === billingMonth && billing.year === Number(billingYear));
-  const previousBilling = billings
-    .filter((billing) => getBillingPeriod(billing.month, billing.year) < getBillingPeriod(billingMonth, Number(billingYear)))
-    .sort((a, b) => getBillingPeriod(b.month, b.year) - getBillingPeriod(a.month, a.year))[0];
-  const previousOutstanding = (previousBilling?.status === 'Nyicil' || previousBilling?.status === 'Belum Bayar')
-    ? Math.max(0, (previousBilling.totalDue || previousBilling.packagePrice) - (previousBilling.paidAmount || 0))
-    : 0;
-  const currentDueAmount = selectedBilling?.totalDue || (currentPackage?.price ?? 0) + previousOutstanding;
-  const currentPaidAmount = selectedBilling?.paidAmount || selectedBilling?.installmentAmount || 0;
+  const selectedPeriod = getBillingPeriod(billingMonth, Number(billingYear));
+  const previousOutstanding = billings
+    .filter((billing) => getBillingPeriod(billing.month, billing.year) < selectedPeriod)
+    .reduce((sum, billing) => sum + getBillingOutstandingAmount(billing), 0);
+  const currentDueAmount = (selectedBilling ? getBillingTotalDue(selectedBilling) : currentPackage?.price ?? 0) + previousOutstanding;
+  const currentPaidAmount = selectedBilling ? getBillingPaidAmount(selectedBilling) : 0;
   const currentRemainingAmount = Math.max(0, currentDueAmount - currentPaidAmount);
-  const totalPaid = billings.reduce((sum, b) => {
-    if (b.paidAmount) return sum + b.paidAmount;
-    if (b.status === 'TF' || b.status === 'Cash' || b.status === 'Lunas') return sum + (b.paidAmount || b.packagePrice);
-    if (b.status === 'Nyicil') return sum + b.installmentAmount;
-    return sum;
-  }, 0);
-
-  const totalOutstanding = billings.reduce((sum, b) => {
-    if (b.status === 'Nyicil' || b.status === 'Belum Bayar') {
-      return sum + Math.max(0, (b.totalDue || b.packagePrice) - (b.paidAmount || 0));
-    }
-    return sum;
-  }, 0);
+  const totalPaid = billings.reduce((sum, billing) => sum + getBillingPaidAmount(billing), 0);
+  const totalOutstanding = billings.reduce((sum, billing) => sum + getBillingOutstandingAmount(billing), 0);
 
   return (
     <div className="space-y-6">
@@ -663,7 +652,7 @@ export default function CustomerDetailPage() {
                       <TableCell className="font-medium">{billing.month}</TableCell>
                       <TableCell>{billing.year}</TableCell>
                       <TableCell>{getStatusBadge(billing.status)}</TableCell>
-                      <TableCell className="text-right">{formatRupiah(billing.paidAmount || billing.installmentAmount || 0)}</TableCell>
+                      <TableCell className="text-right">{formatRupiah(getBillingPaidAmount(billing))}</TableCell>
                       <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{billing.note || '-'}</TableCell>
                       <TableCell>
                         {!isArchived && canManageData && (
@@ -686,7 +675,7 @@ export default function CustomerDetailPage() {
                                 {paymentHistory.map((payment, paymentIndex) => (
                                   <div key={`${billing._id}-${payment._id || paymentIndex}`} className="flex flex-col gap-2 rounded-md border border-border/60 bg-background/50 p-3 text-sm sm:flex-row sm:items-start sm:justify-between">
                                     <div className="min-w-0">
-                                      <p className="font-medium">Pembayaran ke-{paymentIndex + 1}</p>
+                                      <p className="font-medium">{payment.isSettlementAllocation ? 'Alokasi tunggakan' : `Pembayaran ke-${paymentIndex + 1}`}</p>
                                       <p className="text-xs text-muted-foreground">{formatDateTime(payment.addedAt)} oleh {payment.addedBy || 'Admin'}</p>
                                       <p className="mt-1 font-semibold">Nominal: {formatRupiah(payment.amount)}</p>
                                       {payment.note && <p className="mt-1 text-xs text-muted-foreground">Catatan: {payment.note}</p>}

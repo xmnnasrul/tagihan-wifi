@@ -5,7 +5,6 @@ import Customer from '@/lib/models/Customer';
 import Package from '@/lib/models/Package';
 import { getCurrentUser, requireAdmin } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
-import { getBillingPaidAmount, getBillingTotalDue } from '@/lib/billing-amounts';
 
 const months = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -55,21 +54,6 @@ export async function POST() {
       .select('customerId')
       .lean();
     const existingCustomerIds = new Set(existingBillings.map((billing) => billing.customerId.toString()));
-    const previousBillings = await Billing.find({ customerId: { $in: customerIds }, year: { $lte: year } })
-      .select('customerId month year totalDue packagePrice carriedAmount paidAmount status installmentAmount')
-      .lean();
-    const previousBillingByCustomer = new Map<string, typeof previousBillings[number]>();
-
-    for (const billing of previousBillings) {
-      const billingPeriod = getBillingPeriod(billing.month, billing.year);
-      if (billingPeriod >= period) continue;
-      const customerId = billing.customerId.toString();
-      const previous = previousBillingByCustomer.get(customerId);
-      if (!previous || billingPeriod > getBillingPeriod(previous.month, previous.year)) {
-        previousBillingByCustomer.set(customerId, billing);
-      }
-    }
-
     const currentUser = await getCurrentUser();
     let created = 0;
 
@@ -78,11 +62,6 @@ export async function POST() {
       const pkg = customer.packageId as unknown as PackageDetails | null;
       if (existingCustomerIds.has(customerId) || !pkg?._id) continue;
 
-      const previousBilling = previousBillingByCustomer.get(customerId);
-      const carriedAmount = previousBilling && ['Nyicil', 'Belum Bayar'].includes(previousBilling.status)
-        ? Math.max(0, getBillingTotalDue(previousBilling) - getBillingPaidAmount(previousBilling))
-        : 0;
-
       try {
         const billing = await Billing.create({
           customerId: customer._id,
@@ -90,8 +69,8 @@ export async function POST() {
           address: customer.address || '',
           packageName: pkg.name,
           packagePrice: pkg.price,
-          carriedAmount,
-          totalDue: pkg.price + carriedAmount,
+          carriedAmount: 0,
+          totalDue: pkg.price,
           paidAmount: 0,
           month,
           year,

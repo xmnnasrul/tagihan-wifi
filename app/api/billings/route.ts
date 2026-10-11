@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Billing, { IBilling, PaymentMethod } from '@/lib/models/Billing';
 import Customer from '@/lib/models/Customer';
-import Package from '@/lib/models/Package';
+import '@/lib/models/Package';
 import { getCurrentUser, requireAdmin, requireAuthenticatedUser, requireCollectorOrAdmin } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
-import { applyPaymentToPreviousBillings } from '@/lib/billing-amounts';
+import { applyPaymentToPreviousBillings, getBillingOutstandingAmount, getBillingTotalDue } from '@/lib/billing-amounts';
 import mongoose from 'mongoose';
 
 const billingMonths = [
@@ -19,7 +19,7 @@ const getBillingAuditSnapshot = (billing: IBilling) => ({
   status: billing.status,
   paidAmount: billing.paidAmount || 0,
   installmentAmount: billing.installmentAmount || 0,
-  totalDue: billing.totalDue || billing.packagePrice + (billing.carriedAmount || 0),
+  totalDue: getBillingTotalDue(billing),
   note: billing.note || '',
   paymentCount: billing.paymentHistory?.length || 0,
 });
@@ -30,6 +30,8 @@ const saveSettlementAllocations = async (session: mongoose.ClientSession, billin
     if (!currentDoc) continue;
 
     currentDoc.status = settledBilling.status;
+    currentDoc.totalDue = currentDoc.packagePrice;
+    currentDoc.carriedAmount = 0;
     currentDoc.paidAmount = settledBilling.paidAmount;
     currentDoc.installmentAmount = settledBilling.installmentAmount;
     currentDoc.paymentHistory = settledBilling.paymentHistory;
@@ -126,67 +128,69 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Tagihan bulan ${month} ${year} sudah ada` }, { status: 400 });
     }
 
-    const previousBillings = await Billing.find({ customerId }).sort({ year: 1, createdAt: 1 });
+    const previousBillings = await Billing.find({ customerId });
     const targetPeriod = getBillingPeriod(month, Number(year));
-    const olderOutstandingBillings = previousBillings.filter((bill) => {
-      const billPeriod = getBillingPeriod(bill.month, bill.year);
-      return billPeriod < targetPeriod && ['Belum Bayar', 'Nyicil'].includes(bill.status);
-    });
-
-    let carriedAmount = 0;
-    if (!existingBilling) {
-      const targetPeriod = getBillingPeriod(month, Number(year));
-      const previousBillings = await Billing.find({ customerId }).sort({ year: -1, createdAt: -1 });
-      const previousBilling = previousBillings.find((billing) => getBillingPeriod(billing.month, billing.year) < targetPeriod);
-      if (previousBilling?.status === 'Nyicil' || previousBilling?.status === 'Belum Bayar') {
-        carriedAmount = Math.max(0, (previousBilling.totalDue || previousBilling.packagePrice) - (previousBilling.paidAmount || 0));
-      }
-    }
-
-    const totalDue = existingBilling?.totalDue || (existingBilling?.packagePrice ?? pkg.price) + carriedAmount;
-    const previousPaid = existingBilling?.paidAmount || existingBilling?.installmentAmount || 0;
-    const remainingDue = totalDue - previousPaid;
+    const olderOutstandingBillings = previousBillings
+      .filter((bill) => getBillingPeriod(bill.month, bill.year) < targetPeriod)
+      .sort((first, second) => getBillingPeriod(first.month, first.year) - getBillingPeriod(second.month, second.year))
+      .filter((bill) => getBillingOutstandingAmount(bill) > 0);
+    const monthlyDue = existingBilling?.packagePrice ?? pkg.price;
+    const currentPaid = existingBilling
+      ? Math.min(monthlyDue, Math.max(existingBilling.paidAmount || existingBilling.installmentAmount || 0, 0))
+      : 0;
+    const currentOutstanding = Math.max(0, monthlyDue - currentPaid);
+    const totalOutstanding = olderOutstandingBillings.reduce(
+      (total, billing) => total + getBillingOutstandingAmount(billing),
+      currentOutstanding,
+    );
     const paymentAmount = status === 'Belum Bayar'
       ? 0
       : status === 'Nyicil'
         ? Number(installmentAmount ?? paidAmount)
-        : Number(paidAmount) || remainingDue;
+        : Number(paidAmount) || totalOutstanding;
     if (status !== 'Belum Bayar' && (!Number.isFinite(paymentAmount) || paymentAmount <= 0)) {
       return NextResponse.json({ error: 'Nominal pembayaran harus lebih dari 0' }, { status: 400 });
     }
-    if (paymentAmount > remainingDue) {
-      return NextResponse.json({ error: `Nominal tidak boleh melebihi sisa tagihan ${remainingDue}` }, { status: 400 });
+    if (paymentAmount > totalOutstanding) {
+      return NextResponse.json({ error: `Nominal tidak boleh melebihi total sisa tagihan ${totalOutstanding}` }, { status: 400 });
     }
+
+    const receiptAt = new Date();
+    const receiptStatus = paymentAmount >= totalOutstanding
+      ? (status === 'Cash' || status === 'TF' ? status : 'Lunas')
+      : 'Nyicil';
+    const receipt = paymentAmount > 0 ? {
+      amount: paymentAmount,
+      addedAt: receiptAt,
+      addedBy: adminName,
+      status: receiptStatus as 'TF' | 'Cash' | 'Nyicil' | 'Lunas',
+      method: paymentMethod,
+      note: note || '',
+    } : null;
 
     if (existingBilling) {
       const before = getBillingAuditSnapshot(existingBilling);
-      const totalPaid = previousPaid + paymentAmount;
-      if (totalPaid > totalDue) {
-        return NextResponse.json({ error: `Total cicilan tidak boleh melebihi total tagihan ${totalDue}` }, { status: 400 });
-      }
-      const isPaidInFull = totalPaid === totalDue;
-      const nextStatus = isPaidInFull
-        ? (status === 'TF' || status === 'Cash' ? status : 'Lunas')
-        : 'Nyicil';
-      existingBilling.status = nextStatus;
-      existingBilling.totalDue = totalDue;
-      existingBilling.paidAmount = totalPaid;
-      existingBilling.installmentAmount = isPaidInFull ? 0 : totalPaid;
+      existingBilling.totalDue = monthlyDue;
+      existingBilling.carriedAmount = 0;
       existingBilling.note = [existingBilling.note, note].filter(Boolean).join(' | ');
       existingBilling.paymentHistory = existingBilling.paymentHistory || [];
-      existingBilling.paymentHistory.push({ amount: paymentAmount, addedAt: new Date(), addedBy: adminName, status: nextStatus, method: paymentMethod, note: note || '' });
-
-      const { billings: settledPreviousBillings } = applyPaymentToPreviousBillings(olderOutstandingBillings, paymentAmount, {
-        addedBy: adminName,
-        note: `Pelunasan otomatis dari pembayaran ${month} ${year}`,
-        appliedAt: new Date(),
-      });
+      if (receipt) existingBilling.paymentHistory.push(receipt);
+      const { billings: affectedBillings } = applyPaymentToPreviousBillings(
+        [...olderOutstandingBillings, existingBilling],
+        paymentAmount,
+        {
+          addedBy: adminName,
+          note: `Alokasi dari pembayaran ${month} ${year}`,
+          appliedAt: receiptAt,
+          method: paymentMethod,
+          skipHistoryFor: existingBilling,
+        },
+      );
 
       const session = await mongoose.startSession();
       try {
         await session.withTransaction(async () => {
-          await existingBilling.save({ session });
-          await saveSettlementAllocations(session, settledPreviousBillings);
+          await saveSettlementAllocations(session, affectedBillings);
         });
       } finally {
         await session.endSession();
@@ -198,53 +202,46 @@ export async function POST(request: Request) {
         entityType: 'billing',
         entityId: existingBilling._id.toString(),
         entityLabel: `${customer.name} - ${month} ${year}`,
-        summary: `Pembayaran ${paymentAmount} ditambahkan; total dibayar ${totalPaid} dari ${totalDue}`,
+        summary: `Pembayaran ${paymentAmount} diterima dan dialokasikan ke tagihan tertua; total saldo pelanggan sebelum pembayaran ${totalOutstanding}`,
         changes: { before, after: getBillingAuditSnapshot(existingBilling) },
       });
       return NextResponse.json(existingBilling);
     }
 
-    const finalStatus = status === 'Belum Bayar'
-      ? 'Belum Bayar'
-      : paymentAmount === totalDue
-        ? (status === 'TF' || status === 'Cash' ? status : 'Lunas')
-        : 'Nyicil';
     const billingData = {
       customerId: customer._id,
       customerName: customer.name,
       address: customer.address,
       packageName: pkg.name,
       packagePrice: pkg.price,
-      carriedAmount,
-      totalDue,
-      paidAmount: paymentAmount,
+      carriedAmount: 0,
+      totalDue: pkg.price,
+      paidAmount: 0,
       month,
       year: Number(year),
-      status: finalStatus,
-      installmentAmount: paymentAmount === totalDue ? 0 : paymentAmount,
+      status: 'Belum Bayar' as const,
+      installmentAmount: 0,
       note: note || '',
-      paymentHistory: status === 'Belum Bayar' ? [] : [{
-          amount: paymentAmount,
-          addedAt: new Date(),
-          addedBy: adminName,
-          status: finalStatus as 'TF' | 'Cash' | 'Nyicil' | 'Lunas',
-          method: paymentMethod,
-          note: note || '',
-        }],
+      paymentHistory: receipt ? [receipt] : [],
     };
-
-    const { billings: settledPreviousBillings } = applyPaymentToPreviousBillings(olderOutstandingBillings, paymentAmount, {
-      addedBy: adminName,
-      note: `Pelunasan otomatis dari pembayaran ${month} ${year}`,
-      appliedAt: new Date(),
-    });
 
     const session = await mongoose.startSession();
     let billing: IBilling | null = null;
     try {
       billing = await session.withTransaction(async () => {
         const [createdBilling] = await Billing.create([billingData], { session });
-        await saveSettlementAllocations(session, settledPreviousBillings);
+        const { billings: affectedBillings } = applyPaymentToPreviousBillings(
+          [...olderOutstandingBillings, createdBilling],
+          paymentAmount,
+          {
+            addedBy: adminName,
+            note: `Alokasi dari pembayaran ${month} ${year}`,
+            appliedAt: receiptAt,
+            method: paymentMethod,
+            skipHistoryFor: createdBilling,
+          },
+        );
+        await saveSettlementAllocations(session, affectedBillings);
         return createdBilling;
       });
     } finally {
@@ -260,8 +257,8 @@ export async function POST(request: Request) {
       entityId: billing._id.toString(),
       entityLabel: `${customer.name} - ${month} ${year}`,
       summary: status === 'Belum Bayar'
-        ? `Tagihan dibuat dengan total ${totalDue}; belum ada pembayaran`
-        : `Tagihan dibuat dengan total ${totalDue}; pembayaran awal ${paymentAmount}`,
+        ? `Tagihan dibuat dengan harga bulanan ${monthlyDue}; belum ada pembayaran`
+        : `Pembayaran ${paymentAmount} diterima dan dialokasikan ke tagihan tertua; total saldo pelanggan sebelum pembayaran ${totalOutstanding}`,
       changes: { before: null, after: getBillingAuditSnapshot(billing) },
     });
 
@@ -290,16 +287,8 @@ export async function PUT(request: Request) {
     }
     const before = getBillingAuditSnapshot(billing);
 
-    let carriedAmount = billing.carriedAmount || 0;
-    if (!billing.totalDue) {
-      const targetPeriod = getBillingPeriod(billing.month, billing.year);
-      const previousBillings = await Billing.find({ customerId: billing.customerId, _id: { $ne: billing._id } }).sort({ year: -1, createdAt: -1 });
-      const previousBilling = previousBillings.find((item) => getBillingPeriod(item.month, item.year) < targetPeriod);
-      if (previousBilling?.status === 'Nyicil' || previousBilling?.status === 'Belum Bayar') {
-        carriedAmount = Math.max(0, (previousBilling.totalDue || previousBilling.packagePrice) - (previousBilling.paidAmount || 0));
-      }
-    }
-    const totalDue = billing.totalDue || billing.packagePrice + carriedAmount;
+    const carriedAmount = 0;
+    const totalDue = billing.packagePrice;
     const updateData: Record<string, unknown> = {};
     if (status === 'Nyicil' || status === 'Lunas') {
       const editedAmount = status === 'Lunas'
@@ -309,36 +298,17 @@ export async function PUT(request: Request) {
         return NextResponse.json({ error: `Nominal cicilan harus antara 1 dan ${totalDue}` }, { status: 400 });
       }
       const isPaidInFull = editedAmount === totalDue;
-      const nextStatus = isPaidInFull ? 'Lunas' : 'Nyicil';
       updateData.status = isPaidInFull ? 'Lunas' : 'Nyicil';
       updateData.carriedAmount = carriedAmount;
       updateData.totalDue = totalDue;
       updateData.paidAmount = editedAmount;
       updateData.installmentAmount = isPaidInFull ? 0 : editedAmount;
-      const history = billing.paymentHistory || [];
-      if (history.length > 0) {
-        const previousHistoryPaid = history.slice(0, -1).reduce((sum, payment) => sum + payment.amount, 0);
-        const lastPaymentAmount = editedAmount - previousHistoryPaid;
-        if (lastPaymentAmount < 0) {
-          return NextResponse.json({ error: 'Nominal edit tidak boleh lebih kecil dari total cicilan sebelumnya' }, { status: 400 });
-        }
-        updateData.paymentHistory = history.map((payment, index) => index === history.length - 1
-          ? { ...payment, amount: lastPaymentAmount, status: nextStatus, note: note !== undefined ? note : payment.note }
-          : payment);
-      }
     } else if (status === 'TF' || status === 'Cash') {
       updateData.status = status;
       updateData.carriedAmount = carriedAmount;
       updateData.totalDue = totalDue;
       updateData.paidAmount = totalDue;
       updateData.installmentAmount = 0;
-      const history = billing.paymentHistory || [];
-      if (history.length > 0) {
-        const previousHistoryPaid = history.slice(0, -1).reduce((sum, payment) => sum + payment.amount, 0);
-        updateData.paymentHistory = history.map((payment, index) => index === history.length - 1
-          ? { ...payment, amount: totalDue - previousHistoryPaid, status, note: note !== undefined ? note : payment.note }
-          : payment);
-      }
     }
     if (note !== undefined) updateData.note = note;
 

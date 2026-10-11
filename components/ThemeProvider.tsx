@@ -38,7 +38,7 @@ function ThemeSchedule() {
 
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
   return (
-    <NextThemesProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+    <NextThemesProvider attribute="class" defaultTheme={getScheduledTheme()} enableSystem={false}>
       <ThemeSchedule />
       {children}
     </NextThemesProvider>

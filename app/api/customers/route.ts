@@ -17,6 +17,11 @@ export async function GET(request: Request) {
     const archivedOnly = searchParams.get('archived') === 'true';
     const id = searchParams.get('id');
     const search = searchParams.get('search')?.trim();
+    const requestedSearchFields = searchParams.get('searchFields')?.split(',')
+      .filter((field) => ['name', 'address', 'phone'].includes(field));
+    const searchFields = requestedSearchFields?.length
+      ? requestedSearchFields
+      : ['name', 'address', 'phone'];
     const filter: Record<string, any> = id
       ? {}
       : archivedOnly
@@ -27,11 +32,7 @@ export async function GET(request: Request) {
     if (search) {
       const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const searchRegex = new RegExp(escapedSearch, 'i');
-      filter.$or = [
-        { name: searchRegex },
-        { address: searchRegex },
-        { phone: searchRegex },
-      ];
+      filter.$or = searchFields.map((field) => ({ [field]: searchRegex }));
     }
 
     // Ensure the referenced Package model is registered before populate() executes.

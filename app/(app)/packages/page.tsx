@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Package as PackageIcon, Plus, Pencil, Trash2, Loader2, AlertCircle, X } from 'lucide-react';
+import { Package as PackageIcon, Plus, Pencil, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

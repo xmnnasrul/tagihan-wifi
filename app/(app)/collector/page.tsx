@@ -69,6 +69,7 @@ interface CollectionTransaction {
   month: string;
   year: number;
   amount: number;
+  method: 'Cash' | 'TF' | null;
   status: string;
   collectorUsername: string;
   addedAt: string;
@@ -78,6 +79,9 @@ interface CollectionTransaction {
 interface DailyCollectionSummary {
   date: string;
   totalAmount: number;
+  cashAmount: number;
+  transferAmount: number;
+  unclassifiedAmount: number;
   transactionCount: number;
   transactions: CollectionTransaction[];
 }
@@ -135,16 +139,17 @@ export default function CollectorPage() {
   const [visitFilter, setVisitFilter] = useState('all');
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [savingVisitId, setSavingVisitId] = useState('');
+  const [savingVisitIds, setSavingVisitIds] = useState<string[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentSummary, setPaymentSummary] = useState<number | null>(null);
   const [loadingPaymentSummary, setLoadingPaymentSummary] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'TF' | 'Nyicil'>('Cash');
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'TF'>('Cash');
   const [paymentNote, setPaymentNote] = useState('');
   const [savingPayment, setSavingPayment] = useState(false);
   const requestIdRef = useRef(0);
   const paymentSummaryRequestRef = useRef(0);
+  const pendingVisitRequestsRef = useRef<Set<Promise<Visit>>>(new Set());
   const normalizedSearch = search.trim().toLocaleLowerCase('id-ID');
 
   useEffect(() => {
@@ -226,8 +231,8 @@ export default function CollectorPage() {
     : [];
 
   const handleVisitToggle = async (customer: Customer, visited: boolean) => {
-    setSavingVisitId(customer._id);
-    try {
+    setSavingVisitIds((current) => current.includes(customer._id) ? current : [...current, customer._id]);
+    const request = (async () => {
       const response = await fetch('/api/collection-visits', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -235,11 +240,17 @@ export default function CollectorPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Gagal menyimpan kunjungan');
+      return data as Visit;
+    })();
+    pendingVisitRequestsRef.current.add(request);
+    try {
+      const data = await request;
       setVisits((current) => ({ ...current, [customer._id]: data }));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Gagal menyimpan kunjungan');
     } finally {
-      setSavingVisitId('');
+      pendingVisitRequestsRef.current.delete(request);
+      setSavingVisitIds((current) => current.filter((id) => id !== customer._id));
     }
   };
 
@@ -296,6 +307,7 @@ export default function CollectorPage() {
 
     setSavingPayment(true);
     try {
+      await Promise.allSettled([...pendingVisitRequestsRef.current]);
       const response = await fetch('/api/billings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -304,8 +316,8 @@ export default function CollectorPage() {
           month,
           year: Number(year),
           status: paymentMethod,
+          method: paymentMethod,
           paidAmount: amount,
-          installmentAmount: paymentMethod === 'Nyicil' ? amount : 0,
           note: paymentNote,
         }),
       });
@@ -356,7 +368,7 @@ export default function CollectorPage() {
             <h2 id="daily-collection-title" className="text-lg font-semibold">{isSelectedDateToday ? 'Setoran Hari Ini' : 'Setoran Harian'}</h2>
             <p className="text-sm text-muted-foreground">{dailySummary ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeZone: 'Asia/Jakarta' }).format(new Date(`${dailySummary.date}T12:00:00+07:00`)) : 'Rekap transaksi pembayaran'}</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="grid w-full grid-cols-2 items-end gap-3 sm:w-auto sm:grid-cols-[160px,auto,auto] sm:gap-5">
             <div className="relative">
               <Input
                 type="date"
@@ -367,12 +379,25 @@ export default function CollectorPage() {
               />
               <CalendarDays aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             </div>
-            <div className="text-right">
-              <p className="text-2xl font-bold tabular-nums text-emerald-500">{dailySummaryLoading ? 'Memuat...' : formatRupiah(dailySummary?.totalAmount || 0)}</p>
-              <p className="text-xs text-muted-foreground">{dailySummaryLoading ? '...' : `${dailySummary?.transactionCount || 0} transaksi`}</p>
+            <div className="col-span-2 text-right sm:col-span-1">
+              <p className="text-xl font-bold tabular-nums text-emerald-500">{dailySummaryLoading ? 'Memuat...' : formatRupiah(dailySummary?.totalAmount || 0)}</p>
+              <p className="text-xs text-muted-foreground">Total · {dailySummaryLoading ? '...' : `${dailySummary?.transactionCount || 0} transaksi`}</p>
+            </div>
+            <div className="col-span-2 grid grid-cols-2 gap-3 sm:col-span-1 sm:min-w-[220px]">
+              <div className="rounded-md border border-border px-3 py-2">
+                <p className="text-xs text-muted-foreground">Tunai</p>
+                <p className="text-lg font-semibold tabular-nums">{dailySummaryLoading ? '...' : formatRupiah(dailySummary?.cashAmount || 0)}</p>
+              </div>
+              <div className="rounded-md border border-border px-3 py-2">
+                <p className="text-xs text-muted-foreground">Transfer</p>
+                <p className="text-lg font-semibold tabular-nums">{dailySummaryLoading ? '...' : formatRupiah(dailySummary?.transferAmount || 0)}</p>
+              </div>
             </div>
           </div>
         </div>
+        {!dailySummaryLoading && (dailySummary?.unclassifiedAmount || 0) > 0 && (
+          <p className="text-xs text-muted-foreground">{formatRupiah(dailySummary?.unclassifiedAmount || 0)} belum memiliki catatan metode pembayaran.</p>
+        )}
         <div className="space-y-3 border-t border-border pt-4">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -499,13 +524,13 @@ export default function CollectorPage() {
                       <Checkbox
                         id={`visit-${customer._id}`}
                         checked={isVisited}
-                        disabled={savingVisitId === customer._id}
+                        disabled={savingPayment || savingVisitIds.includes(customer._id)}
                         onCheckedChange={(checked) => void handleVisitToggle(customer, checked === true)}
                       />
                       <div className="min-w-0">
                         <Label htmlFor={`visit-${customer._id}`} className="cursor-pointer text-sm font-medium">Sudah dikunjungi</Label>
                         <p className="truncate text-xs text-muted-foreground">
-                          {savingVisitId === customer._id ? 'Menyimpan...' : isVisited ? `${visit.collectorUsername} · ${new Intl.DateTimeFormat('id-ID', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(visit.visitedAt!))}` : 'Belum ada kunjungan'}
+                          {savingVisitIds.includes(customer._id) ? 'Menyimpan...' : isVisited ? `${visit.collectorUsername} · ${new Intl.DateTimeFormat('id-ID', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(visit.visitedAt!))}` : 'Belum ada kunjungan'}
                         </p>
                       </div>
                     </div>
@@ -606,12 +631,11 @@ export default function CollectorPage() {
             </div>
             <div className="space-y-2">
               <Label>Metode pembayaran</Label>
-              <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as 'Cash' | 'TF' | 'Nyicil')}>
+              <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as 'Cash' | 'TF')}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Cash">Tunai</SelectItem>
                   <SelectItem value="TF">Transfer</SelectItem>
-                  <SelectItem value="Nyicil">Cicilan</SelectItem>
                 </SelectContent>
               </Select>
             </div>

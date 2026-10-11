@@ -56,6 +56,7 @@ export async function GET(request: Request) {
         month: billing.month,
         year: billing.year,
         amount: payment.amount,
+        method: payment.method || (payment.status === 'Cash' || payment.status === 'TF' ? payment.status : null),
         status: payment.status,
         collectorUsername: payment.addedBy || 'Admin',
         addedAt: payment.addedAt,
@@ -66,6 +67,9 @@ export async function GET(request: Request) {
     return NextResponse.json({
       date,
       totalAmount: transactions.reduce((total, transaction) => total + transaction.amount, 0),
+      cashAmount: transactions.reduce((total, transaction) => total + (transaction.method === 'Cash' ? transaction.amount : 0), 0),
+      transferAmount: transactions.reduce((total, transaction) => total + (transaction.method === 'TF' ? transaction.amount : 0), 0),
+      unclassifiedAmount: transactions.reduce((total, transaction) => total + (transaction.method ? 0 : transaction.amount), 0),
       transactionCount: transactions.length,
       transactions,
     });

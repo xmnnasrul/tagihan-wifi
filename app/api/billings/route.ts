@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
-import Billing, { IBilling } from '@/lib/models/Billing';
+import Billing, { IBilling, PaymentMethod } from '@/lib/models/Billing';
 import Customer from '@/lib/models/Customer';
 import Package from '@/lib/models/Package';
 import { getCurrentUser, requireAdmin, requireAuthenticatedUser, requireCollectorOrAdmin } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
 import { applyPaymentToPreviousBillings } from '@/lib/billing-amounts';
+import mongoose from 'mongoose';
 
 const billingMonths = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -22,6 +23,19 @@ const getBillingAuditSnapshot = (billing: IBilling) => ({
   note: billing.note || '',
   paymentCount: billing.paymentHistory?.length || 0,
 });
+
+const saveSettlementAllocations = async (session: mongoose.ClientSession, billings: IBilling[]) => {
+  for (const settledBilling of billings) {
+    const currentDoc = await Billing.findById(settledBilling._id).session(session);
+    if (!currentDoc) continue;
+
+    currentDoc.status = settledBilling.status;
+    currentDoc.paidAmount = settledBilling.paidAmount;
+    currentDoc.installmentAmount = settledBilling.installmentAmount;
+    currentDoc.paymentHistory = settledBilling.paymentHistory;
+    await currentDoc.save({ session });
+  }
+};
 
 export async function GET(request: Request) {
   try {
@@ -74,7 +88,12 @@ export async function POST(request: Request) {
 
     await connectDB();
     const body = await request.json();
-    const { customerId, month, year, status, paidAmount, installmentAmount, note } = body;
+    const { customerId, month, year, status, paidAmount, installmentAmount, note, method } = body;
+    const paymentMethod: PaymentMethod | undefined = method === 'Cash' || method === 'TF'
+      ? method
+      : status === 'Cash' || status === 'TF'
+        ? status
+        : undefined;
     const currentUser = await getCurrentUser();
     const adminName = currentUser?.username || 'Admin';
 
@@ -155,8 +174,7 @@ export async function POST(request: Request) {
       existingBilling.installmentAmount = isPaidInFull ? 0 : totalPaid;
       existingBilling.note = [existingBilling.note, note].filter(Boolean).join(' | ');
       existingBilling.paymentHistory = existingBilling.paymentHistory || [];
-      existingBilling.paymentHistory.push({ amount: paymentAmount, addedAt: new Date(), addedBy: adminName, status: nextStatus, note: note || '' });
-      await existingBilling.save();
+      existingBilling.paymentHistory.push({ amount: paymentAmount, addedAt: new Date(), addedBy: adminName, status: nextStatus, method: paymentMethod, note: note || '' });
 
       const { billings: settledPreviousBillings } = applyPaymentToPreviousBillings(olderOutstandingBillings, paymentAmount, {
         addedBy: adminName,
@@ -164,15 +182,14 @@ export async function POST(request: Request) {
         appliedAt: new Date(),
       });
 
-      for (const settledBilling of settledPreviousBillings) {
-        const currentDoc = await Billing.findById(settledBilling._id);
-        if (!currentDoc) continue;
-
-        currentDoc.status = settledBilling.status;
-        currentDoc.paidAmount = settledBilling.paidAmount;
-        currentDoc.installmentAmount = settledBilling.installmentAmount;
-        currentDoc.paymentHistory = settledBilling.paymentHistory;
-        await currentDoc.save();
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          await existingBilling.save({ session });
+          await saveSettlementAllocations(session, settledPreviousBillings);
+        });
+      } finally {
+        await session.endSession();
       }
 
       await writeAuditLog({
@@ -192,7 +209,7 @@ export async function POST(request: Request) {
       : paymentAmount === totalDue
         ? (status === 'TF' || status === 'Cash' ? status : 'Lunas')
         : 'Nyicil';
-    const billing = await Billing.create({
+    const billingData = {
       customerId: customer._id,
       customerName: customer.name,
       address: customer.address,
@@ -211,9 +228,10 @@ export async function POST(request: Request) {
           addedAt: new Date(),
           addedBy: adminName,
           status: finalStatus as 'TF' | 'Cash' | 'Nyicil' | 'Lunas',
+          method: paymentMethod,
           note: note || '',
         }],
-    });
+    };
 
     const { billings: settledPreviousBillings } = applyPaymentToPreviousBillings(olderOutstandingBillings, paymentAmount, {
       addedBy: adminName,
@@ -221,16 +239,19 @@ export async function POST(request: Request) {
       appliedAt: new Date(),
     });
 
-    for (const settledBilling of settledPreviousBillings) {
-      const currentDoc = await Billing.findById(settledBilling._id);
-      if (!currentDoc) continue;
-
-      currentDoc.status = settledBilling.status;
-      currentDoc.paidAmount = settledBilling.paidAmount;
-      currentDoc.installmentAmount = settledBilling.installmentAmount;
-      currentDoc.paymentHistory = settledBilling.paymentHistory;
-      await currentDoc.save();
+    const session = await mongoose.startSession();
+    let billing: IBilling | null = null;
+    try {
+      billing = await session.withTransaction(async () => {
+        const [createdBilling] = await Billing.create([billingData], { session });
+        await saveSettlementAllocations(session, settledPreviousBillings);
+        return createdBilling;
+      });
+    } finally {
+      await session.endSession();
     }
+
+    if (!billing) throw new Error('Transaksi pembayaran tidak menghasilkan tagihan');
 
     await writeAuditLog({
       actorUsername: adminName,

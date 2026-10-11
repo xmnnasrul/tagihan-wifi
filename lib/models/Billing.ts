@@ -2,12 +2,14 @@ import { Schema, model, Document, models, Model, Types } from 'mongoose';
 
 export type PaymentStatus = 'TF' | 'Cash' | 'Nyicil' | 'Lunas' | 'Belum Bayar';
 export type PaymentHistoryStatus = Exclude<PaymentStatus, 'Belum Bayar'>;
+export type PaymentMethod = 'Cash' | 'TF';
 
 export interface IPaymentHistory {
   amount: number;
   addedAt: Date;
   addedBy: string;
   status: PaymentHistoryStatus;
+  method?: PaymentMethod;
   note: string;
   isSettlementAllocation?: boolean;
 }
@@ -51,6 +53,7 @@ const BillingSchema = new Schema<IBilling>(
       addedAt: { type: Date, default: Date.now },
       addedBy: { type: String, default: '' },
       status: { type: String, enum: ['TF', 'Cash', 'Nyicil', 'Lunas'], required: true },
+      method: { type: String, enum: ['Cash', 'TF'], default: undefined },
       note: { type: String, default: '' },
       isSettlementAllocation: { type: Boolean, default: false },
     }],

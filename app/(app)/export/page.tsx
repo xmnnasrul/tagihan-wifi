@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Download, FileSpreadsheet, FileText } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -19,6 +20,8 @@ type ExportFormat = 'csv' | 'xlsx';
 export default function ExportPage() {
   const [month, setMonth] = useState('all');
   const [year, setYear] = useState('all');
+  const [status, setStatus] = useState('all');
+  const [customerName, setCustomerName] = useState('');
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
 
@@ -26,6 +29,8 @@ export default function ExportPage() {
     const params = new URLSearchParams({ format });
     if (month !== 'all') params.set('month', month);
     if (year !== 'all') params.set('year', year);
+    if (status !== 'all') params.set('status', status);
+    if (customerName.trim()) params.set('customerName', customerName.trim());
     window.open(`/api/billings/export?${params.toString()}`, '_blank');
   };
 
@@ -47,6 +52,15 @@ export default function ExportPage() {
         <CardContent className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
+              <label htmlFor="export-customer" className="text-sm font-medium">Nama pelanggan</label>
+              <Input
+                id="export-customer"
+                value={customerName}
+                onChange={(event) => setCustomerName(event.target.value)}
+                placeholder="Cari nama pelanggan"
+              />
+            </div>
+            <div className="space-y-2">
               <label className="text-sm font-medium">Bulan tagihan</label>
               <Button type="button" variant="outline" className="w-full justify-between font-normal" onClick={() => setMonthPickerOpen(true)}>
                 {month === 'all' ? 'Semua Bulan' : month}
@@ -62,6 +76,20 @@ export default function ExportPage() {
                   {Array.from({ length: 5 }, (_, index) => new Date().getFullYear() - index).map((item) => (
                     <SelectItem key={item} value={String(item)}>{item}</SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="export-status" className="text-sm font-medium">Status pembayaran</label>
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger id="export-status"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Status</SelectItem>
+                  <SelectItem value="Belum Bayar">Belum Bayar</SelectItem>
+                  <SelectItem value="Nyicil">Nyicil</SelectItem>
+                  <SelectItem value="Cash">Cash / Tunai</SelectItem>
+                  <SelectItem value="TF">Transfer</SelectItem>
+                  <SelectItem value="Lunas">Lunas</SelectItem>
                 </SelectContent>
               </Select>
             </div>

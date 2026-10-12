@@ -24,6 +24,19 @@ const getBillingAuditSnapshot = (billing: IBilling) => ({
   paymentCount: billing.paymentHistory?.length || 0,
 });
 
+const getBillingAllocationSnapshot = (billing: IBilling) => ({
+  _id: billing._id.toString(),
+  customerId: billing.customerId.toString(),
+  month: billing.month,
+  year: billing.year,
+  packagePrice: billing.packagePrice,
+  totalDue: billing.packagePrice,
+  carriedAmount: 0,
+  paidAmount: billing.paidAmount || 0,
+  installmentAmount: billing.installmentAmount || 0,
+  status: billing.status,
+});
+
 const saveSettlementAllocations = async (session: mongoose.ClientSession, billings: IBilling[]) => {
   for (const settledBilling of billings) {
     const currentDoc = await Billing.findById(settledBilling._id).session(session);
@@ -205,7 +218,11 @@ export async function POST(request: Request) {
         summary: `Pembayaran ${paymentAmount} diterima dan dialokasikan ke tagihan tertua; total saldo pelanggan sebelum pembayaran ${totalOutstanding}`,
         changes: { before, after: getBillingAuditSnapshot(existingBilling) },
       });
-      return NextResponse.json(existingBilling);
+      return NextResponse.json({
+        ...existingBilling.toObject(),
+        allocationUpdates: affectedBillings.map(getBillingAllocationSnapshot),
+        paymentReceipt: receipt ? { ...receipt, customerName: customer.name, month, year: Number(year) } : null,
+      });
     }
 
     const billingData = {
@@ -226,9 +243,9 @@ export async function POST(request: Request) {
     };
 
     const session = await mongoose.startSession();
-    let billing: IBilling | null = null;
+    let transactionResult: { billing: IBilling; affectedBillings: IBilling[] } | null = null;
     try {
-      billing = await session.withTransaction(async () => {
+      transactionResult = await session.withTransaction(async () => {
         const [createdBilling] = await Billing.create([billingData], { session });
         const { billings: affectedBillings } = applyPaymentToPreviousBillings(
           [...olderOutstandingBillings, createdBilling],
@@ -242,12 +259,13 @@ export async function POST(request: Request) {
           },
         );
         await saveSettlementAllocations(session, affectedBillings);
-        return createdBilling;
+        return { billing: createdBilling, affectedBillings };
       });
     } finally {
       await session.endSession();
     }
 
+    const billing = transactionResult?.billing;
     if (!billing) throw new Error('Transaksi pembayaran tidak menghasilkan tagihan');
 
     await writeAuditLog({
@@ -262,7 +280,11 @@ export async function POST(request: Request) {
       changes: { before: null, after: getBillingAuditSnapshot(billing) },
     });
 
-    return NextResponse.json(billing, { status: 201 });
+    return NextResponse.json({
+      ...billing.toObject(),
+      allocationUpdates: transactionResult.affectedBillings.map(getBillingAllocationSnapshot),
+      paymentReceipt: receipt ? { ...receipt, customerName: customer.name, month, year: Number(year) } : null,
+    }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: 'Gagal menambah tagihan' }, { status: 500 });
   }

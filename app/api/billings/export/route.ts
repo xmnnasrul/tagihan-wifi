@@ -14,11 +14,20 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
     const year = searchParams.get('year');
+    const status = searchParams.get('status');
+    const customerName = searchParams.get('customerName')?.trim();
     const format = searchParams.get('format') === 'xlsx' ? 'xlsx' : 'csv';
 
     const query: Record<string, unknown> = {};
     if (month) query.month = month;
     if (year) query.year = Number(year);
+    if (status && ['Belum Bayar', 'Nyicil', 'Cash', 'TF', 'Lunas'].includes(status)) {
+      query.status = status;
+    }
+    if (customerName) {
+      const escapedName = customerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.customerName = { $regex: escapedName, $options: 'i' };
+    }
 
     const billings = await Billing.find(query).sort({ customerName: 1 });
 

@@ -88,6 +88,18 @@ interface DailyCollectionSummary {
   transactions: CollectionTransaction[];
 }
 
+interface PaymentReceipt {
+  amount: number;
+  addedAt: string;
+  addedBy: string;
+  status: string;
+  method: 'Cash' | 'TF' | null;
+  note: string;
+  customerName: string;
+  month: string;
+  year: number;
+}
+
 function getCurrentJakartaPeriod() {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Jakarta',
@@ -100,14 +112,18 @@ function getCurrentJakartaPeriod() {
   };
 }
 
-function getCurrentJakartaDate() {
+function getJakartaDate(value: string | Date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Jakarta',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).formatToParts(new Date());
+  }).formatToParts(new Date(value));
   return `${parts.find((part) => part.type === 'year')?.value}-${parts.find((part) => part.type === 'month')?.value}-${parts.find((part) => part.type === 'day')?.value}`;
+}
+
+function getCurrentJakartaDate() {
+  return getJakartaDate();
 }
 
 function formatRupiah(amount: number) {
@@ -160,7 +176,7 @@ export default function CollectorPage() {
     if (currentUser && !currentUser.roles.some((role) => role === 'admin' || role === 'collector')) router.replace('/dashboard');
   }, [currentUser, router]);
 
-  const loadData = useCallback(async (searchTerm: string) => {
+  const loadData = useCallback(async (searchTerm: string, options: { silent?: boolean } = {}) => {
     const requestId = ++requestIdRef.current;
     if (!searchTerm.trim()) {
       setCustomers([]);
@@ -170,7 +186,7 @@ export default function CollectorPage() {
       return;
     }
 
-    setLoading(true);
+    if (!options.silent) setLoading(true);
     try {
       const period = new URLSearchParams({ month, year });
       const [customerResponse, billingResponse, visitResponse] = await Promise.all([
@@ -194,13 +210,13 @@ export default function CollectorPage() {
         toast.error(error instanceof Error ? error.message : 'Gagal memuat data collector');
       }
     } finally {
-      if (requestId === requestIdRef.current) setLoading(false);
+      if (!options.silent && requestId === requestIdRef.current) setLoading(false);
     }
   }, [month, year]);
 
-  const loadDailySummary = useCallback(async () => {
+  const loadDailySummary = useCallback(async (options: { silent?: boolean } = {}) => {
     if (!canUseCollectorPage) return;
-    setDailySummaryLoading(true);
+    if (!options.silent) setDailySummaryLoading(true);
     try {
       const response = await fetch(`/api/collector/summary?date=${encodeURIComponent(dailySummaryDate)}`);
       const data = await response.json();
@@ -209,7 +225,7 @@ export default function CollectorPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Gagal mengambil rekap setoran');
     } finally {
-      setDailySummaryLoading(false);
+      if (!options.silent) setDailySummaryLoading(false);
     }
   }, [canUseCollectorPage, dailySummaryDate]);
 
@@ -330,10 +346,56 @@ export default function CollectorPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Gagal mencatat pembayaran');
+
+      const allocationUpdates = Array.isArray(data.allocationUpdates)
+        ? data.allocationUpdates as Billing[]
+        : [];
+      const currentPeriodUpdates = allocationUpdates.filter(
+        (billing) => billing.month === month && billing.year === Number(year),
+      );
+      if (currentPeriodUpdates.length > 0) {
+        setBillings((current) => {
+          const updatedByCustomer = new Map(current.map((billing) => [billing.customerId, billing]));
+          currentPeriodUpdates.forEach((billing) => updatedByCustomer.set(billing.customerId, billing));
+          return Array.from(updatedByCustomer.values());
+        });
+      }
+
+      const receipt = data.paymentReceipt as PaymentReceipt | null;
+      if (receipt) {
+        const receiptDate = getJakartaDate(receipt.addedAt);
+        setDailySummary((current) => {
+          if (!current || current.date !== receiptDate) return current;
+          const transaction: CollectionTransaction = {
+            id: `${selectedCustomer._id}-${new Date(receipt.addedAt).getTime()}`,
+            customerName: receipt.customerName,
+            month: receipt.month,
+            year: receipt.year,
+            amount: receipt.amount,
+            method: receipt.method,
+            status: receipt.status,
+            collectorUsername: receipt.addedBy,
+            addedAt: receipt.addedAt,
+            note: receipt.note,
+          };
+          const isInstallment = receipt.status === 'Nyicil';
+          return {
+            ...current,
+            totalAmount: current.totalAmount + receipt.amount,
+            cashAmount: current.cashAmount + (!isInstallment && receipt.method === 'Cash' ? receipt.amount : 0),
+            transferAmount: current.transferAmount + (!isInstallment && receipt.method === 'TF' ? receipt.amount : 0),
+            installmentAmount: current.installmentAmount + (isInstallment ? receipt.amount : 0),
+            unclassifiedAmount: current.unclassifiedAmount + (!isInstallment && !receipt.method ? receipt.amount : 0),
+            transactionCount: current.transactionCount + 1,
+            transactions: [transaction, ...current.transactions],
+          };
+        });
+      }
+
       toast.success(`Pembayaran ${selectedCustomer.name} berhasil dicatat`);
       setSelectedCustomer(null);
-      await loadData(normalizedSearch);
-      await loadDailySummary();
+      void loadData(normalizedSearch, { silent: true });
+      void loadDailySummary({ silent: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Gagal mencatat pembayaran');
     } finally {

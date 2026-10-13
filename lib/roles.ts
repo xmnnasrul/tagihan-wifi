@@ -27,3 +27,15 @@ export function getPrimaryRole(roles: UserRole[]): UserRole {
 export function hasUserRole(roles: unknown, role: UserRole): boolean {
   return Array.isArray(roles) && roles.includes(role);
 }
+
+export function hasAnyRole(roles: readonly UserRole[], allowedRoles: readonly UserRole[]): boolean {
+  return allowedRoles.some((allowedRole) => roles.includes(allowedRole));
+}
+
+export function canAccessApi(
+  isAuthenticated: boolean,
+  roles: readonly UserRole[],
+  allowedRoles?: readonly UserRole[]
+): boolean {
+  return isAuthenticated && (!allowedRoles || hasAnyRole(roles, allowedRoles));
+}

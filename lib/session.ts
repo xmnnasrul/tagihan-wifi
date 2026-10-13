@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { verifyToken, COOKIE_NAME, TokenPayload } from './auth';
 import { connectDB } from './mongodb';
 import User from './models/User';
-import { normalizeUserRoles, UserRole } from './roles';
+import { canAccessApi, normalizeUserRoles, UserRole } from './roles';
 
 export async function getCurrentUser(): Promise<TokenPayload | null> {
   const cookieStore = cookies();
@@ -46,7 +46,8 @@ export async function requireAnyRole(allowedRoles: UserRole[]): Promise<NextResp
 
   const user = await getCurrentUser();
   const roles = normalizeUserRoles(user?.role, user?.roles);
-  if (!allowedRoles.some((role) => roles.includes(role))) {
+  if (!canAccessApi(Boolean(user), roles, allowedRoles)) {
+    if (!user) return NextResponse.json({ error: 'Autentikasi diperlukan' }, { status: 401 });
     return NextResponse.json({ error: 'Akses tidak diizinkan untuk role akun ini' }, { status: 403 });
   }
 

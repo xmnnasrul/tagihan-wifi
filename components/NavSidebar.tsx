@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useTheme } from 'next-themes';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
-import { THEME_PREFERENCE_KEY } from '@/components/ThemeProvider';
+import { getScheduledTheme, THEME_PREFERENCE_KEY } from '@/components/ThemeProvider';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -42,6 +42,8 @@ export default function NavSidebar() {
   }, []);
 
   const handleLogout = async () => {
+    setTheme(getScheduledTheme());
+    window.localStorage.removeItem(THEME_PREFERENCE_KEY);
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
   };
@@ -121,12 +123,12 @@ export default function NavSidebar() {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col overflow-y-auto border-r border-border bg-card/30 backdrop-blur-md lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col overflow-y-auto border-r border-border bg-card/25 backdrop-blur-md lg:flex">
         <NavContent />
       </aside>
 
       {/* Mobile header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 border-b border-border bg-card/80 backdrop-blur-md">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 border-b border-border bg-card/70 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <Link href="/dashboard" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
             <Wifi className="h-5 w-5 text-primary" />

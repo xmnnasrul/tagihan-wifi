@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import { headers } from 'next/headers';
 import { Toaster } from '@/components/ui/sonner';
 import ThemeProvider from '@/components/ThemeProvider';
 
@@ -16,10 +17,12 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const nonce = headers().get('x-nonce') ?? undefined;
+
   return (
     <html lang="id" suppressHydrationWarning>
       <body className={`${inter.className} bg-background text-foreground antialiased`}>
-        <ThemeProvider>
+        <ThemeProvider nonce={nonce}>
           {children}
           <Toaster position="top-right" richColors closeButton />
         </ThemeProvider>

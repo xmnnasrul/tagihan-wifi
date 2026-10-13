@@ -29,7 +29,9 @@ Panduan ini ditujukan untuk pemilik aplikasi atau operator yang belum terbiasa d
 - **Ekspor:** mengunduh data tagihan sebagai CSV atau Excel.
 - **Audit:** melihat catatan perubahan data dan akun.
 - **Pengelolaan akun:** admin dapat membuat akun dan mengatur role.
-- **Profil dan tema:** pengguna dapat mengubah password; tema tampilan dapat mengikuti jadwal atau dipilih manual.
+- **Profil dan tema:** halaman profil mengelola username dan password sesuai role; tema dapat mengikuti jadwal waktu Jakarta atau dipilih manual.
+- **Header keamanan:** CSP berbasis nonce, proteksi framing dan MIME sniffing, kebijakan referrer/permissions, serta HSTS di production.
+- **Tes keamanan API:** kontrak tes memeriksa guard setiap handler, pengecualian endpoint publik, dan akses berdasarkan role.
 
 ### Role Akun
 
@@ -153,6 +155,7 @@ Perintah pemeriksaan yang tersedia:
 ```bash
 npm run lint
 npm run typecheck
+npm test
 npm run build
 ```
 
@@ -241,6 +244,7 @@ Pada paket gratis, layanan Render dapat tidur saat tidak digunakan sehingga kunj
 - Jangan pernah memasukkan `.env.local` atau secret ke GitHub. Jangan kirim screenshot yang memperlihatkan nilai secret.
 - Gunakan password berbeda untuk akun Atlas, admin aplikasi, `JWT_SECRET`, dan `SEED_SECRET`.
 - Jangan memakai `admin123` pada server production.
+- Header keamanan termasuk Content Security Policy berbasis nonce dan HSTS production; tes kebijakan dan guard API dijalankan dengan `npm test`.
 - Batasi akses database ke database user aplikasi dan database yang diperlukan.
 - Setelah setup admin awal, hapus `SEED_SECRET` dan `INITIAL_ADMIN_PASSWORD` dari konfigurasi hosting.
 - Jika URI atau secret pernah terpublikasi, segera ganti di Atlas/hosting dan lakukan deployment ulang.

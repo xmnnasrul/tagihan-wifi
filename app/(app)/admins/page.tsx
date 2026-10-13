@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTheme } from 'next-themes';
 import { KeyRound, Loader2, Pencil, Shield, Trash2, UserPlus, UserRoundX } from 'lucide-react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -10,9 +11,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useCurrentUser } from '@/components/CurrentUserProvider';
+import { useCurrentUser, useCurrentUserLoading } from '@/components/CurrentUserProvider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { getScheduledTheme, THEME_PREFERENCE_KEY } from '@/components/ThemeProvider';
 import { USER_ROLES, UserRole } from '@/lib/roles';
 
 const roleLabels: Record<UserRole, string> = { user: 'User (hanya baca)', collector: 'Collector', admin: 'Admin' };
@@ -35,7 +37,9 @@ interface Admin {
 
 export default function AdminsPage() {
   const router = useRouter();
+  const { setTheme } = useTheme();
   const currentUser = useCurrentUser();
+  const isCurrentUserLoading = useCurrentUserLoading();
   const canManageAccounts = currentUser?.roles.includes('admin') ?? false;
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [currentUsername, setCurrentUsername] = useState('');
@@ -111,6 +115,8 @@ export default function AdminsPage() {
       toast.success(data.message || 'Role akun diperbarui');
       setRoleEditingAccount(null);
       if (data.requiresLogin) {
+        setTheme(getScheduledTheme());
+        window.localStorage.removeItem(THEME_PREFERENCE_KEY);
         await fetch('/api/auth/logout', { method: 'POST' });
         router.replace('/login');
         router.refresh();
@@ -164,6 +170,15 @@ export default function AdminsPage() {
       toast.error(deleteError instanceof Error ? deleteError.message : 'Gagal menghapus akun');
     }
   };
+
+  if (isCurrentUserLoading) {
+    return (
+      <div className="flex min-h-[240px] items-center justify-center text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        Memeriksa akses admin...
+      </div>
+    );
+  }
 
   if (!canManageAccounts) {
     return <div role="alert" className="rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground">Halaman pengelolaan akun hanya dapat diakses admin.</div>;

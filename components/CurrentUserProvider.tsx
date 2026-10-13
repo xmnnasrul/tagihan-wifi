@@ -10,13 +10,19 @@ interface CurrentUser {
 }
 
 const CurrentUserContext = createContext<CurrentUser | null>(null);
+const CurrentUserLoadingContext = createContext(true);
 
 export function useCurrentUser() {
   return useContext(CurrentUserContext);
 }
 
+export function useCurrentUserLoading() {
+  return useContext(CurrentUserLoadingContext);
+}
+
 export default function CurrentUserProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const refreshCurrentUser = useCallback(async () => {
     try {
@@ -33,6 +39,8 @@ export default function CurrentUserProvider({ children }: { children: React.Reac
       } : null);
     } catch {
       setCurrentUser(null);
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
@@ -42,5 +50,9 @@ export default function CurrentUserProvider({ children }: { children: React.Reac
     return () => window.removeEventListener('profile-updated', refreshCurrentUser);
   }, [refreshCurrentUser]);
 
-  return <CurrentUserContext.Provider value={currentUser}>{children}</CurrentUserContext.Provider>;
+  return (
+    <CurrentUserLoadingContext.Provider value={isLoading}>
+      <CurrentUserContext.Provider value={currentUser}>{children}</CurrentUserContext.Provider>
+    </CurrentUserLoadingContext.Provider>
+  );
 }

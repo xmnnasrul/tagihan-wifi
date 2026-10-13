@@ -1,27 +1,28 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { COOKIE_NAME } from './lib/auth';
+import { createSecurityHeaders } from './lib/security-headers';
 
 const publicPaths = ['/login'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
-  if (pathname.startsWith('/api')) {
-    return NextResponse.next();
-  }
-
-  if (publicPaths.includes(pathname)) {
-    return NextResponse.next();
-  }
+  const nonce = btoa(crypto.randomUUID());
+  const isProduction = process.env.NODE_ENV === 'production';
+  const securityHeaders = createSecurityHeaders(nonce, isProduction);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('Content-Security-Policy', securityHeaders['Content-Security-Policy']);
+  requestHeaders.set('x-nonce', nonce);
 
   const token = request.cookies.get(COOKIE_NAME)?.value;
+  const isPublicPath = pathname.startsWith('/api') || publicPaths.includes(pathname);
+  const response = !isPublicPath && !token
+    ? NextResponse.redirect(new URL('/login', request.url))
+    : NextResponse.next({ request: { headers: requestHeaders } });
 
-  if (!token) {
-    return NextResponse.redirect(new URL('/login', request.url));
-  }
+  Object.entries(securityHeaders).forEach(([name, value]) => response.headers.set(name, value));
 
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {

@@ -6,7 +6,7 @@ import { useTheme } from 'next-themes';
 
 export const THEME_PREFERENCE_KEY = 'wifi-billing-theme-preference';
 
-function getScheduledTheme(): 'light' | 'dark' {
+export function getScheduledTheme(): 'light' | 'dark' {
   const hour = Number(new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Jakarta',
     hour: '2-digit',
@@ -22,10 +22,10 @@ function ThemeSchedule() {
   useEffect(() => {
     const syncTheme = () => {
       const manualPreference = window.localStorage.getItem(THEME_PREFERENCE_KEY);
-      const targetTheme = manualPreference === 'light' || manualPreference === 'dark'
-        ? manualPreference
-        : getScheduledTheme();
+      const hasManualPreference = manualPreference === 'light' || manualPreference === 'dark';
+      const targetTheme = hasManualPreference ? manualPreference : getScheduledTheme();
       if (targetTheme !== resolvedTheme) setTheme(targetTheme);
+      if (!hasManualPreference) window.localStorage.removeItem(THEME_PREFERENCE_KEY);
     };
 
     syncTheme();
@@ -36,9 +36,15 @@ function ThemeSchedule() {
   return null;
 }
 
-export default function ThemeProvider({ children }: { children: React.ReactNode }) {
+export default function ThemeProvider({ children, nonce }: { children: React.ReactNode; nonce?: string }) {
   return (
-    <NextThemesProvider attribute="class" defaultTheme={getScheduledTheme()} enableSystem={false}>
+    <NextThemesProvider
+      attribute="class"
+      defaultTheme={getScheduledTheme()}
+      enableSystem={false}
+      storageKey={THEME_PREFERENCE_KEY}
+      nonce={nonce}
+    >
       <ThemeSchedule />
       {children}
     </NextThemesProvider>

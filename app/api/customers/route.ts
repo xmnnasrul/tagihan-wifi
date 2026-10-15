@@ -35,9 +35,6 @@ export async function GET(request: Request) {
       filter.$or = searchFields.map((field) => ({ [field]: searchRegex }));
     }
 
-    // Ensure the referenced Package model is registered before populate() executes.
-    await Package.findOne({}).lean();
-
     const customers = await Customer.find(filter).populate('packageId').sort({ name: 1 });
     return NextResponse.json(id ? customers[0] || null : customers);
   } catch (error) {

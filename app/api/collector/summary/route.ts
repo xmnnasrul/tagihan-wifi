@@ -4,6 +4,8 @@ import Billing from '@/lib/models/Billing';
 import { getCurrentUser, requireCollectorOrAdmin } from '@/lib/session';
 import { normalizeUserRoles } from '@/lib/roles';
 
+export const dynamic = 'force-dynamic';
+
 const getTodayInJakarta = () => {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Jakarta',

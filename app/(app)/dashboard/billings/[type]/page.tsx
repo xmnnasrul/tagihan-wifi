@@ -142,7 +142,7 @@ export default function BillingListPage({ params, searchParams }: BillingListPag
                                 <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                                 <span className="truncate">{billing.address || 'Alamat belum diisi'}</span>
                               </div>
-                              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                                 <span className="inline-flex items-center gap-1">
                                   <CalendarDays className="h-3 w-3" /> {billing.month} {billing.year}
                                 </span>

@@ -67,7 +67,7 @@ export default function DashboardPage() {
   const [statsMonthPickerOpen, setStatsMonthPickerOpen] = useState(false);
   const [statsYear, setStatsYear] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
-  const [monthlyBillingsReady, setMonthlyBillingsReady] = useState(false);
+  const [statsRefreshVersion, setStatsRefreshVersion] = useState(0);
   const [customers, setCustomers] = useState<DashboardCustomer[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customersLoading, setCustomersLoading] = useState(true);
@@ -81,10 +81,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!currentUser) return;
-    if (!currentUser.roles.includes('admin')) {
-      setMonthlyBillingsReady(true);
-      return;
-    }
+    if (!currentUser.roles.includes('admin')) return;
 
     let isCurrentRequest = true;
     async function ensureCurrentMonthBillings() {
@@ -92,10 +89,11 @@ export default function DashboardPage() {
         const response = await fetch('/api/billings/generate-month', { method: 'POST' });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Gagal membuat tagihan bulan ini');
+        if (data.created > 0 && isCurrentRequest) {
+          setStatsRefreshVersion((version) => version + 1);
+        }
       } catch (err) {
         if (isCurrentRequest) setError(err instanceof Error ? err.message : 'Gagal membuat tagihan bulan ini');
-      } finally {
-        if (isCurrentRequest) setMonthlyBillingsReady(true);
       }
     }
     void ensureCurrentMonthBillings();
@@ -107,7 +105,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const month = statsMonth;
     const year = statsYear;
-    if (!monthlyBillingsReady || !month || !year) return;
+    if (!month || !year) return;
     const params = new URLSearchParams({ month, year });
     let isCurrentRequest = true;
     async function fetchStats() {
@@ -128,7 +126,7 @@ export default function DashboardPage() {
     return () => {
       isCurrentRequest = false;
     };
-  }, [monthlyBillingsReady, statsMonth, statsYear]);
+  }, [statsMonth, statsYear, statsRefreshVersion]);
 
   useEffect(() => {
     let isCurrentRequest = true;
@@ -426,7 +424,7 @@ export default function DashboardPage() {
                                 <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                                 <span className="truncate">{customer.address || 'Alamat belum diisi'}</span>
                               </div>
-                              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                                 <span className="inline-flex items-center gap-1">
                                   <CalendarDays className="h-3 w-3" /> {formatDateTime(customer.createdAt)}
                                 </span>

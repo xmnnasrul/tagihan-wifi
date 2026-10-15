@@ -8,7 +8,7 @@ import ThemeProvider from '@/components/ThemeProvider';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'WiFi Billing System',
+  title: 'Tagihan WiFi',
   description: 'Manajemen Tagihan WiFi - Kelola pelanggan dan tagihan bulanan',
 };
 

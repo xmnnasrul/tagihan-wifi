@@ -136,7 +136,7 @@ export default function ArchivedCustomersPage() {
                       {customer.packageId && (
                         <p className="text-xs text-muted-foreground mt-1">{customer.packageId.name} · {customer.packageId.speed}</p>
                       )}
-                      <p className="text-[11px] text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         Ditambahkan {formatDateTime(customer.createdAt)} oleh {customer.createdBy || 'Admin'}
                       </p>
                     </div>

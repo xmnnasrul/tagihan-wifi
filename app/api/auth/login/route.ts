@@ -16,12 +16,12 @@ export async function POST(request: Request) {
 
     const user = await User.findOne({ username });
     if (!user || user.isActive === false) {
-      return NextResponse.json({ error: 'Username atau password salah' }, { status: 401 });
+      return NextResponse.json({ error: 'Username salah' }, { status: 401 });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return NextResponse.json({ error: 'Username atau password salah' }, { status: 401 });
+      return NextResponse.json({ error: 'Password salah' }, { status: 401 });
     }
 
     const roles = normalizeUserRoles(user.role, user.roles);

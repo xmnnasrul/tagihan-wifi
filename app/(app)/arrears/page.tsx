@@ -28,9 +28,15 @@ interface ArrearsCustomer {
   outstandingPeriods: OutstandingPeriod[];
 }
 
+const monthOrder = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+];
+
 export default function ArrearsPage() {
   const [report, setReport] = useState<ArrearsCustomer[]>([]);
   const [search, setSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Belum Bayar' | 'Nyicil'>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -57,13 +63,33 @@ export default function ArrearsPage() {
     };
   }, []);
 
-  const filteredReport = useMemo(() => report.filter((customer) => {
+  const monthOptions = useMemo(() => {
+    const periods = new Map<string, OutstandingPeriod>();
+    report.forEach((customer) => customer.outstandingPeriods.forEach((period) => {
+      periods.set(`${period.year}-${period.month}`, period);
+    }));
+
+    return Array.from(periods.values())
+      .sort((a, b) => b.year - a.year || monthOrder.indexOf(b.month) - monthOrder.indexOf(a.month))
+      .map((period) => ({ value: `${period.year}-${period.month}`, label: `${period.month} ${period.year}` }));
+  }, [report]);
+
+  const filteredReport = useMemo(() => report.flatMap((customer) => {
     const searchText = `${customer.customerName} ${customer.address}`.toLocaleLowerCase('id-ID');
     const matchesSearch = searchText.includes(search.trim().toLocaleLowerCase('id-ID'));
+    const outstandingPeriods = customer.outstandingPeriods.filter((period) => (
+      monthFilter === 'all' || `${period.year}-${period.month}` === monthFilter
+    ));
     const matchesStatus = statusFilter === 'all'
-      || customer.outstandingPeriods.some((period) => period.status === statusFilter);
-    return matchesSearch && matchesStatus;
-  }), [report, search, statusFilter]);
+      || outstandingPeriods.some((period) => period.status === statusFilter);
+
+    if (!matchesSearch || !matchesStatus || outstandingPeriods.length === 0) return [];
+    return [{
+      ...customer,
+      outstandingPeriods,
+      totalOutstanding: outstandingPeriods.reduce((sum, period) => sum + period.outstandingAmount, 0),
+    }];
+  }), [report, search, monthFilter, statusFilter]);
 
   const totalOutstanding = filteredReport.reduce((sum, customer) => sum + customer.totalOutstanding, 0);
   const outstandingPeriodCount = filteredReport.reduce((sum, customer) => sum + customer.outstandingPeriods.length, 0);
@@ -117,8 +143,8 @@ export default function ArrearsPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
-        <div className="col-span-2 space-y-1.5 sm:col-span-1">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2 space-y-1.5">
           <label htmlFor="arrears-search" className="text-xs font-medium text-muted-foreground">Cari pelanggan</label>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -131,7 +157,7 @@ export default function ArrearsPage() {
             />
           </div>
         </div>
-        <div className="col-span-2 space-y-1.5 sm:col-span-1">
+        <div className="space-y-1.5">
           <label htmlFor="arrears-status" className="text-xs font-medium text-muted-foreground">Status tunggakan</label>
           <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
             <SelectTrigger id="arrears-status"><SelectValue /></SelectTrigger>
@@ -139,6 +165,18 @@ export default function ArrearsPage() {
               <SelectItem value="all">Semua status</SelectItem>
               <SelectItem value="Belum Bayar">Belum Bayar</SelectItem>
               <SelectItem value="Nyicil">Nyicil</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="arrears-month" className="text-xs font-medium text-muted-foreground">Bulan tunggakan</label>
+          <Select value={monthFilter} onValueChange={setMonthFilter}>
+            <SelectTrigger id="arrears-month"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua bulan</SelectItem>
+              {monthOptions.map((month) => (
+                <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

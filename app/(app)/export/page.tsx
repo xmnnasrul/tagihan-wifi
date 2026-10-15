@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Download, FileSpreadsheet, FileText } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -21,7 +20,6 @@ export default function ExportPage() {
   const [month, setMonth] = useState('all');
   const [year, setYear] = useState('all');
   const [status, setStatus] = useState('all');
-  const [customerName, setCustomerName] = useState('');
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
 
@@ -30,7 +28,6 @@ export default function ExportPage() {
     if (month !== 'all') params.set('month', month);
     if (year !== 'all') params.set('year', year);
     if (status !== 'all') params.set('status', status);
-    if (customerName.trim()) params.set('customerName', customerName.trim());
     window.open(`/api/billings/export?${params.toString()}`, '_blank');
   };
 
@@ -51,15 +48,6 @@ export default function ExportPage() {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label htmlFor="export-customer" className="text-sm font-medium">Nama pelanggan</label>
-              <Input
-                id="export-customer"
-                value={customerName}
-                onChange={(event) => setCustomerName(event.target.value)}
-                placeholder="Cari nama pelanggan"
-              />
-            </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Bulan tagihan</label>
               <Button type="button" variant="outline" className="w-full justify-between font-normal" onClick={() => setMonthPickerOpen(true)}>

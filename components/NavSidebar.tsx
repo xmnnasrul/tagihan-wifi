@@ -62,7 +62,7 @@ export default function NavSidebar() {
             <Wifi className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-sm font-semibold tracking-tight">WiFi Billing</h1>
+            <h1 className="text-sm font-semibold tracking-tight">Tagihan WiFi</h1>
             <p className="text-xs text-muted-foreground">Manajemen Tagihan</p>
           </div>
         </Link>

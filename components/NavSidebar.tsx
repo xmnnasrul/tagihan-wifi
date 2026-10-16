@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield, Users, UserCircle2, FileText, Moon, Sun, WalletCards } from 'lucide-react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, Menu, X, History, Shield, Users, UserCircle2, FileText, Moon, Sun, WalletCards, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useTheme } from 'next-themes';
@@ -17,6 +17,7 @@ const navItems = [
   { href: '/arrears', label: 'Laporan Tunggakan', icon: FileText },
   { href: '/billing/add', label: 'Tambah Tagihan', icon: FilePlus },
   { href: '/packages', label: 'Manajemen Paket', icon: Package },
+  { href: '/chat', label: 'Chat Admin', icon: MessageCircle },
   { href: '/archived', label: 'Arsip', icon: Archive },
   { href: '/export', label: 'Ekspor Data', icon: Download },
   { href: '/audit', label: 'Log Aktivitas', icon: History },
@@ -69,7 +70,7 @@ export default function NavSidebar() {
       </div>
 
       <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-1.5">
-        {navItems.filter((item) => (isAdmin || (item.href !== '/admins' && item.href !== '/audit' && item.href !== '/billing/add')) && (item.href !== '/collector' || canAccessCollector)).map((item) => {
+        {navItems.filter((item) => (isAdmin || (item.href !== '/admins' && item.href !== '/audit' && item.href !== '/billing/add' && item.href !== '/chat')) && (item.href !== '/collector' || canAccessCollector)).map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
           return (

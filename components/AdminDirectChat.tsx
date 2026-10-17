@@ -3,18 +3,22 @@
 import { FormEvent, KeyboardEvent, TouchEvent, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import {
-  AlertCircle, Check, EllipsisVertical, ImagePlus, Loader2, MessageCircle,
-  Paperclip, Reply, Send, ShieldCheck, Trash2, Video, X,
+  AlertCircle, ArrowLeft, Check, EllipsisVertical, ImagePlus, Loader2, LockKeyhole,
+  KeyRound, MessageCircle, Paperclip, Reply, Send, ShieldCheck, Trash2, Video, X,
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useCurrentUser, useCurrentUserLoading } from '@/components/CurrentUserProvider';
 import {
-  decryptAdminChatAttachment, decryptAdminChatPayload, encryptAdminChatPayload,
-  getOrCreateAdminChatIdentity, type AdminChatIdentity,
+  clearAdminChatMigrationSource, createAdminChatRecoveryIdentity, decryptAdminChatAttachment, decryptAdminChatPayload, encryptAdminChatPayload,
+  getOrCreateAdminChatIdentity, getStoredAdminChatIdentity, restoreAdminChatRecoveryIdentity,
+  rewrapAdminChatMessageKey, type AdminChatIdentity,
 } from '@/lib/admin-chat-crypto';
 import { ADMIN_CHAT_MAX_ATTACHMENT_SIZE, ADMIN_CHAT_UPLOAD_CHUNK_SIZE, isAdminChatMediaType } from '@/lib/admin-chat-constants';
 
@@ -23,6 +27,18 @@ interface Contact {
   username: string;
   profileImage: string;
   publicKey: string;
+  recoveryPublicKey: string;
+  recoveryKeyId: string;
+  recoveryStatus: 'none' | 'migrating' | 'ready';
+}
+
+interface RecoveryInfo {
+  publicKey: string;
+  recoveryKeyId: string;
+  ciphertext: string;
+  salt: string;
+  iv: string;
+  status: 'migrating' | 'ready';
 }
 
 interface ReplyPreview {
@@ -51,7 +67,7 @@ interface EncryptedMessage {
   recipientId: string;
   ciphertext: string;
   iv: string;
-  wrappedKeys: { userId: string; encryptedKey: string }[];
+  wrappedKeys: { userId: string; keyId?: 'primary' | 'recovery'; encryptedKey: string }[];
   createdAt: string;
   expiresAt: string;
   attachment: ServerAttachment | null;
@@ -92,7 +108,21 @@ export default function AdminDirectChat() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [currentUserId, setCurrentUserId] = useState('');
   const [identity, setIdentity] = useState<AdminChatIdentity | null>(null);
+  const [identityUsername, setIdentityUsername] = useState('');
+  const [accountPublicKey, setAccountPublicKey] = useState('');
+  const [accountRecoveryPublicKey, setAccountRecoveryPublicKey] = useState('');
+  const [accountRecoveryKeyId, setAccountRecoveryKeyId] = useState('');
+  const [recoveryStatus, setRecoveryStatus] = useState<'none' | 'migrating' | 'ready'>('none');
+  const [recoveryBackup, setRecoveryBackup] = useState<RecoveryInfo | null>(null);
+  const [recoveryMode, setRecoveryMode] = useState<'setup' | 'restore' | 'rotate' | null>(null);
+  const [cancelPendingRotationOnRestore, setCancelPendingRotationOnRestore] = useState(false);
+  const [recoveryPassword, setRecoveryPassword] = useState('');
+  const [recoveryConfirmPassword, setRecoveryConfirmPassword] = useState('');
+  const [recoveryError, setRecoveryError] = useState('');
+  const [recoveryProgress, setRecoveryProgress] = useState('');
+  const [isRecoveryBusy, setIsRecoveryBusy] = useState(false);
   const [selectedContactId, setSelectedContactId] = useState('');
+  const [isMobileConversationOpen, setIsMobileConversationOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -113,22 +143,196 @@ export default function AdminDirectChat() {
   const holdTimer = useRef<number | null>(null);
   const touchStartX = useRef<number | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
+  const recoveryMigrationActive = useRef(false);
 
   const selectedContact = contacts.find((contact) => contact.id === selectedContactId) || null;
   const selectedContactPublicKey = selectedContact?.publicKey || '';
-  const canSend = Boolean(identity && currentUserId && selectedContact?.publicKey);
+  const identityReady = Boolean(identity && identityUsername === currentUser?.username && currentUserId);
+  const canSend = Boolean(identityReady && (identity?.privateKey || identity?.recoveryPrivateKey)
+    && recoveryStatus === 'ready' && accountPublicKey && selectedContact?.publicKey
+    && selectedContact.recoveryStatus !== 'migrating');
   const selectedMessages = messages.filter((message) => selectedMessageIds.includes(message.id));
   const allSelectedAreOwn = selectedMessages.length === selectedMessageIds.length
     && selectedMessages.every((message) => message.senderId === currentUserId);
 
+  const migrateRecoveryHistory = async (userId: string, currentIdentity: AdminChatIdentity) => {
+    if ((!currentIdentity.privateKey && !currentIdentity.recoveryPrivateKey && !currentIdentity.migrationSourceRecoveryPrivateKey)
+      || !currentIdentity.recoveryPublicKey) {
+      throw new Error('Migrasi riwayat harus dilanjutkan di browser tempat kunci chat lama tersedia.');
+    }
+    if (recoveryMigrationActive.current) return;
+    recoveryMigrationActive.current = true;
+    setIsRecoveryBusy(true);
+    setRecoveryError('');
+    setRecoveryProgress('Menyiapkan migrasi pesan lama...');
+    try {
+      let cursor = '';
+      let migrated = 0;
+      while (true) {
+        const query = `?userId=${encodeURIComponent(userId)}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`;
+        const response = await fetch(`/api/admin-chat/identity/recovery${query}`, { cache: 'no-store' });
+        const page = await response.json();
+        if (!response.ok) throw new Error(page.error || 'Gagal membaca batch migrasi.');
+        if (page.status === 'ready') break;
+
+        const keys = await Promise.all((page.messages as { id: string; wrappedKeys: { userId: string; keyId: 'primary' | 'recovery'; encryptedKey: string }[] }[]).map(async (message) => ({
+          id: message.id,
+          encryptedKey: await rewrapAdminChatMessageKey(
+            message.wrappedKeys,
+            userId,
+            currentIdentity,
+            currentIdentity.recoveryPublicKey!,
+          ),
+        })));
+        if (keys.length) {
+          const batchResponse = await fetch('/api/admin-chat/identity/recovery', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'batch', accountId: userId, keys }),
+          });
+          const batchData = await batchResponse.json();
+          if (!batchResponse.ok) throw new Error(batchData.error || 'Gagal memigrasikan batch pesan.');
+          migrated += keys.length;
+          setRecoveryProgress(`Pesan lama dimigrasikan: ${migrated}`);
+        }
+        if (!page.nextAfter) break;
+        cursor = page.nextAfter;
+      }
+
+      const completeResponse = await fetch('/api/admin-chat/identity/recovery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete', accountId: userId }),
+      });
+      const completeData = await completeResponse.json();
+      if (!completeResponse.ok) throw new Error(completeData.error || 'Migrasi belum selesai.');
+      setRecoveryStatus('ready');
+      setRecoveryBackup((backup) => backup ? { ...backup, status: 'ready' } : backup);
+      setRecoveryMode(null);
+      setRecoveryPassword('');
+      setRecoveryConfirmPassword('');
+      setRecoveryProgress('Backup pemulihan siap digunakan di perangkat baru.');
+      await clearAdminChatMigrationSource(userId);
+      const refreshedIdentity = await getStoredAdminChatIdentity(userId);
+      if (refreshedIdentity) setIdentity(refreshedIdentity);
+    } finally {
+      recoveryMigrationActive.current = false;
+      setIsRecoveryBusy(false);
+    }
+  };
+
+  const handleRecoverySubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isRecoveryBusy || !currentUserId) return;
+    setRecoveryError('');
+    setIsRecoveryBusy(true);
+    try {
+      if ((recoveryMode === 'setup' || recoveryMode === 'rotate') && recoveryStatus === 'migrating') {
+        if (!identity?.recoveryPublicKey || !identity.recoveryBackup) {
+          throw new Error('Lanjutkan migrasi dari browser yang memiliki kunci lama.');
+        }
+        const beginResponse = await fetch('/api/admin-chat/identity/recovery', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'begin', accountId: currentUserId, rotate: true, ...identity.recoveryBackup }),
+        });
+        const beginData = await beginResponse.json();
+        if (!beginResponse.ok) throw new Error(beginData.error || 'Gagal melanjutkan backup kunci.');
+        await migrateRecoveryHistory(currentUserId, identity);
+        return;
+      }
+      if (recoveryMode === 'restore') {
+        if (!recoveryBackup) throw new Error('Backup pemulihan tidak tersedia.');
+        const restoredIdentity = await restoreAdminChatRecoveryIdentity(
+          currentUserId,
+          { version: 1, recoveryPublicKey: recoveryBackup.publicKey, recoveryKeyId: recoveryBackup.recoveryKeyId, ciphertext: recoveryBackup.ciphertext, salt: recoveryBackup.salt, iv: recoveryBackup.iv },
+          recoveryPassword,
+          accountPublicKey,
+        );
+        if (cancelPendingRotationOnRestore) {
+          const cancelResponse = await fetch('/api/admin-chat/identity/recovery', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'cancel', accountId: currentUserId }),
+          });
+          const cancelData = await cancelResponse.json();
+          if (!cancelResponse.ok) throw new Error(cancelData.error || 'Gagal membatalkan migrasi recovery.');
+        }
+        setIdentity(restoredIdentity);
+        setIdentityUsername(currentUser?.username || '');
+        setRecoveryStatus('ready');
+        setRecoveryMode(null);
+        setCancelPendingRotationOnRestore(false);
+        setRecoveryPassword('');
+        setAccountRecoveryPublicKey(recoveryBackup.publicKey);
+        setAccountRecoveryKeyId(recoveryBackup.recoveryKeyId);
+        return;
+      }
+
+      if (!identity?.privateKey && !identity?.recoveryPrivateKey) throw new Error('Kunci lama tidak tersedia untuk menyiapkan backup.');
+      if (recoveryPassword !== recoveryConfirmPassword) throw new Error('Konfirmasi sandi Chat tidak cocok.');
+      const { identity: recoveryIdentity, backup } = await createAdminChatRecoveryIdentity(currentUserId, recoveryPassword);
+      setIdentity(recoveryIdentity);
+      setAccountRecoveryPublicKey(backup.recoveryPublicKey);
+      setAccountRecoveryKeyId(backup.recoveryKeyId);
+      setRecoveryBackup({ publicKey: backup.recoveryPublicKey, recoveryKeyId: backup.recoveryKeyId, ciphertext: backup.ciphertext, salt: backup.salt, iv: backup.iv, status: 'migrating' });
+      setRecoveryStatus('migrating');
+
+      const beginResponse = await fetch('/api/admin-chat/identity/recovery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'begin', accountId: currentUserId, rotate: recoveryMode === 'rotate', ...backup }),
+      });
+      const beginData = await beginResponse.json();
+      if (!beginResponse.ok) throw new Error(beginData.error || 'Gagal menyimpan backup kunci.');
+      await migrateRecoveryHistory(currentUserId, recoveryIdentity);
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : 'Gagal menyiapkan pemulihan chat.');
+    } finally {
+      setIsRecoveryBusy(false);
+    }
+  };
+
   useEffect(() => {
-    if (!isAdmin) {
+    if (!isAdmin || !currentUser?.username) {
       setIsLoadingContacts(false);
       setIsLoadingMessages(false);
+      setIsConnected(false);
+      setContacts([]);
+      setCurrentUserId('');
+      setIdentity(null);
+      setIdentityUsername('');
+      setAccountPublicKey('');
+      setAccountRecoveryPublicKey('');
+      setAccountRecoveryKeyId('');
+      setRecoveryStatus('none');
+      setRecoveryBackup(null);
+      setRecoveryMode(null);
+      setCancelPendingRotationOnRestore(false);
+      setSelectedContactId('');
+      setIsMobileConversationOpen(false);
       return;
     }
 
+    const accountUsername = currentUser.username;
     let active = true;
+    setIsLoadingContacts(true);
+    setIsLoadingMessages(true);
+    setConnectionError('');
+    setIsConnected(false);
+    setContacts([]);
+    setCurrentUserId('');
+    setIdentity(null);
+    setIdentityUsername('');
+    setAccountPublicKey('');
+    setAccountRecoveryPublicKey('');
+    setAccountRecoveryKeyId('');
+    setRecoveryStatus('none');
+    setRecoveryBackup(null);
+    setRecoveryMode(null);
+    setCancelPendingRotationOnRestore(false);
+    setSelectedContactId('');
+    setIsMobileConversationOpen(false);
     async function loadContactsAndIdentity() {
       try {
         const response = await fetch('/api/admin-chat/contacts', { cache: 'no-store' });
@@ -137,8 +341,90 @@ export default function AdminDirectChat() {
 
         const userId = String(data.currentUser?.id || '');
         if (!userId) throw new Error('ID akun tidak tersedia untuk membuat kunci chat');
-        const localIdentity = await getOrCreateAdminChatIdentity(userId, data.currentUser.publicKey || null);
-        if (!data.currentUser.publicKey) {
+        const nextContacts = data.contacts as Contact[];
+        if (!active) return;
+        setCurrentUserId(userId);
+        setContacts(nextContacts);
+        const publicKey = String(data.currentUser.publicKey || '');
+        const activeRecovery = data.currentUser.recovery as RecoveryInfo | null;
+        const pendingRecovery = data.currentUser.pendingRecovery as RecoveryInfo | null;
+        const serverRecovery = pendingRecovery || activeRecovery;
+        setAccountPublicKey(publicKey);
+        setAccountRecoveryPublicKey(serverRecovery?.publicKey || '');
+        setAccountRecoveryKeyId(serverRecovery?.recoveryKeyId || '');
+        setRecoveryStatus(pendingRecovery ? 'migrating' : serverRecovery?.status || 'none');
+        setRecoveryBackup(serverRecovery || null);
+
+        const storedIdentity = await getStoredAdminChatIdentity(userId);
+        const storedPrimaryMatches = Boolean(storedIdentity?.privateKey
+          && (!publicKey || storedIdentity.publicKey === publicKey));
+        const pendingRecoveryBackup = Boolean(storedIdentity?.recoveryBackup
+          && storedIdentity.recoveryPublicKey
+          && storedIdentity.recoveryKeyId
+          && storedIdentity.recoveryKeyId !== serverRecovery?.recoveryKeyId);
+        const storedRecoveryMatches = Boolean(storedIdentity?.recoveryPrivateKey
+          && serverRecovery?.publicKey
+          && storedIdentity.recoveryPublicKey === serverRecovery.publicKey
+          && storedIdentity.recoveryKeyId === serverRecovery.recoveryKeyId);
+        let localIdentity: AdminChatIdentity | null = null;
+
+        if (pendingRecovery && activeRecovery && !storedRecoveryMatches) {
+          setAccountRecoveryPublicKey(activeRecovery.publicKey);
+          setAccountRecoveryKeyId(activeRecovery.recoveryKeyId);
+          setRecoveryBackup(activeRecovery);
+          setRecoveryStatus('migrating');
+          setCancelPendingRotationOnRestore(true);
+          setRecoveryMode('restore');
+          return;
+        }
+
+        if (pendingRecoveryBackup && storedIdentity
+          && !pendingRecovery
+          && (storedPrimaryMatches || storedIdentity.recoveryPrivateKey || storedIdentity.migrationSourceRecoveryPrivateKey)) {
+          localIdentity = {
+            ...storedIdentity,
+            publicKey: publicKey || storedIdentity.publicKey,
+            privateKey: storedPrimaryMatches ? storedIdentity.privateKey : undefined,
+          };
+          setIdentity(localIdentity);
+          setIdentityUsername(accountUsername);
+          setAccountRecoveryPublicKey(storedIdentity.recoveryPublicKey || '');
+          setAccountRecoveryKeyId(storedIdentity.recoveryKeyId || '');
+          setRecoveryBackup({
+            publicKey: storedIdentity.recoveryBackup!.recoveryPublicKey,
+            recoveryKeyId: storedIdentity.recoveryBackup!.recoveryKeyId,
+            ciphertext: storedIdentity.recoveryBackup!.ciphertext,
+            salt: storedIdentity.recoveryBackup!.salt,
+            iv: storedIdentity.recoveryBackup!.iv,
+            status: 'migrating',
+          });
+          setRecoveryStatus('migrating');
+          setRecoveryProgress('Backup lokal belum tersimpan atau rotasi sebelumnya dibatalkan. Lanjutkan saat siap.');
+          setRecoveryMode('rotate');
+          return;
+        }
+
+        if (storedRecoveryMatches && storedIdentity) {
+          localIdentity = {
+            ...storedIdentity,
+            publicKey: publicKey || storedIdentity.publicKey,
+            privateKey: storedPrimaryMatches ? storedIdentity.privateKey : undefined,
+          };
+        } else if (storedPrimaryMatches && storedIdentity) {
+          localIdentity = storedIdentity;
+        } else if (serverRecovery?.status === 'ready') {
+          setRecoveryMode('restore');
+          return;
+        } else if (serverRecovery?.status === 'migrating') {
+          throw new Error('Backup masih dimigrasikan. Kembali ke browser asal sampai proses selesai.');
+        } else if (publicKey) {
+          throw new Error('Private key akun ini tidak ada di browser ini dan belum memiliki backup pemulihan.');
+        } else {
+          localIdentity = await getOrCreateAdminChatIdentity(userId, null);
+        }
+
+        if (!localIdentity) throw new Error('Kunci chat tidak dapat dimuat.');
+        if (!publicKey) {
           const keyResponse = await fetch('/api/admin-chat/identity', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -146,17 +432,24 @@ export default function AdminDirectChat() {
           });
           const keyData = await keyResponse.json();
           if (!keyResponse.ok) throw new Error(keyData.error || 'Gagal mendaftarkan kunci chat');
+          setAccountPublicKey(localIdentity.publicKey);
         }
         if (!active) return;
 
-        const nextContacts = data.contacts as Contact[];
-        setCurrentUserId(userId);
         setIdentity(localIdentity);
-        setContacts(nextContacts);
-        setSelectedContactId((selectedId) => nextContacts.some((contact) => contact.id === selectedId)
-          ? selectedId
-          : nextContacts[0]?.id || '');
+        setIdentityUsername(accountUsername);
         setConnectionError('');
+        if (serverRecovery?.status === 'migrating') {
+          if (storedRecoveryMatches && (localIdentity.privateKey || localIdentity.migrationSourceRecoveryPrivateKey)) {
+            void migrateRecoveryHistory(userId, localIdentity).catch((error) => {
+              setRecoveryError(error instanceof Error ? error.message : 'Migrasi pemulihan terhenti.');
+            });
+          } else {
+            throw new Error('Migrasi kunci perlu dilanjutkan di browser yang memulai prosesnya.');
+          }
+        } else if (!serverRecovery && localIdentity.privateKey) {
+          setRecoveryMode('setup');
+        }
       } catch (error) {
         if (active) setConnectionError(error instanceof Error ? error.message : 'Gagal memuat chat admin');
       } finally {
@@ -166,7 +459,7 @@ export default function AdminDirectChat() {
 
     void loadContactsAndIdentity();
     return () => { active = false; };
-  }, [isAdmin]);
+  }, [currentUser?.username, isAdmin]);
 
   useEffect(() => {
     if (!isAdmin || !currentUserId) return;
@@ -195,7 +488,7 @@ export default function AdminDirectChat() {
     setIsSelecting(false);
     setActionMessageId('');
 
-    if (!isAdmin || !identity || !selectedContactId || !currentUserId) {
+    if (!isAdmin || !identityReady || !identity || !selectedContactId || !currentUserId) {
       setIsLoadingMessages(false);
       return;
     }
@@ -208,7 +501,7 @@ export default function AdminDirectChat() {
     let active = true;
     let isFetching = false;
     async function decryptMessage(message: EncryptedMessage): Promise<ChatMessage> {
-      const { content, messageKey } = await decryptAdminChatPayload<ChatContent>(message, currentUserId, identity!.privateKey);
+      const { content, messageKey } = await decryptAdminChatPayload<ChatContent>(message, currentUserId, identity!);
       let attachmentUrl: string | null = null;
       if (message.attachment && content.media) {
         const mediaResponse = await fetch(message.attachment.url, { cache: 'no-store' });
@@ -284,7 +577,7 @@ export default function AdminDirectChat() {
       active = false;
       window.clearInterval(interval);
     };
-  }, [currentUserId, identity, isAdmin, selectedContactId, selectedContactPublicKey]);
+  }, [currentUser?.username, currentUserId, identity, identityReady, isAdmin, selectedContactId, selectedContactPublicKey]);
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -310,7 +603,7 @@ export default function AdminDirectChat() {
   const handleSend = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = draft.trim();
-    if (isSending || (!text && !selectedFile) || !identity || !selectedContact?.publicKey) return;
+    if (isSending || (!text && !selectedFile) || !identity || !accountPublicKey || !selectedContact?.publicKey) return;
 
     setIsSending(true);
     setSendError('');
@@ -324,8 +617,8 @@ export default function AdminDirectChat() {
         media: selectedFile ? { fileName: selectedFile.name, contentType: selectedFile.type } : null,
       };
       const encrypted = await encryptAdminChatPayload(content, [
-        { userId: currentUserId, publicKey: identity.publicKey },
-        { userId: selectedContact.id, publicKey: selectedContact.publicKey },
+        { userId: currentUserId, publicKey: accountPublicKey, recoveryPublicKey: accountRecoveryPublicKey || undefined, recoveryKeyId: accountRecoveryKeyId || undefined },
+        { userId: selectedContact.id, publicKey: selectedContact.publicKey, recoveryPublicKey: selectedContact.recoveryPublicKey || undefined, recoveryKeyId: selectedContact.recoveryKeyId || undefined },
       ], attachmentBytes);
 
       let attachment: Omit<ServerAttachment, 'url'> | null = null;
@@ -358,7 +651,7 @@ export default function AdminDirectChat() {
       if (!response.ok) throw new Error(data.error || 'Gagal mengirim pesan');
 
       const serverMessage = data.message as EncryptedMessage;
-      const decrypted = await decryptAdminChatPayload<ChatContent>(serverMessage, currentUserId, identity.privateKey);
+      const decrypted = await decryptAdminChatPayload<ChatContent>(serverMessage, currentUserId, identity);
       let attachmentUrl: string | null = null;
       if (serverMessage.attachment && decrypted.content.media) {
         const mediaResponse = await fetch(serverMessage.attachment.url, { cache: 'no-store' });
@@ -400,6 +693,7 @@ export default function AdminDirectChat() {
 
   const selectContact = (contactId: string) => {
     setSelectedContactId(contactId);
+    setIsMobileConversationOpen(true);
     setDraft('');
     setSelectedFile(null);
     setReplyTo(null);
@@ -476,48 +770,124 @@ export default function AdminDirectChat() {
   if (!isAdmin) return <Alert variant="destructive"><ShieldCheck className="h-4 w-4" /><AlertDescription>Fitur chat hanya dapat digunakan oleh akun dengan role Admin.</AlertDescription></Alert>;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="text-2xl font-bold">Chat Admin</h1><p className="mt-1 text-sm text-muted-foreground">Percakapan pribadi dengan enkripsi end-to-end.</p></div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite"><span className={`h-2 w-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />{isConnected ? 'Terhubung' : 'Menghubungkan...'}</div>
+    <div className="mx-auto w-full max-w-7xl space-y-5 sm:space-y-6">
+      <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between sm:pb-5">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Komunikasi internal</p>
+          <h1 className="text-2xl font-bold sm:text-3xl">Chat Admin</h1>
+          <p className="text-sm text-muted-foreground">Percakapan pribadi dengan enkripsi end-to-end.</p>
+        </div>
+        <div className="inline-flex w-fit items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground" aria-live="polite">
+          <span className={`h-2 w-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+          {isConnected ? 'Terhubung' : 'Menghubungkan...'}
+        </div>
       </header>
 
-      <p className="text-xs text-muted-foreground">Kunci privat chat tersimpan di browser ini. Jangan hapus data situs atau pindah browser jika ingin tetap membaca pesan lama.</p>
+      <div className="flex items-start gap-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-3 text-sm text-muted-foreground sm:items-center sm:px-4">
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary sm:mt-0" />
+        <p className="min-w-0 leading-relaxed">Kunci privat chat tersimpan di browser ini. Jangan hapus data situs atau pindah browser jika ingin tetap membaca pesan lama.</p>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-md border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+        <div className="flex items-start gap-2 text-sm text-muted-foreground">
+          <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <p className="leading-relaxed">{recoveryStatus === 'ready' ? 'Backup pemulihan terenkripsi siap untuk perangkat baru.' : recoveryStatus === 'migrating' ? recoveryProgress || 'Backup sedang disiapkan; chat lama tetap dipertahankan.' : 'Siapkan sandi Chat agar kunci dan riwayat dapat dipulihkan di perangkat baru.'}</p>
+        </div>
+        {!recoveryMode && recoveryStatus !== 'ready' && <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => { setRecoveryError(''); setRecoveryMode('setup'); }}>
+          {recoveryStatus === 'migrating' ? 'Lanjutkan migrasi' : 'Atur sandi Chat'}
+        </Button>}
+        {!recoveryMode && recoveryStatus === 'ready' && identityReady && <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => { setRecoveryError(''); setRecoveryMode('rotate'); }}>
+          Ganti sandi Chat
+        </Button>}
+        {!recoveryMode && recoveryStatus === 'ready' && !identityReady && <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => { setRecoveryError(''); setRecoveryMode('restore'); }}>
+          Pulihkan chat
+        </Button>}
+      </div>
+      {recoveryError && <Alert variant="destructive"><AlertDescription>{recoveryError}</AlertDescription></Alert>}
+
+      <Dialog open={Boolean(recoveryMode)} onOpenChange={(open) => {
+        if (!open && !isRecoveryBusy) setRecoveryMode(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{recoveryMode === 'restore' ? 'Pulihkan Chat' : recoveryMode === 'rotate' ? 'Ganti Sandi Chat' : 'Buat Sandi Chat'}</DialogTitle>
+            <DialogDescription>
+              {recoveryMode === 'restore'
+                ? 'Masukkan sandi Chat untuk membuka backup di perangkat ini. Sandi diproses hanya di browser.'
+                : recoveryMode === 'rotate'
+                  ? 'Private key lokal akan membuat backup baru dan memigrasikan pembungkus riwayat tanpa menghapus akses lama.'
+                : recoveryStatus === 'migrating'
+                  ? 'Lanjutkan pemindahan kunci pesan lama. Riwayat tetap dapat dibaca selama proses berlangsung.'
+                  : 'Sandi ini mengenkripsi backup kunci. Gunakan minimal 10 karakter dan simpan agar dapat membuka chat di perangkat baru.'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(event) => void handleRecoverySubmit(event)} className="space-y-4">
+            {!((recoveryMode === 'setup' || recoveryMode === 'rotate') && recoveryStatus === 'migrating') && <div className="space-y-2">
+              <Label htmlFor="admin-chat-recovery-password">Sandi Chat</Label>
+              <Input id="admin-chat-recovery-password" type="password" value={recoveryPassword} onChange={(event) => setRecoveryPassword(event.target.value)} minLength={10} maxLength={128} autoComplete={recoveryMode === 'restore' ? 'current-password' : 'new-password'} required />
+            </div>}
+            {(recoveryMode === 'setup' || recoveryMode === 'rotate') && recoveryStatus !== 'migrating' && <div className="space-y-2">
+              <Label htmlFor="admin-chat-recovery-confirm">Konfirmasi sandi Chat</Label>
+              <Input id="admin-chat-recovery-confirm" type="password" value={recoveryConfirmPassword} onChange={(event) => setRecoveryConfirmPassword(event.target.value)} minLength={10} maxLength={128} autoComplete="new-password" required />
+            </div>}
+            {recoveryError && <Alert variant="destructive"><AlertDescription>{recoveryError}</AlertDescription></Alert>}
+            {recoveryStatus === 'migrating' && recoveryProgress && <p className="text-xs text-muted-foreground">{recoveryProgress}</p>}
+            <DialogFooter>
+              <Button type="submit" disabled={isRecoveryBusy || ((recoveryMode === 'setup' || recoveryMode === 'rotate') && recoveryStatus !== 'migrating' && recoveryPassword !== recoveryConfirmPassword)}>
+                {isRecoveryBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                {recoveryMode === 'restore' ? 'Pulihkan kunci' : recoveryStatus === 'migrating' ? 'Lanjutkan migrasi' : recoveryMode === 'rotate' ? 'Ganti sandi dan migrasikan' : 'Simpan sandi dan migrasikan'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {connectionError && !identity && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{connectionError}</AlertDescription></Alert>}
 
-      <section className="grid h-[calc(100dvh-12rem)] min-h-[480px] max-h-[820px] grid-cols-1 overflow-hidden rounded-lg border border-border bg-card md:grid-cols-[230px_minmax(0,1fr)]" aria-label="Chat pribadi admin">
-        <aside className="flex min-h-0 gap-2 overflow-x-auto border-b border-border p-2 md:flex-col md:overflow-x-hidden md:overflow-y-auto md:border-b-0 md:border-r md:p-3" aria-label="Daftar admin">
-          <p className="hidden px-2 py-1 text-xs font-semibold uppercase text-muted-foreground md:block">Admin</p>
-          {isLoadingContacts ? <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat admin...</div> : contacts.length ? contacts.map((contact) => (
-            <button key={contact.id} type="button" onClick={() => selectContact(contact.id)} className={`flex min-w-[170px] items-center gap-2 rounded-md px-2 py-2 text-left transition-colors md:min-w-0 ${selectedContactId === contact.id ? 'bg-primary/10 text-foreground' : 'hover:bg-muted'}`}>
+      <section className="grid h-[calc(100dvh-17rem)] min-h-[440px] max-h-[900px] grid-cols-1 overflow-hidden rounded-md border border-border bg-card shadow-sm sm:min-h-[480px] md:grid-cols-[250px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]" aria-label="Chat pribadi admin">
+        <aside className={`${isMobileConversationOpen ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-col border-b border-border bg-muted/20 md:flex md:border-b-0 md:border-r`} aria-label="Daftar admin">
+          <div className="flex items-center justify-between px-3 pb-1 pt-3 sm:px-4 sm:pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Percakapan</p>
+            <span className="text-xs tabular-nums text-muted-foreground">{contacts.length} admin</span>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2 sm:p-3 md:p-2">
+          {isLoadingContacts ? <div className="flex min-h-12 items-center gap-2 rounded-md border border-border bg-card p-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat admin...</div> : contacts.length ? contacts.map((contact) => (
+            <button key={contact.id} type="button" onClick={() => selectContact(contact.id)} className={`flex min-h-14 w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${selectedContactId === contact.id ? 'border-primary/30 bg-primary/10 text-foreground' : 'border-transparent bg-card/70 hover:border-border hover:bg-card'}`}>
               <AdminAvatar contact={contact} size="h-9 w-9" /><span className="min-w-0 flex-1 truncate text-sm font-medium">{contact.username}</span>
               {!contact.publicKey && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" title="Belum mengaktifkan chat" />}
             </button>
           )) : <p className="px-3 py-2 text-sm text-muted-foreground">Belum ada admin lain.</p>}
+          </div>
         </aside>
 
-        <div className="flex min-h-0 min-w-0 flex-col">
-          <div className="flex min-h-[64px] items-center justify-between gap-3 border-b border-border px-3 py-2 sm:px-4">
-            {selectedContact ? <div className="flex min-w-0 items-center gap-3"><AdminAvatar contact={selectedContact} /><div className="min-w-0"><p className="truncate text-sm font-semibold">{selectedContact.username}</p><p className="text-xs text-muted-foreground">{selectedContact.publicKey ? 'Terenkripsi end-to-end' : 'Menunggu admin membuka chat pertama kali'}</p></div></div> : <p className="text-sm text-muted-foreground">Pilih admin untuk memulai chat</p>}
+        <div className={`${isMobileConversationOpen ? 'flex' : 'hidden'} min-h-0 min-w-0 flex-col bg-background/50 md:flex`}>
+          <div className="flex min-h-[72px] items-center justify-between gap-2 border-b border-border bg-card px-3 py-3 sm:gap-3 sm:px-5">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              {selectedContact && <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 md:hidden" onClick={() => setIsMobileConversationOpen(false)} aria-label="Kembali ke daftar admin"><ArrowLeft className="h-4 w-4" /></Button>}
+              {selectedContact ? <><AdminAvatar contact={selectedContact} /><div className="min-w-0"><p className="truncate text-sm font-semibold">{selectedContact.username}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{selectedContact.publicKey ? 'Percakapan terenkripsi' : 'Menunggu admin menyiapkan kunci chat'}</p></div></> : <div className="hidden min-w-0 md:block"><p className="text-sm font-semibold">Belum ada percakapan dipilih</p><p className="mt-0.5 text-xs text-muted-foreground">Pilih admin untuk membuka chat.</p></div>}
+            </div>
             {selectedContact && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Menu chat" title="Menu chat"><EllipsisVertical className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => { setIsSelecting(true); setSelectedMessageIds([]); }}>Pilih beberapa pesan</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
           </div>
 
-          {isSelecting && <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-3 py-2"><span className="mr-auto text-sm">{selectedMessageIds.length} dipilih</span><Button type="button" variant="ghost" size="sm" onClick={() => { setIsSelecting(false); setSelectedMessageIds([]); }}>Batal</Button><Button type="button" variant="outline" size="sm" disabled={!selectedMessageIds.length || isDeleting} onClick={() => void handleDelete('me', selectedMessageIds)}><Trash2 className="mr-2 h-4 w-4" /> Hapus untuk saya</Button>{selectedMessageIds.length > 0 && allSelectedAreOwn && <Button type="button" variant="destructive" size="sm" disabled={isDeleting} onClick={() => void handleDelete('everyone', selectedMessageIds)}><Trash2 className="mr-2 h-4 w-4" /> Hapus untuk semua</Button>}</div>}
+          {isSelecting && <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-3 py-2.5 sm:px-5"><span className="mr-auto text-sm font-medium">{selectedMessageIds.length} dipilih</span><Button type="button" variant="ghost" size="sm" onClick={() => { setIsSelecting(false); setSelectedMessageIds([]); }}>Batal</Button><Button type="button" variant="outline" size="sm" disabled={!selectedMessageIds.length || isDeleting} onClick={() => void handleDelete('me', selectedMessageIds)}><Trash2 className="mr-2 h-4 w-4" /> Hapus untuk saya</Button>{selectedMessageIds.length > 0 && allSelectedAreOwn && <Button type="button" variant="destructive" size="sm" disabled={isDeleting} onClick={() => void handleDelete('everyone', selectedMessageIds)}><Trash2 className="mr-2 h-4 w-4" /> Hapus untuk semua</Button>}</div>}
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5" aria-live="polite" aria-relevant="additions">
-            {!selectedContact ? <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><MessageCircle className="mr-2 h-4 w-4" /> Pilih admin untuk memulai percakapan.</div>
-              : !selectedContact.publicKey ? <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground"><ShieldCheck className="h-8 w-8 text-primary" /><p>Admin ini perlu membuka halaman Chat Admin sekali untuk menyiapkan kunci enkripsi.</p></div>
+          {selectedContact && currentUser?.username && <div className="flex items-start gap-2 border-b border-border bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground sm:px-5"><LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /><p className="min-w-0 leading-relaxed">Chat ini hanya bisa dilihat oleh <span className="font-semibold text-foreground">{currentUser.username}</span> dan <span className="font-semibold text-foreground">{selectedContact.username}</span>.</p></div>}
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6" aria-live="polite" aria-relevant="additions">
+            {!selectedContact ? <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-muted-foreground"><span className="flex h-12 w-12 items-center justify-center rounded-md border border-border bg-card"><MessageCircle className="h-5 w-5 text-primary" /></span><p>Pilih admin untuk memulai chat.</p></div>
+              : !selectedContact.publicKey ? <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-sm text-muted-foreground"><span className="flex h-12 w-12 items-center justify-center rounded-md border border-primary/20 bg-primary/5"><ShieldCheck className="h-5 w-5 text-primary" /></span><p className="max-w-sm leading-relaxed">Admin ini perlu membuka halaman Chat Admin sekali untuk menyiapkan kunci enkripsi.</p></div>
+                : !identityReady ? <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-sm text-muted-foreground"><span className="flex h-12 w-12 items-center justify-center rounded-md border border-destructive/20 bg-destructive/5"><AlertCircle className="h-5 w-5 text-destructive" /></span><p className="max-w-sm leading-relaxed">Kunci privat chat untuk akun {currentUser?.username} tidak cocok atau tidak tersedia di browser ini. Pesan terenkripsi hanya dapat dibaca dengan kunci asli akun tersebut.</p></div>
                 : isLoadingMessages ? <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat percakapan...</div>
-                  : messages.length === 0 ? <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground"><MessageCircle className="h-8 w-8 opacity-40" /><p className="text-sm">Belum ada pesan. Mulai percakapan pribadi.</p></div>
+                  : messages.length === 0 ? <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground"><span className="flex h-12 w-12 items-center justify-center rounded-md border border-border bg-card"><MessageCircle className="h-5 w-5 text-primary" /></span><p className="text-sm">Belum ada pesan. Mulai percakapan pribadi.</p></div>
                     : <div className="space-y-3">{messages.map((message) => {
                       const own = message.senderId === currentUserId;
                       const selected = selectedMessageIds.includes(message.id);
                       const replySender = message.replyTo?.senderId === currentUserId ? 'Anda' : selectedContact.username;
                       return <article key={message.id} className={`relative flex items-start gap-2 ${own ? 'justify-end' : 'justify-start'} ${selected ? 'rounded-md bg-primary/5 ring-1 ring-primary/30' : ''}`} onTouchStart={(event) => handleTouchStart(message, event)} onTouchEnd={(event) => handleTouchEnd(message, event)} onTouchMove={() => { if (holdTimer.current !== null) window.clearTimeout(holdTimer.current); }} onContextMenu={(event) => { event.preventDefault(); setActionMessageId(message.id); }}>
                         {isSelecting && <Checkbox checked={selected} onCheckedChange={() => toggleSelectedMessage(message.id)} aria-label={`Pilih pesan ${formatMessageTime(message.createdAt)}`} className="mt-3" />}
-                        <div className={`flex min-w-0 max-w-[88%] flex-col ${own ? 'items-end' : 'items-start'} sm:max-w-[76%]`}>
-                          <div className={`min-w-0 overflow-hidden rounded-lg border px-3 py-2 ${own ? 'border-primary/20 bg-primary text-primary-foreground' : 'border-border bg-muted text-foreground'}`}>
+                        <div className={`flex min-w-0 max-w-[90%] flex-col ${own ? 'items-end' : 'items-start'} sm:max-w-[76%]`}>
+                          <p className="mb-1 px-1 text-[11px] font-medium text-muted-foreground">{own ? currentUser?.username : selectedContact.username}</p>
+                          <div className={`min-w-0 overflow-hidden rounded-md border px-3.5 py-2.5 shadow-sm ${own ? 'border-primary/20 bg-primary text-primary-foreground' : 'border-border bg-card text-foreground'}`}>
                             {message.replyTo && <div className={`mb-2 border-l-2 pl-2 text-xs ${own ? 'border-primary-foreground/60 text-primary-foreground/80' : 'border-primary text-muted-foreground'}`}><span className="font-semibold">{replySender}</span><p className="line-clamp-2 break-words">{message.replyTo.text || '[Lampiran]'}</p></div>}
                             {message.decryptionError ? <p className="text-sm italic opacity-80">Pesan tidak dapat didekripsi di browser ini.</p> : <>
                               {message.media && <div className="mb-2">{message.attachmentUrl && message.media.contentType.startsWith('image/') ? <a href={message.attachmentUrl} target="_blank" rel="noreferrer" aria-label={`Buka ${message.media.fileName}`}><Image src={message.attachmentUrl} alt={message.media.fileName} width={480} height={360} unoptimized className="max-h-[360px] max-w-full rounded-md object-contain" /></a> : message.attachmentUrl ? <video src={message.attachmentUrl} controls playsInline preload="metadata" className="max-h-[360px] max-w-full rounded-md" aria-label={message.media.fileName} /> : <p className="text-xs opacity-75">Lampiran tidak tersedia.</p>}<p className="mt-1 max-w-full truncate text-[11px] opacity-75">{message.media.fileName}{message.encryptedAttachment ? ` · ${formatFileSize(message.encryptedAttachment.size)}` : ''}</p></div>}
@@ -531,19 +901,19 @@ export default function AdminDirectChat() {
                     })}<div ref={messagesEnd} /></div>}
           </div>
 
-          {connectionError && <Alert variant="destructive" className="mx-3 mb-2 py-2"><AlertCircle className="h-4 w-4" /><AlertDescription>{connectionError}</AlertDescription></Alert>}
-          {sendError && <Alert variant="destructive" className="mx-3 mb-2 py-2"><AlertCircle className="h-4 w-4" /><AlertDescription>{sendError}</AlertDescription></Alert>}
-          {selectedContact && <div className="border-t border-border p-3 sm:p-4">
+          {connectionError && <Alert variant="destructive" className="mx-3 mb-2 py-2 sm:mx-5"><AlertCircle className="h-4 w-4" /><AlertDescription>{connectionError}</AlertDescription></Alert>}
+          {sendError && <Alert variant="destructive" className="mx-3 mb-2 py-2 sm:mx-5"><AlertCircle className="h-4 w-4" /><AlertDescription>{sendError}</AlertDescription></Alert>}
+          {selectedContact && <div className="border-t border-border bg-card p-3 sm:p-4">
             {replyTo && <div className="mb-2 flex items-center gap-2 rounded-md border-l-2 border-primary bg-muted/50 px-3 py-2 text-xs"><Reply className="h-4 w-4 shrink-0 text-primary" /><div className="min-w-0 flex-1"><p className="font-semibold">Membalas {replyTo.senderId === currentUserId ? 'pesan Anda' : selectedContact.username}</p><p className="truncate text-muted-foreground">{replyTo.text || (replyTo.media ? '[Lampiran]' : '')}</p></div><Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="Batal membalas" onClick={() => setReplyTo(null)}><X className="h-4 w-4" /></Button></div>}
             {selectedFile && <div className="mb-2 flex min-w-0 items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">{selectedFile.type.startsWith('video/') ? <Video className="h-4 w-4 shrink-0 text-primary" /> : <ImagePlus className="h-4 w-4 shrink-0 text-primary" />}<span className="min-w-0 flex-1 truncate">{selectedFile.name}</span><span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(selectedFile.size)}</span>{!isSending && <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleFileChange(null)} aria-label="Hapus lampiran"><X className="h-4 w-4" /></Button>}</div>}
             {isSending && selectedFile && <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-primary transition-[width]" style={{ width: `${uploadProgress}%` }} /></div>}
-            <form onSubmit={handleSend} className="flex items-end gap-2">
+            <form onSubmit={handleSend} className="flex items-end gap-2 sm:gap-3">
               <input ref={fileInput} type="file" accept="image/*,video/*" className="sr-only" onChange={(event) => handleFileChange(event.target.files?.[0] || null)} disabled={isSending || !canSend} aria-label="Pilih gambar atau video" />
               <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => fileInput.current?.click()} disabled={isSending || !canSend} aria-label="Lampirkan gambar atau video" title="Lampirkan gambar/video"><Paperclip className="h-4 w-4" /></Button>
-              <Textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={canSend ? 'Tulis pesan terenkripsi...' : 'Menunggu kunci admin...'} maxLength={MAX_MESSAGE_LENGTH} rows={2} className="min-h-10 max-h-32 resize-y" disabled={isSending || !canSend} aria-label="Isi pesan" />
+              <Textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={canSend ? 'Tulis pesan terenkripsi...' : selectedContact.recoveryStatus === 'migrating' || recoveryStatus === 'migrating' ? 'Pengiriman dijeda selama migrasi kunci...' : 'Menunggu kunci admin...'} maxLength={MAX_MESSAGE_LENGTH} rows={2} className="min-h-10 max-h-32 resize-y" disabled={isSending || !canSend} aria-label="Isi pesan" />
               <Button type="submit" size="icon" className="h-10 w-10 shrink-0" disabled={isSending || !canSend || (!draft.trim() && !selectedFile)} aria-label="Kirim pesan">{isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : uploadProgress === 100 ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}</Button>
             </form>
-            <p className="mt-2 text-[11px] text-muted-foreground">Geser pesan untuk membalas · Tekan dan tahan untuk opsi · Pesan dan media terenkripsi di perangkat Anda</p>
+            <p className="mt-2 px-1 text-[11px] leading-relaxed text-muted-foreground">Geser pesan untuk membalas · Tekan dan tahan untuk opsi · Pesan dan media terenkripsi di perangkat Anda</p>
           </div>}
         </div>
       </section>

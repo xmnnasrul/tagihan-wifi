@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 
     const after = searchParams.get('after');
     const filter: Record<string, unknown> = {
-      participantIds: { $all: [account._id, otherAdmin._id] },
+      participantIds: { $all: [account._id, otherAdmin._id], $size: 2 },
       deletedFor: { $ne: account._id },
       expiresAt: { $gt: new Date() },
     };
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     await ensureAdminChatIndexes();
     const currentUser = await getCurrentUser();
     const sender = await User.findOne({ username: currentUser?.username, isActive: { $ne: false } })
-      .select('_id chatPublicKey')
+      .select('_id chatPublicKey chatRecoveryPublicKey chatRecoveryKeyId chatRecoveryStatus')
       .lean();
     if (!sender) return NextResponse.json({ error: 'Akun pengirim tidak ditemukan' }, { status: 401 });
 
@@ -85,30 +85,47 @@ export async function POST(request: Request) {
     const wrappedKeys = Array.isArray(body.wrappedKeys) ? body.wrappedKeys : [];
     if (!mongoose.isValidObjectId(recipientId) || recipientId === sender._id.toString()
       || !ciphertext || ciphertext.length > 40000 || !/^[A-Za-z0-9+/]{16}={0,2}$/.test(iv)
-      || wrappedKeys.length !== 2) {
+      || wrappedKeys.length < 2 || wrappedKeys.length > 4) {
       return NextResponse.json({ error: 'Pesan terenkripsi tidak valid' }, { status: 400 });
     }
 
     const recipient = await User.findOne({ _id: recipientId, isActive: { $ne: false } })
-      .select('_id role roles chatPublicKey')
+      .select('_id role roles chatPublicKey chatRecoveryPublicKey chatRecoveryKeyId chatRecoveryStatus')
       .lean();
     if (!recipient || !normalizeUserRoles(recipient.role, recipient.roles).includes('admin')
       || !sender.chatPublicKey || !recipient.chatPublicKey) {
       return NextResponse.json({ error: 'Kunci chat pengirim atau penerima belum tersedia' }, { status: 409 });
     }
-    const normalizedKeys = wrappedKeys.map((entry) => {
+    if (sender.chatRecoveryStatus === 'migrating' || recipient.chatRecoveryStatus === 'migrating') {
+      return NextResponse.json({ error: 'Pengiriman sementara dihentikan selama migrasi kunci pemulihan' }, { status: 409 });
+    }
+    const rawKeys = wrappedKeys.map((entry) => {
       const item = entry as Record<string, unknown>;
       return {
         userId: typeof item.userId === 'string' ? item.userId : '',
+        keyId: item.keyId === undefined ? 'primary' : item.keyId,
         encryptedKey: typeof item.encryptedKey === 'string' ? item.encryptedKey : '',
       };
     });
-    if (normalizedKeys.some((key) => !mongoose.isValidObjectId(key.userId)
+    const expectedWrappedKeys = [
+      { userId: sender._id.toString(), keyId: 'primary' },
+      ...(sender.chatRecoveryPublicKey ? [{ userId: sender._id.toString(), keyId: sender.chatRecoveryKeyId || 'recovery' }] : []),
+      { userId: recipient._id.toString(), keyId: 'primary' },
+      ...(recipient.chatRecoveryPublicKey ? [{ userId: recipient._id.toString(), keyId: recipient.chatRecoveryKeyId || 'recovery' }] : []),
+    ];
+    if (rawKeys.some((key) => !mongoose.isValidObjectId(key.userId)
+      || typeof key.keyId !== 'string' || key.keyId.length > 64
       || !/^[A-Za-z0-9+/]+={0,2}$/.test(key.encryptedKey) || key.encryptedKey.length > 2048)
-      || new Set(normalizedKeys.map((key) => key.userId)).size !== 2
-      || ![sender._id.toString(), recipient._id.toString()].every((id) => normalizedKeys.some((key) => key.userId === id))) {
+      || new Set(rawKeys.map((key) => `${key.userId}:${key.keyId}`)).size !== rawKeys.length
+      || rawKeys.length !== expectedWrappedKeys.length
+      || !expectedWrappedKeys.every((expected) => rawKeys.some((key) => key.userId === expected.userId && key.keyId === expected.keyId))) {
       return NextResponse.json({ error: 'Kunci pesan terenkripsi tidak valid' }, { status: 400 });
     }
+    const normalizedKeys = rawKeys.map((key) => ({
+      userId: new mongoose.Types.ObjectId(key.userId),
+      keyId: key.keyId as string,
+      encryptedKey: key.encryptedKey,
+    }));
 
     let attachment: { uploadId: string; size: number; totalChunks: number; iv: string } | null = null;
     if (body.attachment !== undefined && body.attachment !== null) {

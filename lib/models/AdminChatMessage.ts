@@ -13,7 +13,7 @@ export interface IAdminChatMessage extends Document {
   participantIds: Types.ObjectId[];
   ciphertext: string;
   iv: string;
-  wrappedKeys: { userId: Types.ObjectId; encryptedKey: string }[];
+  wrappedKeys: { userId: Types.ObjectId; keyId?: string; encryptedKey: string }[];
   deletedFor: Types.ObjectId[];
   attachment: IAdminChatAttachment | null;
   createdAt: Date;
@@ -35,6 +35,7 @@ const AdminChatMessageSchema = new Schema<IAdminChatMessage>({
   iv: { type: String, required: true, maxlength: 64 },
   wrappedKeys: [{
     userId: { type: Schema.Types.ObjectId, required: true },
+    keyId: { type: String, maxlength: 64, default: 'primary' },
     encryptedKey: { type: String, required: true, maxlength: 2048 },
   }],
   deletedFor: { type: [Schema.Types.ObjectId], default: [] },

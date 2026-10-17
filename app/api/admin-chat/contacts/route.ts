@@ -12,13 +12,35 @@ export async function GET() {
     await connectDB();
     const currentUser = await getCurrentUser();
     const [account, users] = await Promise.all([
-      User.findOne({ username: currentUser?.username, isActive: { $ne: false } }).select('_id chatPublicKey').lean(),
-      User.find({ isActive: { $ne: false } }).select('_id username role roles profileImage chatPublicKey').sort({ username: 1 }).lean(),
+      User.findOne({ username: currentUser?.username, isActive: { $ne: false } })
+        .select('_id chatPublicKey chatRecoveryPublicKey chatRecoveryKeyId chatRecoveryCiphertext chatRecoverySalt chatRecoveryIv chatRecoveryStatus chatRecoveryPendingPublicKey chatRecoveryPendingKeyId chatRecoveryPendingCiphertext chatRecoveryPendingSalt chatRecoveryPendingIv').lean(),
+      User.find({ isActive: { $ne: false } })
+        .select('_id username role roles profileImage chatPublicKey chatRecoveryPublicKey chatRecoveryKeyId chatRecoveryStatus')
+        .sort({ username: 1 }).lean(),
     ]);
     if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 401 });
 
     return NextResponse.json({
-      currentUser: { id: account._id.toString(), publicKey: account.chatPublicKey || '' },
+      currentUser: {
+        id: account._id.toString(),
+        publicKey: account.chatPublicKey || '',
+        recovery: account.chatRecoveryPublicKey ? {
+          publicKey: account.chatRecoveryPublicKey,
+          recoveryKeyId: account.chatRecoveryKeyId,
+          ciphertext: account.chatRecoveryCiphertext,
+          salt: account.chatRecoverySalt,
+          iv: account.chatRecoveryIv,
+          status: account.chatRecoveryStatus,
+        } : null,
+        pendingRecovery: account.chatRecoveryPendingPublicKey ? {
+          publicKey: account.chatRecoveryPendingPublicKey,
+          recoveryKeyId: account.chatRecoveryPendingKeyId,
+          ciphertext: account.chatRecoveryPendingCiphertext,
+          salt: account.chatRecoveryPendingSalt,
+          iv: account.chatRecoveryPendingIv,
+          status: account.chatRecoveryStatus,
+        } : null,
+      },
       contacts: users
         .filter((user) => user._id.toString() !== account._id.toString() && normalizeUserRoles(user.role, user.roles).includes('admin'))
         .map((user) => ({
@@ -26,6 +48,9 @@ export async function GET() {
           username: user.username,
           profileImage: user.profileImage || '',
           publicKey: user.chatPublicKey || '',
+          recoveryPublicKey: user.chatRecoveryPublicKey || '',
+          recoveryKeyId: user.chatRecoveryKeyId || '',
+          recoveryStatus: user.chatRecoveryStatus || 'none',
         })),
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {

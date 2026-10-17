@@ -9,6 +9,7 @@ export function serializeAdminChatMessage(message: Pick<IAdminChatMessage, '_id'
     iv: message.iv,
     wrappedKeys: message.wrappedKeys.map((key) => ({
       userId: key.userId.toString(),
+      keyId: key.keyId || 'primary',
       encryptedKey: key.encryptedKey,
     })),
     createdAt: message.createdAt.toISOString(),

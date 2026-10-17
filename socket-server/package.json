@@ -1,0 +1,13 @@
+{
+  "name": "wifi-billing-socket-server",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.3",
+    "socket.io": "^4.8.1"
+  }
+}

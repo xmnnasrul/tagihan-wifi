@@ -12,17 +12,17 @@ export const metadata: Metadata = {
   description: 'Manajemen Tagihan WiFi - Kelola pelanggan dan tagihan bulanan',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const nonce = headers().get('x-nonce') ?? undefined;
+  await headers();
 
   return (
     <html lang="id" suppressHydrationWarning>
-      <body className={`${inter.className} bg-background text-foreground antialiased`}>
-        <ThemeProvider nonce={nonce}>
+      <body suppressHydrationWarning className={`${inter.className} bg-background text-foreground antialiased`}>
+        <ThemeProvider>
           {children}
           <Toaster position="top-right" richColors closeButton />
         </ThemeProvider>

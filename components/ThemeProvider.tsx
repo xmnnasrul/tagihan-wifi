@@ -36,14 +36,13 @@ function ThemeSchedule() {
   return null;
 }
 
-export default function ThemeProvider({ children, nonce }: { children: React.ReactNode; nonce?: string }) {
+export default function ThemeProvider({ children }: { children: React.ReactNode }) {
   return (
     <NextThemesProvider
       attribute="class"
       defaultTheme={getScheduledTheme()}
       enableSystem={false}
       storageKey={THEME_PREFERENCE_KEY}
-      nonce={nonce}
     >
       <ThemeSchedule />
       {children}

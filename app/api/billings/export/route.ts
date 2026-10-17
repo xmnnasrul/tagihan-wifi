@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Billing from '@/lib/models/Billing';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { requireAuthenticatedUser } from '@/lib/session';
 import { getBillingPaidAmount, getBillingTotalDue } from '@/lib/billing-amounts';
 
@@ -65,13 +65,13 @@ export async function GET(request: Request) {
     });
 
     if (format === 'xlsx') {
-      const workbook = XLSX.utils.book_new();
-      const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Tagihan');
-      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Tagihan');
+      worksheet.addRows([headers, ...rows]);
+      const buffer = await workbook.xlsx.writeBuffer();
       const filename = `tagihan${month ? '_' + month : ''}${year ? '_' + year : ''}.xlsx`;
 
-      return new NextResponse(buffer, {
+      return new NextResponse(Buffer.from(buffer), {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'Content-Disposition': `attachment; filename="${filename}"`,

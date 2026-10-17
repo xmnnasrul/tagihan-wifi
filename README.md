@@ -11,6 +11,7 @@ Panduan ini ditujukan untuk pemilik aplikasi atau operator yang belum terbiasa d
 - [Menyiapkan MongoDB Atlas](#menyiapkan-mongodb-atlas)
 - [Menjalankan di Komputer Sendiri](#menjalankan-di-komputer-sendiri)
 - [Deploy ke Vercel](#deploy-ke-vercel)
+- [Deploy Socket.IO Terpisah](#deploy-socketio-terpisah)
 - [Alternatif Deploy](#alternatif-deploy)
 - [Membuat Akun Admin Pertama](#membuat-akun-admin-pertama)
 - [Keamanan](#keamanan)
@@ -206,6 +207,74 @@ Invoke-RestMethod -Method Post -Uri "https://DOMAIN-ANDA/api/seed" -Headers @{ "
 Jika berhasil, server membalas `Seed berhasil`. Masuk dengan username `admin` dan password yang Anda masukkan pada `INITIAL_ADMIN_PASSWORD`, lalu segera ganti password melalui **Profil**.
 
 Setelah admin berhasil dibuat, hapus `SEED_SECRET` dan `INITIAL_ADMIN_PASSWORD` dari Environment Variables hosting lalu deploy ulang. Jangan menghapus `MONGODB_URI` atau `JWT_SECRET`.
+
+## Deploy Socket.IO Terpisah
+
+Socket.IO membutuhkan proses server Node.js yang terus berjalan. Karena website utama berjalan di Vercel, jalankan server Socket.IO sebagai **Web Service terpisah**, misalnya di Render. Ini bukan project Vercel baru dan tidak perlu repository GitHub baru: starter server sudah ada di folder `socket-server/` dalam repository yang sama, dan Render akan menjalankan folder itu sebagai layanan sendiri.
+
+> Event realtime yang tersedia saat ini adalah notifikasi `payment.received`, khusus untuk akun admin dan collector. Event ini bukan sumber data utama; database tetap menjadi sumber kebenaran.
+
+### 1. Jalankan starter server secara lokal
+
+File server sudah tersedia di `socket-server/server.js`. Dari folder utama repository, jalankan:
+
+```bash
+cd socket-server
+npm install
+```
+
+Untuk menguji dari website lokal, tambahkan URL ini ke `.env.local` di folder utama repository:
+
+```env
+NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
+SOCKET_SERVER_URL=http://localhost:3001
+SOCKET_PUBLISH_SECRET=secret-random-lokal-yang-sama-dengan-server-socket
+```
+
+Gunakan nilai acak yang berbeda dari `JWT_SECRET` untuk `SOCKET_PUBLISH_SECRET`. Jalankan server dengan origin Next.js lokal dan dua secret yang sama dengan aplikasi. Contoh Bash membaca secret dari `.env.local`, tanpa mencetak nilainya:
+
+```bash
+JWT_SECRET="$(sed -n 's/^JWT_SECRET=//p' ../.env.local)" SOCKET_PUBLISH_SECRET="$(sed -n 's/^SOCKET_PUBLISH_SECRET=//p' ../.env.local)" APP_ORIGIN=http://localhost:3000 npm start
+```
+
+Di PowerShell, gunakan:
+
+```powershell
+$env:JWT_SECRET = (Get-Content ..\.env.local | Where-Object { $_ -match '^JWT_SECRET=' }) -replace '^JWT_SECRET=', ''
+$env:SOCKET_PUBLISH_SECRET = (Get-Content ..\.env.local | Where-Object { $_ -match '^SOCKET_PUBLISH_SECRET=' }) -replace '^SOCKET_PUBLISH_SECRET=', ''
+$env:APP_ORIGIN = "http://localhost:3000"
+npm start
+```
+
+Biarkan proses ini berjalan saat menguji, lalu mulai ulang Next.js agar membaca URL dan secret publisher. Komponen client sudah meminta tiket saat connect/reconnect dan menampilkan toast pembayaran.
+
+### 2. Deploy folder server ke Render
+
+1. Di Render, pilih **New → Web Service**, lalu hubungkan repository GitHub yang sama dengan website.
+2. Pada pengaturan layanan, isi **Root Directory** dengan `socket-server`.
+3. Isi **Build Command** dengan `npm ci` dan **Start Command** dengan `npm start`.
+4. Tambahkan `APP_ORIGIN` dengan origin website Vercel yang persis, misalnya `https://nama-aplikasi.vercel.app` (tanpa garis miring di akhir). Beberapa origin boleh dipisahkan koma; jangan gunakan wildcard untuk Preview.
+5. Tambahkan `JWT_SECRET` dengan nilai rahasia yang sama persis seperti di Vercel. Tandai sebagai secret di Render dan jangan beri awalan `NEXT_PUBLIC_`.
+6. Tambahkan `SOCKET_PUBLISH_SECRET` dengan nilai acak terpisah yang sama dengan environment Vercel, dan tandai sebagai secret.
+7. Isi **Health Check Path** dengan `/health`, lalu buat layanan dan tunggu sampai statusnya berjalan.
+
+Render menyediakan variable `PORT`; jangan menetapkan `PORT` sendiri. Setelah deploy, catat URL layanan Render, misalnya `https://nama-socket.onrender.com`.
+
+### 3. Hubungkan website Vercel ke server
+
+1. Di Vercel, buka **Project → Settings → Environment Variables**.
+2. Tambahkan `NEXT_PUBLIC_SOCKET_URL` dengan URL layanan Render, misalnya `https://nama-socket.onrender.com`.
+3. Tambahkan `SOCKET_SERVER_URL` dengan URL Render yang sama. Variable ini server-only, jangan beri awalan `NEXT_PUBLIC_`.
+4. Tambahkan `SOCKET_PUBLISH_SECRET` yang sama dengan secret di Render. Pastikan `JWT_SECRET` juga sama persis di Vercel dan Render.
+5. Pilih environment yang dipakai, biasanya **Production**, lalu lakukan redeploy. Client Socket.IO sudah dipasang pada layout aplikasi.
+
+### 4. Hak akses dan pengujian
+
+Server membatasi origin dan memverifikasi tiket bertanda tangan ketika handshake. Endpoint `POST /api/auth/socket-ticket` menerbitkan tiket 15 menit setelah sesi dan status akun diperiksa. Peran dalam tiket menentukan room: event pembayaran dikirim hanya ke room `admin` dan `collector`, bukan role `user`.
+
+`payment.received` dipancarkan dari `POST /api/billings` setelah pembayaran tersimpan. Payload hanya memuat nama pelanggan, nominal, periode, metode, pencatat, dan waktu. Jika Socket.IO sedang tidak tersedia, pembayaran tetap berhasil tersimpan tetapi notifikasi realtime bisa terlewat; jangan jadikan socket satu-satunya catatan transaksi.
+
+Untuk menguji, buka sesi admin/collector dan sesi role `user`, lalu catat pembayaran. Admin dan collector harus mendapat toast `Pembayaran diterima`; user tidak. Jangan mengekspos `JWT_SECRET`, `SOCKET_PUBLISH_SECRET`, atau `MONGODB_URI` dengan awalan `NEXT_PUBLIC_`. Jika nanti ada event lain, batasi penerima dan otorisasi event tersebut secara terpisah. Jika server dijalankan di beberapa instance, tambahkan adapter Socket.IO seperti Redis agar broadcast antar-instance berfungsi.
 
 ## Alternatif Deploy
 

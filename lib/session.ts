@@ -6,7 +6,7 @@ import User from './models/User';
 import { canAccessApi, normalizeUserRoles, UserRole } from './roles';
 
 export async function getCurrentUser(): Promise<TokenPayload | null> {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
   return verifyToken(token);

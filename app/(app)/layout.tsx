@@ -1,9 +1,11 @@
 import NavSidebar from '@/components/NavSidebar';
 import CurrentUserProvider from '@/components/CurrentUserProvider';
+import SocketConnection from '@/components/SocketConnection';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <CurrentUserProvider>
+      <SocketConnection />
       <div className="min-h-screen bg-background">
         <NavSidebar />
         <main className="min-w-0 overflow-x-hidden pt-14 lg:pl-72 lg:pt-0">

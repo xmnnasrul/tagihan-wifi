@@ -26,12 +26,12 @@ function parseByteRange(header: string, size: number): { start: number; end: num
   return { start, end: Math.min(requestedEnd, size - 1) };
 }
 
-export async function GET(request: Request, { params }: { params: { uploadId: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ uploadId: string }> }) {
   try {
     const authError = await requireAdmin();
     if (authError) return authError;
 
-    const { uploadId } = params;
+    const { uploadId } = await params;
     if (!/^[0-9a-f-]{36}$/i.test(uploadId)) {
       return NextResponse.json({ error: 'Lampiran tidak ditemukan' }, { status: 404 });
     }

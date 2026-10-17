@@ -1,5 +1,8 @@
 import jwt from 'jsonwebtoken';
 import type { UserRole } from '@/lib/roles';
+import { COOKIE_NAME } from './auth-constants';
+
+export { COOKIE_NAME };
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -9,8 +12,6 @@ function getJwtSecret(): string {
   }
   return 'wifi-billing-secret-change-in-development';
 }
-const COOKIE_NAME = 'auth_token';
-
 export interface TokenPayload {
   username: string;
   role: string;
@@ -22,6 +23,18 @@ export function signToken(payload: TokenPayload): string {
   return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' });
 }
 
+export function signSocketTicket(payload: TokenPayload): string {
+  return jwt.sign(
+    { ...payload, purpose: 'socket-ticket' },
+    getJwtSecret(),
+    {
+      algorithm: 'HS256',
+      audience: 'wifi-billing-socket',
+      expiresIn: '15m',
+    }
+  );
+}
+
 export function verifyToken(token: string): TokenPayload | null {
   try {
     return jwt.verify(token, getJwtSecret()) as TokenPayload;
@@ -29,5 +42,3 @@ export function verifyToken(token: string): TokenPayload | null {
     return null;
   }
 }
-
-export { COOKIE_NAME };

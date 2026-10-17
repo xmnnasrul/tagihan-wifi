@@ -1,27 +1,23 @@
-import type { IAdminChatAttachment } from './models/AdminChatMessage';
+import type { IAdminChatMessage } from './models/AdminChatMessage';
 
-interface SerializableAdminChatMessage {
-  _id: { toString(): string };
-  senderUsername: string;
-  text: string;
-  createdAt: Date;
-  expiresAt: Date;
-  attachment: IAdminChatAttachment | null;
-}
-
-export function serializeAdminChatMessage(message: SerializableAdminChatMessage) {
+export function serializeAdminChatMessage(message: Pick<IAdminChatMessage, '_id' | 'senderId' | 'recipientId' | 'ciphertext' | 'iv' | 'wrappedKeys' | 'createdAt' | 'expiresAt' | 'attachment'>) {
   return {
     id: message._id.toString(),
-    senderUsername: message.senderUsername,
-    text: message.text,
+    senderId: message.senderId.toString(),
+    recipientId: message.recipientId.toString(),
+    ciphertext: message.ciphertext,
+    iv: message.iv,
+    wrappedKeys: message.wrappedKeys.map((key) => ({
+      userId: key.userId.toString(),
+      encryptedKey: key.encryptedKey,
+    })),
     createdAt: message.createdAt.toISOString(),
     expiresAt: message.expiresAt.toISOString(),
     attachment: message.attachment ? {
       uploadId: message.attachment.uploadId,
-      fileName: message.attachment.fileName,
-      contentType: message.attachment.contentType,
       size: message.attachment.size,
       totalChunks: message.attachment.totalChunks,
+      iv: message.attachment.iv,
       url: `/api/admin-chat/media/${message.attachment.uploadId}`,
     } : null,
   };

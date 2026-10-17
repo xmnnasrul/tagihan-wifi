@@ -28,7 +28,7 @@ Panduan ini ditujukan untuk pemilik aplikasi atau operator yang belum terbiasa d
 - **Laporan tunggakan:** melihat saldo tagihan per pelanggan dan periode.
 - **Arsip pelanggan:** mengarsipkan dan memulihkan pelanggan. Penghapusan permanen juga menghapus riwayat tagihannya dan tidak dapat dibatalkan.
 - **Ekspor:** mengunduh data tagihan sebagai CSV atau Excel.
-- **Chat admin:** ruang grup khusus admin untuk mengirim pesan, gambar, dan video tanpa kompresi; pesan dan media dihapus otomatis setelah 15 hari.
+- **Chat admin:** percakapan satu lawan satu antar-admin dengan enkripsi end-to-end untuk pesan, balasan, dan media. Kunci privat disimpan di browser; setiap admin perlu membuka halaman chat untuk pertama kali dari browser yang akan dipakai. Pesan dan media dihapus otomatis setelah 15 hari.
 - **Audit:** melihat catatan perubahan data dan akun.
 - **Pengelolaan akun:** admin dapat membuat akun dan mengatur role.
 - **Profil dan tema:** halaman profil mengelola username dan password sesuai role; tema dapat mengikuti jadwal waktu Jakarta atau dipilih manual.

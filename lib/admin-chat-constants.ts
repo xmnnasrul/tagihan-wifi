@@ -1,6 +1,7 @@
 export const ADMIN_CHAT_RETENTION_DAYS = 15;
 export const ADMIN_CHAT_RETENTION_MS = ADMIN_CHAT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 export const ADMIN_CHAT_UPLOAD_CHUNK_SIZE = 1024 * 1024;
+export const ADMIN_CHAT_MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024;
 
 export function getAdminChatExpiry(startedAt = new Date()): Date {
   return new Date(startedAt.getTime() + ADMIN_CHAT_RETENTION_MS);

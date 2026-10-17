@@ -4,6 +4,7 @@
   "private": true,
   "main": "server.js",
   "scripts": {
+    "dev": "APP_ORIGIN=http://localhost:3000 node --env-file=../.env.local --watch server.js",
     "start": "node server.js"
   },
   "dependencies": {

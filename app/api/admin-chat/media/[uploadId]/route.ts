@@ -3,7 +3,8 @@ import { connectDB } from '@/lib/mongodb';
 import { ADMIN_CHAT_UPLOAD_CHUNK_SIZE } from '@/lib/admin-chat';
 import AdminChatMediaChunk from '@/lib/models/AdminChatMediaChunk';
 import AdminChatMessage from '@/lib/models/AdminChatMessage';
-import { requireAdmin } from '@/lib/session';
+import User from '@/lib/models/User';
+import { getCurrentUser, requireAdmin } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,10 +38,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ uplo
     }
 
     await connectDB();
+    const currentUser = await getCurrentUser();
+    const account = await User.findOne({ username: currentUser?.username, isActive: { $ne: false } }).select('_id').lean();
+    if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 401 });
     const message = await AdminChatMessage.findOne({
       'attachment.uploadId': uploadId,
+      participantIds: account._id,
+      deletedFor: { $ne: account._id },
       expiresAt: { $gt: new Date() },
-    }).select('attachment').lean();
+    }).select('attachment senderId').lean();
     if (!message?.attachment) {
       return NextResponse.json({ error: 'Lampiran tidak ditemukan atau sudah kedaluwarsa' }, { status: 404 });
     }
@@ -62,6 +68,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ uplo
     const lastChunk = Math.floor(end / ADMIN_CHAT_UPLOAD_CHUNK_SIZE);
     const cursor = AdminChatMediaChunk.find({
       uploadId,
+      uploadedBy: message.senderId,
       chunkIndex: { $gte: firstChunk, $lte: lastChunk },
     }).select('chunkIndex data').sort({ chunkIndex: 1 }).lean().cursor();
     let nextChunkIndex = firstChunk;
@@ -106,9 +113,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ uplo
     const headers = new Headers({
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'private, no-store',
-      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`,
+      'Content-Disposition': 'inline',
       'Content-Length': String(length),
-      'Content-Type': attachment.contentType,
+      'Content-Type': 'application/octet-stream',
       'X-Content-Type-Options': 'nosniff',
     });
     if (byteRange) headers.set('Content-Range', `bytes ${start}-${end}/${attachment.size}`);

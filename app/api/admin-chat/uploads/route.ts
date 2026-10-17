@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
-import { ensureAdminChatIndexes, getAdminChatExpiry, ADMIN_CHAT_UPLOAD_CHUNK_SIZE } from '@/lib/admin-chat';
+import { ensureAdminChatIndexes, getAdminChatExpiry, ADMIN_CHAT_MAX_ATTACHMENT_SIZE, ADMIN_CHAT_UPLOAD_CHUNK_SIZE } from '@/lib/admin-chat';
 import AdminChatMediaChunk from '@/lib/models/AdminChatMediaChunk';
-import { requireAdmin } from '@/lib/session';
-import { isAdminChatMediaType, sanitizeAdminChatFileName } from '@/lib/admin-chat-constants';
+import User from '@/lib/models/User';
+import { getCurrentUser, requireAdmin } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,22 +14,22 @@ export async function POST(request: Request) {
 
     await connectDB();
     await ensureAdminChatIndexes();
+    const currentUser = await getCurrentUser();
+    const account = await User.findOne({ username: currentUser?.username, isActive: { $ne: false } }).select('_id').lean();
+    if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 401 });
 
     const formData = await request.formData();
     const chunk = formData.get('chunk');
     const uploadId = String(formData.get('uploadId') || '');
-    const fileName = sanitizeAdminChatFileName(String(formData.get('fileName') || ''));
-    const contentType = String(formData.get('contentType') || '');
     const fileSize = Number(formData.get('fileSize'));
     const totalChunks = Number(formData.get('totalChunks'));
     const chunkIndex = Number(formData.get('chunkIndex'));
 
     if (!(chunk instanceof File)
       || !/^[0-9a-f-]{36}$/i.test(uploadId)
-      || !fileName
-      || !isAdminChatMediaType(contentType)
       || !Number.isSafeInteger(fileSize)
-      || fileSize <= 0
+      || fileSize <= 16
+      || fileSize > ADMIN_CHAT_MAX_ATTACHMENT_SIZE + 16
       || !Number.isSafeInteger(totalChunks)
       || totalChunks !== Math.ceil(fileSize / ADMIN_CHAT_UPLOAD_CHUNK_SIZE)
       || !Number.isSafeInteger(chunkIndex)
@@ -49,11 +49,10 @@ export async function POST(request: Request) {
         uploadId,
         chunkIndex,
         data: Buffer.from(await chunk.arrayBuffer()),
-        fileName,
-        contentType,
         fileSize,
         totalChunks,
         expiresAt: getAdminChatExpiry(),
+        uploadedBy: account._id,
       } },
       { upsert: true }
     );

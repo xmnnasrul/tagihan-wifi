@@ -3,9 +3,11 @@ import { connectDB } from '@/lib/mongodb';
 import { ensureAdminChatIndexes, getAdminChatExpiry, ADMIN_CHAT_UPLOAD_CHUNK_SIZE } from '@/lib/admin-chat';
 import AdminChatMediaChunk from '@/lib/models/AdminChatMediaChunk';
 import AdminChatMessage from '@/lib/models/AdminChatMessage';
+import User from '@/lib/models/User';
 import { getCurrentUser, requireAdmin } from '@/lib/session';
-import { isAdminChatMediaType, sanitizeAdminChatFileName } from '@/lib/admin-chat-constants';
 import { serializeAdminChatMessage } from '@/lib/admin-chat-serialization';
+import { normalizeUserRoles } from '@/lib/roles';
+import mongoose from 'mongoose';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,9 +20,30 @@ export async function GET(request: Request) {
 
     await connectDB();
     await ensureAdminChatIndexes();
+    const currentUser = await getCurrentUser();
+    const account = await User.findOne({ username: currentUser?.username, isActive: { $ne: false } })
+      .select('_id role roles')
+      .lean();
+    if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 401 });
+
     const { searchParams } = new URL(request.url);
+    const otherUserId = searchParams.get('with');
+    if (!otherUserId || !mongoose.isValidObjectId(otherUserId) || otherUserId === account._id.toString()) {
+      return NextResponse.json({ error: 'Pilih admin tujuan chat yang valid' }, { status: 400 });
+    }
+    const otherAdmin = await User.findOne({ _id: otherUserId, isActive: { $ne: false } })
+      .select('_id role roles')
+      .lean();
+    if (!otherAdmin || !normalizeUserRoles(otherAdmin.role, otherAdmin.roles).includes('admin')) {
+      return NextResponse.json({ error: 'Admin tidak ditemukan' }, { status: 404 });
+    }
+
     const after = searchParams.get('after');
-    const filter: Record<string, unknown> = { expiresAt: { $gt: new Date() } };
+    const filter: Record<string, unknown> = {
+      participantIds: { $all: [account._id, otherAdmin._id] },
+      deletedFor: { $ne: account._id },
+      expiresAt: { $gt: new Date() },
+    };
     let messages;
 
     if (after) {
@@ -35,17 +58,7 @@ export async function GET(request: Request) {
       messages.reverse();
     }
 
-    return NextResponse.json({ messages: messages.map((message) => ({
-      id: message._id.toString(),
-      senderUsername: message.senderUsername,
-      text: message.text,
-      createdAt: message.createdAt.toISOString(),
-      expiresAt: message.expiresAt.toISOString(),
-      attachment: message.attachment ? {
-        ...message.attachment,
-        url: `/api/admin-chat/media/${message.attachment.uploadId}`,
-      } : null,
-    })) }, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json({ messages: messages.map(serializeAdminChatMessage) }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('GET /api/admin-chat/messages failed:', error);
     return NextResponse.json({ error: 'Gagal memuat pesan chat' }, { status: 500 });
@@ -60,65 +73,74 @@ export async function POST(request: Request) {
     await connectDB();
     await ensureAdminChatIndexes();
     const currentUser = await getCurrentUser();
-    const body = await request.json() as { text?: unknown; attachment?: unknown };
-    const text = typeof body.text === 'string' ? body.text.trim() : '';
-    if (text.length > 4000) {
-      return NextResponse.json({ error: 'Pesan maksimal 4.000 karakter' }, { status: 400 });
+    const sender = await User.findOne({ username: currentUser?.username, isActive: { $ne: false } })
+      .select('_id chatPublicKey')
+      .lean();
+    if (!sender) return NextResponse.json({ error: 'Akun pengirim tidak ditemukan' }, { status: 401 });
+
+    const body = await request.json() as Record<string, unknown>;
+    const recipientId = typeof body.recipientId === 'string' ? body.recipientId : '';
+    const ciphertext = typeof body.ciphertext === 'string' ? body.ciphertext : '';
+    const iv = typeof body.iv === 'string' ? body.iv : '';
+    const wrappedKeys = Array.isArray(body.wrappedKeys) ? body.wrappedKeys : [];
+    if (!mongoose.isValidObjectId(recipientId) || recipientId === sender._id.toString()
+      || !ciphertext || ciphertext.length > 40000 || !/^[A-Za-z0-9+/]{16}={0,2}$/.test(iv)
+      || wrappedKeys.length !== 2) {
+      return NextResponse.json({ error: 'Pesan terenkripsi tidak valid' }, { status: 400 });
     }
 
-    let attachment = null;
-    if (body.attachment !== undefined && body.attachment !== null) {
-      if (typeof body.attachment !== 'object') {
-        return NextResponse.json({ error: 'Lampiran tidak valid' }, { status: 400 });
-      }
+    const recipient = await User.findOne({ _id: recipientId, isActive: { $ne: false } })
+      .select('_id role roles chatPublicKey')
+      .lean();
+    if (!recipient || !normalizeUserRoles(recipient.role, recipient.roles).includes('admin')
+      || !sender.chatPublicKey || !recipient.chatPublicKey) {
+      return NextResponse.json({ error: 'Kunci chat pengirim atau penerima belum tersedia' }, { status: 409 });
+    }
+    const normalizedKeys = wrappedKeys.map((entry) => {
+      const item = entry as Record<string, unknown>;
+      return {
+        userId: typeof item.userId === 'string' ? item.userId : '',
+        encryptedKey: typeof item.encryptedKey === 'string' ? item.encryptedKey : '',
+      };
+    });
+    if (normalizedKeys.some((key) => !mongoose.isValidObjectId(key.userId)
+      || !/^[A-Za-z0-9+/]+={0,2}$/.test(key.encryptedKey) || key.encryptedKey.length > 2048)
+      || new Set(normalizedKeys.map((key) => key.userId)).size !== 2
+      || ![sender._id.toString(), recipient._id.toString()].every((id) => normalizedKeys.some((key) => key.userId === id))) {
+      return NextResponse.json({ error: 'Kunci pesan terenkripsi tidak valid' }, { status: 400 });
+    }
 
+    let attachment: { uploadId: string; size: number; totalChunks: number; iv: string } | null = null;
+    if (body.attachment !== undefined && body.attachment !== null) {
+      if (typeof body.attachment !== 'object') return NextResponse.json({ error: 'Lampiran tidak valid' }, { status: 400 });
       const rawAttachment = body.attachment as Record<string, unknown>;
       const uploadId = typeof rawAttachment.uploadId === 'string' ? rawAttachment.uploadId : '';
-      const fileName = typeof rawAttachment.fileName === 'string'
-        ? sanitizeAdminChatFileName(rawAttachment.fileName)
-        : '';
-      const contentType = typeof rawAttachment.contentType === 'string' ? rawAttachment.contentType : '';
       const size = Number(rawAttachment.size);
       const totalChunks = Number(rawAttachment.totalChunks);
-
-      if (!/^[0-9a-f-]{36}$/i.test(uploadId)
-        || !fileName
-        || !isAdminChatMediaType(contentType)
-        || !Number.isSafeInteger(size)
-        || size <= 0
-        || !Number.isSafeInteger(totalChunks)
-        || totalChunks !== Math.ceil(size / ADMIN_CHAT_UPLOAD_CHUNK_SIZE)) {
+      const attachmentIv = typeof rawAttachment.iv === 'string' ? rawAttachment.iv : '';
+      if (!/^[0-9a-f-]{36}$/i.test(uploadId) || !Number.isSafeInteger(size) || size <= 16
+        || !Number.isSafeInteger(totalChunks) || totalChunks !== Math.ceil(size / ADMIN_CHAT_UPLOAD_CHUNK_SIZE)
+        || !/^[A-Za-z0-9+/]{16}={0,2}$/.test(attachmentIv)) {
         return NextResponse.json({ error: 'Informasi lampiran tidak valid' }, { status: 400 });
       }
-
-      const [uploadedChunks, firstChunk] = await Promise.all([
-        AdminChatMediaChunk.countDocuments({ uploadId }),
-        AdminChatMediaChunk.findOne({ uploadId }).select('fileName contentType fileSize totalChunks').lean(),
-      ]);
-      if (uploadedChunks !== totalChunks
-        || !firstChunk
-        || firstChunk.fileName !== fileName
-        || firstChunk.contentType !== contentType
-        || firstChunk.fileSize !== size
-        || firstChunk.totalChunks !== totalChunks) {
-        return NextResponse.json({ error: 'Unggahan belum lengkap' }, { status: 400 });
-      }
-
-      attachment = { uploadId, fileName, contentType, size, totalChunks };
-    }
-
-    if (!text && !attachment) {
-      return NextResponse.json({ error: 'Tulis pesan atau pilih gambar/video' }, { status: 400 });
+      const uploadedChunks = await AdminChatMediaChunk.countDocuments({ uploadId, uploadedBy: sender._id });
+      if (uploadedChunks !== totalChunks) return NextResponse.json({ error: 'Unggahan terenkripsi belum lengkap' }, { status: 400 });
+      attachment = { uploadId, size, totalChunks, iv: attachmentIv };
     }
 
     const expiresAt = getAdminChatExpiry();
     if (attachment) {
-      await AdminChatMediaChunk.updateMany({ uploadId: attachment.uploadId }, { $set: { expiresAt } });
+      await AdminChatMediaChunk.updateMany({ uploadId: attachment.uploadId, uploadedBy: sender._id }, { $set: { expiresAt } });
     }
 
     const message = await AdminChatMessage.create({
-      senderUsername: currentUser?.username || 'Admin',
-      text,
+      senderId: sender._id,
+      recipientId: recipient._id,
+      participantIds: [sender._id, recipient._id],
+      ciphertext,
+      iv,
+      wrappedKeys: normalizedKeys,
+      deletedFor: [],
       attachment,
       expiresAt,
     });
@@ -127,5 +149,53 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('POST /api/admin-chat/messages failed:', error);
     return NextResponse.json({ error: 'Gagal mengirim pesan' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const authError = await requireAdmin();
+    if (authError) return authError;
+
+    await connectDB();
+    const currentUser = await getCurrentUser();
+    const account = await User.findOne({ username: currentUser?.username, isActive: { $ne: false } }).select('_id').lean();
+    if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 401 });
+
+    const body = await request.json() as { messageIds?: unknown; scope?: unknown };
+    if (!Array.isArray(body.messageIds) || body.messageIds.length === 0 || body.messageIds.length > 100
+      || body.messageIds.some((id) => typeof id !== 'string' || !mongoose.isValidObjectId(id))) {
+      return NextResponse.json({ error: 'Pilih 1 sampai 100 pesan yang valid' }, { status: 400 });
+    }
+    if (body.scope !== 'me' && body.scope !== 'everyone') {
+      return NextResponse.json({ error: 'Jenis penghapusan tidak valid' }, { status: 400 });
+    }
+
+    const messageIds = [...new Set(body.messageIds as string[])].map((id) => new mongoose.Types.ObjectId(id));
+    const participantFilter = { _id: { $in: messageIds }, participantIds: account._id, expiresAt: { $gt: new Date() } };
+    if (body.scope === 'me') {
+      const result = await AdminChatMessage.updateMany(
+        { ...participantFilter, deletedFor: { $ne: account._id } },
+        { $addToSet: { deletedFor: account._id } },
+      );
+      return NextResponse.json({ deleted: result.modifiedCount });
+    }
+
+    const messages = await AdminChatMessage.find({ ...participantFilter, senderId: account._id }).select('_id attachment').lean();
+    if (messages.length !== messageIds.length) {
+      return NextResponse.json({ error: 'Hapus untuk semua hanya tersedia untuk pesan yang Anda kirim' }, { status: 403 });
+    }
+
+    const uploadIds = messages.flatMap((message) => message.attachment?.uploadId ? [message.attachment.uploadId] : []);
+    await Promise.all([
+      AdminChatMessage.deleteMany({ _id: { $in: messageIds }, senderId: account._id }),
+      uploadIds.length
+        ? AdminChatMediaChunk.deleteMany({ uploadId: { $in: uploadIds }, uploadedBy: account._id })
+        : Promise.resolve(),
+    ]);
+    return NextResponse.json({ deleted: messages.length });
+  } catch (error) {
+    console.error('DELETE /api/admin-chat/messages failed:', error);
+    return NextResponse.json({ error: 'Gagal menghapus pesan' }, { status: 500 });
   }
 }

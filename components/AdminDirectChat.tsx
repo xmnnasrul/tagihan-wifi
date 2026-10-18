@@ -119,6 +119,8 @@ export default function AdminDirectChat() {
   const [recoveryPassword, setRecoveryPassword] = useState('');
   const [recoveryConfirmPassword, setRecoveryConfirmPassword] = useState('');
   const [recoveryError, setRecoveryError] = useState('');
+  const [showEndToEndWarning, setShowEndToEndWarning] = useState(false);
+  const recoverySetupPromptKey = 'tagihan-admin-chat-recovery-popup-shown';
   const [recoveryProgress, setRecoveryProgress] = useState('');
   const [isRecoveryBusy, setIsRecoveryBusy] = useState(false);
   const [selectedContactId, setSelectedContactId] = useState('');
@@ -143,6 +145,7 @@ export default function AdminDirectChat() {
   const holdTimer = useRef<number | null>(null);
   const touchStartX = useRef<number | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
+  const messageBubblesRef = useRef(new Map<string, HTMLDivElement>());
   const recoveryMigrationActive = useRef(false);
 
   const selectedContact = contacts.find((contact) => contact.id === selectedContactId) || null;
@@ -152,6 +155,19 @@ export default function AdminDirectChat() {
     && recoveryStatus === 'ready' && accountPublicKey && selectedContact?.publicKey
     && selectedContact.recoveryStatus !== 'migrating');
   const selectedMessages = messages.filter((message) => selectedMessageIds.includes(message.id));
+
+  useEffect(() => {
+    if (!isAdmin || !currentUserId || recoveryMode || recoveryStatus === 'ready' || recoveryStatus === 'migrating') {
+      return;
+    }
+
+    if (typeof window === 'undefined') return;
+    const hasSeenRecoverySetupPrompt = window.localStorage.getItem(recoverySetupPromptKey) === 'true';
+    if (!hasSeenRecoverySetupPrompt) {
+      window.localStorage.setItem(recoverySetupPromptKey, 'true');
+      setRecoveryMode('setup');
+    }
+  }, [currentUserId, isAdmin, recoveryMode, recoveryStatus, recoverySetupPromptKey]);
   const allSelectedAreOwn = selectedMessages.length === selectedMessageIds.length
     && selectedMessages.every((message) => message.senderId === currentUserId);
 
@@ -739,6 +755,16 @@ export default function AdminDirectChat() {
     setActionMessageId('');
     setIsSelecting(false);
     setSelectedMessageIds([]);
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      messageBubblesRef.current.get(message.id)?.animate(
+        [
+          { transform: 'translateX(0)' },
+          { transform: 'translateX(70px)', offset: 0.45 },
+          { transform: 'translateX(0)' },
+        ],
+        { duration: 500, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
+      );
+    }
   };
 
   const handleTouchStart = (message: ChatMessage, event: TouchEvent<HTMLElement>) => {
@@ -771,44 +797,52 @@ export default function AdminDirectChat() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-5 sm:space-y-6">
-      <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between sm:pb-5">
+      <header className="flex flex-col gap-2 border-b border-border pb-3 sm:pb-4">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-primary">Komunikasi internal</p>
           <h1 className="text-2xl font-bold sm:text-3xl">Chat Admin</h1>
-          <p className="text-sm text-muted-foreground">Percakapan pribadi dengan enkripsi end-to-end.</p>
+          <p className="text-center text-sm text-muted-foreground sm:text-left">
+            Percakapan pribadi di
+            <button type="button" onClick={() => setShowEndToEndWarning((current) => !current)} className="mx-1 font-medium text-primary underline-offset-4 hover:underline">
+              enkripsi end-to-end
+            </button>
+            .
+          </p>
         </div>
-        <div className="inline-flex w-fit items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground" aria-live="polite">
-          <span className={`h-2 w-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-          {isConnected ? 'Terhubung' : 'Menghubungkan...'}
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <div className="inline-flex w-fit items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground" aria-live="polite">
+            <span className={`h-2 w-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            {isConnected ? 'Terhubung' : 'Menghubungkan...'}
+          </div>
+          <div className="flex items-center gap-2">
+            {!recoveryMode && recoveryStatus !== 'ready' && <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => { setRecoveryError(''); setRecoveryMode('setup'); }}>
+              {recoveryStatus === 'migrating' ? 'Lanjutkan migrasi' : 'Atur sandi Chat'}
+            </Button>}
+            {!recoveryMode && recoveryStatus === 'ready' && identityReady && <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => { setRecoveryError(''); setRecoveryMode('rotate'); }}>
+              Ganti sandi Chat
+            </Button>}
+            {!recoveryMode && recoveryStatus === 'ready' && !identityReady && <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => { setRecoveryError(''); setRecoveryMode('restore'); }}>
+              Pulihkan chat
+            </Button>}
+          </div>
         </div>
       </header>
 
-      <div className="flex items-start gap-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-3 text-sm text-muted-foreground sm:items-center sm:px-4">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary sm:mt-0" />
-        <p className="min-w-0 leading-relaxed">Kunci privat chat tersimpan di browser ini. Jangan hapus data situs atau pindah browser jika ingin tetap membaca pesan lama.</p>
-      </div>
-
-      <div className="flex flex-col gap-3 rounded-md border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
-        <div className="flex items-start gap-2 text-sm text-muted-foreground">
-          <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          <p className="leading-relaxed">{recoveryStatus === 'ready' ? 'Backup pemulihan terenkripsi siap untuk perangkat baru.' : recoveryStatus === 'migrating' ? recoveryProgress || 'Backup sedang disiapkan; chat lama tetap dipertahankan.' : 'Siapkan sandi Chat agar kunci dan riwayat dapat dipulihkan di perangkat baru.'}</p>
+      {showEndToEndWarning && (
+        <div className="flex items-start gap-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-3 text-sm text-muted-foreground sm:items-center sm:px-4">
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary sm:mt-0" />
+          <p className="min-w-0 leading-relaxed">
+            Enkripsi end-to-end berarti pesan dienkripsi di perangkat pengirim dan hanya bisa dibuka oleh perangkat penerima yang memiliki kunci yang sesuai. Bahkan server pun tidak dapat membaca isi chat secara langsung.
+          </p>
         </div>
-        {!recoveryMode && recoveryStatus !== 'ready' && <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => { setRecoveryError(''); setRecoveryMode('setup'); }}>
-          {recoveryStatus === 'migrating' ? 'Lanjutkan migrasi' : 'Atur sandi Chat'}
-        </Button>}
-        {!recoveryMode && recoveryStatus === 'ready' && identityReady && <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => { setRecoveryError(''); setRecoveryMode('rotate'); }}>
-          Ganti sandi Chat
-        </Button>}
-        {!recoveryMode && recoveryStatus === 'ready' && !identityReady && <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => { setRecoveryError(''); setRecoveryMode('restore'); }}>
-          Pulihkan chat
-        </Button>}
-      </div>
+      )}
+
       {recoveryError && <Alert variant="destructive"><AlertDescription>{recoveryError}</AlertDescription></Alert>}
 
       <Dialog open={Boolean(recoveryMode)} onOpenChange={(open) => {
         if (!open && !isRecoveryBusy) setRecoveryMode(null);
       }}>
-        <DialogContent>
+        <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle>{recoveryMode === 'restore' ? 'Pulihkan Chat' : recoveryMode === 'rotate' ? 'Ganti Sandi Chat' : 'Buat Sandi Chat'}</DialogTitle>
             <DialogDescription>
@@ -821,6 +855,10 @@ export default function AdminDirectChat() {
                   : 'Sandi ini mengenkripsi backup kunci. Gunakan minimal 10 karakter dan simpan agar dapat membuka chat di perangkat baru.'}
             </DialogDescription>
           </DialogHeader>
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">Fungsi sandi Chat</p>
+            <p className="mt-1 leading-relaxed">Sandi ini dipakai untuk mengenkripsi backup kunci chat agar Anda tetap bisa membuka riwayat pesan di perangkat baru atau saat browser lama hilang.</p>
+          </div>
           <form onSubmit={(event) => void handleRecoverySubmit(event)} className="space-y-4">
             {!((recoveryMode === 'setup' || recoveryMode === 'rotate') && recoveryStatus === 'migrating') && <div className="space-y-2">
               <Label htmlFor="admin-chat-recovery-password">Sandi Chat</Label>
@@ -835,7 +873,7 @@ export default function AdminDirectChat() {
             <DialogFooter>
               <Button type="submit" disabled={isRecoveryBusy || ((recoveryMode === 'setup' || recoveryMode === 'rotate') && recoveryStatus !== 'migrating' && recoveryPassword !== recoveryConfirmPassword)}>
                 {isRecoveryBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-                {recoveryMode === 'restore' ? 'Pulihkan kunci' : recoveryStatus === 'migrating' ? 'Lanjutkan migrasi' : recoveryMode === 'rotate' ? 'Ganti sandi dan migrasikan' : 'Simpan sandi dan migrasikan'}
+                {recoveryMode === 'restore' ? 'Pulihkan kunci' : recoveryStatus === 'migrating' ? 'Lanjutkan migrasi' : recoveryMode === 'rotate' ? 'Ganti sandi dan migrasikan' : 'Simpan'}
               </Button>
             </DialogFooter>
           </form>
@@ -887,13 +925,22 @@ export default function AdminDirectChat() {
                         {isSelecting && <Checkbox checked={selected} onCheckedChange={() => toggleSelectedMessage(message.id)} aria-label={`Pilih pesan ${formatMessageTime(message.createdAt)}`} className="mt-3" />}
                         <div className={`flex min-w-0 max-w-[90%] flex-col ${own ? 'items-end' : 'items-start'} sm:max-w-[76%]`}>
                           <p className="mb-1 px-1 text-[11px] font-medium text-muted-foreground">{own ? currentUser?.username : selectedContact.username}</p>
-                          <div className={`min-w-0 overflow-hidden rounded-md border px-3.5 py-2.5 shadow-sm ${own ? 'border-primary/20 bg-primary text-primary-foreground' : 'border-border bg-card text-foreground'}`}>
+                          <div ref={(element) => {
+                            if (element) messageBubblesRef.current.set(message.id, element);
+                            else messageBubblesRef.current.delete(message.id);
+                          }} className={`min-w-0 overflow-hidden rounded-md border px-[11.5px] pt-2.5 pb-5 shadow-sm ${own ? 'border-primary/20 bg-primary text-primary-foreground' : 'border-border bg-card text-foreground'}`}>
                             {message.replyTo && <div className={`mb-2 border-l-2 pl-2 text-xs ${own ? 'border-primary-foreground/60 text-primary-foreground/80' : 'border-primary text-muted-foreground'}`}><span className="font-semibold">{replySender}</span><p className="line-clamp-2 break-words">{message.replyTo.text || '[Lampiran]'}</p></div>}
                             {message.decryptionError ? <p className="text-sm italic opacity-80">Pesan tidak dapat didekripsi di browser ini.</p> : <>
                               {message.media && <div className="mb-2">{message.attachmentUrl && message.media.contentType.startsWith('image/') ? <a href={message.attachmentUrl} target="_blank" rel="noreferrer" aria-label={`Buka ${message.media.fileName}`}><Image src={message.attachmentUrl} alt={message.media.fileName} width={480} height={360} unoptimized className="max-h-[360px] max-w-full rounded-md object-contain" /></a> : message.attachmentUrl ? <video src={message.attachmentUrl} controls playsInline preload="metadata" className="max-h-[360px] max-w-full rounded-md" aria-label={message.media.fileName} /> : <p className="text-xs opacity-75">Lampiran tidak tersedia.</p>}<p className="mt-1 max-w-full truncate text-[11px] opacity-75">{message.media.fileName}{message.encryptedAttachment ? ` · ${formatFileSize(message.encryptedAttachment.size)}` : ''}</p></div>}
-                              {message.text && <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>}
+                              {message.text && <div className="flex min-w-0 items-end gap-2">
+                                <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm">{message.text}</p>
+                                <div className={`flex shrink-0 translate-y-2.5 items-center gap-1.5 text-[10px] ${own ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                                  <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+                                  {own && <Check className="h-3 w-3" aria-label="Terkirim" />}
+                                </div>
+                              </div>}
                             </>}
-                            <div className={`mt-1 flex items-center justify-end gap-1.5 text-[10px] ${own ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}><time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>{own && <Check className="h-3 w-3" aria-label="Terkirim" />}</div>
+                            {!message.text && <div className={`mt-1 flex translate-y-2.5 items-center justify-end gap-1.5 text-[10px] ${own ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}><time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>{own && <Check className="h-3 w-3" aria-label="Terkirim" />}</div>}
                           </div>
                           {actionMessageId === message.id && !isSelecting && <div className="mt-1 flex flex-wrap gap-1 rounded-md border border-border bg-popover p-1 shadow-sm"><Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => selectReply(message)}><Reply className="mr-1.5 h-3.5 w-3.5" /> Balas</Button><Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => void handleDelete('me', [message.id])}><Trash2 className="mr-1.5 h-3.5 w-3.5" /> Hapus untuk saya</Button>{own && <Button type="button" variant="ghost" size="sm" className="h-8 text-destructive" onClick={() => void handleDelete('everyone', [message.id])}><Trash2 className="mr-1.5 h-3.5 w-3.5" /> Hapus untuk semua</Button>}<Button type="button" variant="ghost" size="icon" className="h-8 w-8" aria-label="Tutup aksi pesan" onClick={() => setActionMessageId('')}><X className="h-4 w-4" /></Button></div>}
                         </div>
@@ -913,7 +960,6 @@ export default function AdminDirectChat() {
               <Textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={canSend ? 'Tulis pesan terenkripsi...' : selectedContact.recoveryStatus === 'migrating' || recoveryStatus === 'migrating' ? 'Pengiriman dijeda selama migrasi kunci...' : 'Menunggu kunci admin...'} maxLength={MAX_MESSAGE_LENGTH} rows={2} className="min-h-10 max-h-32 resize-y" disabled={isSending || !canSend} aria-label="Isi pesan" />
               <Button type="submit" size="icon" className="h-10 w-10 shrink-0" disabled={isSending || !canSend || (!draft.trim() && !selectedFile)} aria-label="Kirim pesan">{isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : uploadProgress === 100 ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}</Button>
             </form>
-            <p className="mt-2 px-1 text-[11px] leading-relaxed text-muted-foreground">Geser pesan untuk membalas · Tekan dan tahan untuk opsi · Pesan dan media terenkripsi di perangkat Anda</p>
           </div>}
         </div>
       </section>

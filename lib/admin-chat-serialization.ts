@@ -1,6 +1,6 @@
 import type { IAdminChatMessage } from './models/AdminChatMessage';
 
-export function serializeAdminChatMessage(message: Pick<IAdminChatMessage, '_id' | 'senderId' | 'recipientId' | 'ciphertext' | 'iv' | 'wrappedKeys' | 'createdAt' | 'expiresAt' | 'attachment'>) {
+export function serializeAdminChatMessage(message: Pick<IAdminChatMessage, '_id' | 'senderId' | 'recipientId' | 'ciphertext' | 'iv' | 'wrappedKeys' | 'createdAt' | 'expiresAt' | 'attachment' | 'isDeleted' | 'readAt'>) {
   return {
     id: message._id.toString(),
     senderId: message.senderId.toString(),
@@ -14,6 +14,8 @@ export function serializeAdminChatMessage(message: Pick<IAdminChatMessage, '_id'
     })),
     createdAt: message.createdAt.toISOString(),
     expiresAt: message.expiresAt.toISOString(),
+    isDeleted: message.isDeleted ?? false,
+    readAt: message.readAt?.toISOString() || null,
     attachment: message.attachment ? {
       uploadId: message.attachment.uploadId,
       size: message.attachment.size,

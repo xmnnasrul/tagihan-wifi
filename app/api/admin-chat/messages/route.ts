@@ -6,6 +6,7 @@ import AdminChatMessage from '@/lib/models/AdminChatMessage';
 import User from '@/lib/models/User';
 import { getCurrentUser, requireAdmin } from '@/lib/session';
 import { serializeAdminChatMessage } from '@/lib/admin-chat-serialization';
+import { publishAdminChatUpdate } from '@/lib/socket-events';
 import { normalizeUserRoles } from '@/lib/roles';
 import mongoose from 'mongoose';
 
@@ -22,9 +23,12 @@ export async function GET(request: Request) {
     await ensureAdminChatIndexes();
     const currentUser = await getCurrentUser();
     const account = await User.findOne({ username: currentUser?.username, isActive: { $ne: false } })
-      .select('_id role roles')
+      .select('_id role roles chatRecoveryStatus')
       .lean();
     if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 401 });
+    if (account.chatRecoveryStatus !== 'ready') {
+      return NextResponse.json({ error: 'Buat sandi Chat terlebih dahulu untuk menggunakan chat.' }, { status: 403 });
+    }
 
     const { searchParams } = new URL(request.url);
     const otherUserId = searchParams.get('with');
@@ -77,6 +81,9 @@ export async function POST(request: Request) {
       .select('_id chatPublicKey chatRecoveryPublicKey chatRecoveryKeyId chatRecoveryStatus')
       .lean();
     if (!sender) return NextResponse.json({ error: 'Akun pengirim tidak ditemukan' }, { status: 401 });
+    if (sender.chatRecoveryStatus !== 'ready') {
+      return NextResponse.json({ error: 'Buat sandi Chat terlebih dahulu untuk menggunakan chat.' }, { status: 403 });
+    }
 
     const body = await request.json() as Record<string, unknown>;
     const recipientId = typeof body.recipientId === 'string' ? body.recipientId : '';
@@ -92,12 +99,14 @@ export async function POST(request: Request) {
     const recipient = await User.findOne({ _id: recipientId, isActive: { $ne: false } })
       .select('_id role roles chatPublicKey chatRecoveryPublicKey chatRecoveryKeyId chatRecoveryStatus')
       .lean();
-    if (!recipient || !normalizeUserRoles(recipient.role, recipient.roles).includes('admin')
-      || !sender.chatPublicKey || !recipient.chatPublicKey) {
-      return NextResponse.json({ error: 'Kunci chat pengirim atau penerima belum tersedia' }, { status: 409 });
+    if (!recipient || !normalizeUserRoles(recipient.role, recipient.roles).includes('admin')) {
+      return NextResponse.json({ error: 'Admin tidak ditemukan' }, { status: 404 });
     }
-    if (sender.chatRecoveryStatus === 'migrating' || recipient.chatRecoveryStatus === 'migrating') {
-      return NextResponse.json({ error: 'Pengiriman sementara dihentikan selama migrasi kunci pemulihan' }, { status: 409 });
+    if (recipient.chatRecoveryStatus !== 'ready') {
+      return NextResponse.json({ error: 'Admin tujuan perlu membuat sandi Chat terlebih dahulu.' }, { status: 409 });
+    }
+    if (!sender.chatPublicKey || !recipient.chatPublicKey) {
+      return NextResponse.json({ error: 'Kunci chat pengirim atau penerima belum tersedia' }, { status: 409 });
     }
     const rawKeys = wrappedKeys.map((entry) => {
       const item = entry as Record<string, unknown>;
@@ -159,13 +168,62 @@ export async function POST(request: Request) {
       wrappedKeys: normalizedKeys,
       deletedFor: [],
       attachment,
+      readAt: null,
       expiresAt,
     });
 
+    void publishAdminChatUpdate([sender._id.toString(), recipient._id.toString()]);
     return NextResponse.json({ message: serializeAdminChatMessage(message) }, { status: 201 });
   } catch (error) {
     console.error('POST /api/admin-chat/messages failed:', error);
     return NextResponse.json({ error: 'Gagal mengirim pesan' }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const authError = await requireAdmin();
+    if (authError) return authError;
+
+    await connectDB();
+    const currentUser = await getCurrentUser();
+    const account = await User.findOne({ username: currentUser?.username, isActive: { $ne: false } })
+      .select('_id chatRecoveryStatus')
+      .lean();
+    if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 401 });
+    if (account.chatRecoveryStatus !== 'ready') {
+      return NextResponse.json({ error: 'Buat sandi Chat terlebih dahulu untuk menggunakan chat.' }, { status: 403 });
+    }
+
+    const body = await request.json() as { with?: unknown };
+    const otherUserId = typeof body.with === 'string' ? body.with : '';
+    if (!mongoose.isValidObjectId(otherUserId) || otherUserId === account._id.toString()) {
+      return NextResponse.json({ error: 'Pilih admin tujuan chat yang valid' }, { status: 400 });
+    }
+    const otherAdmin = await User.findOne({ _id: otherUserId, isActive: { $ne: false } })
+      .select('_id role roles')
+      .lean();
+    if (!otherAdmin || !normalizeUserRoles(otherAdmin.role, otherAdmin.roles).includes('admin')) {
+      return NextResponse.json({ error: 'Admin tidak ditemukan' }, { status: 404 });
+    }
+
+    const readAt = new Date();
+    const result = await AdminChatMessage.updateMany({
+      participantIds: { $all: [account._id, otherAdmin._id], $size: 2 },
+      senderId: otherAdmin._id,
+      recipientId: account._id,
+      deletedFor: { $ne: account._id },
+      isDeleted: { $ne: true },
+      expiresAt: { $gt: readAt },
+      readAt: null,
+    }, { $set: { readAt } });
+    if (result.modifiedCount > 0) {
+      void publishAdminChatUpdate([otherAdmin._id.toString()]);
+    }
+    return NextResponse.json({ updated: result.modifiedCount, readAt: readAt.toISOString() });
+  } catch (error) {
+    console.error('PATCH /api/admin-chat/messages failed:', error);
+    return NextResponse.json({ error: 'Gagal memperbarui status baca pesan' }, { status: 500 });
   }
 }
 
@@ -176,8 +234,11 @@ export async function DELETE(request: Request) {
 
     await connectDB();
     const currentUser = await getCurrentUser();
-    const account = await User.findOne({ username: currentUser?.username, isActive: { $ne: false } }).select('_id').lean();
+    const account = await User.findOne({ username: currentUser?.username, isActive: { $ne: false } }).select('_id chatRecoveryStatus').lean();
     if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 401 });
+    if (account.chatRecoveryStatus !== 'ready') {
+      return NextResponse.json({ error: 'Buat sandi Chat terlebih dahulu untuk menggunakan chat.' }, { status: 403 });
+    }
 
     const body = await request.json() as { messageIds?: unknown; scope?: unknown };
     if (!Array.isArray(body.messageIds) || body.messageIds.length === 0 || body.messageIds.length > 100
@@ -195,20 +256,32 @@ export async function DELETE(request: Request) {
         { ...participantFilter, deletedFor: { $ne: account._id } },
         { $addToSet: { deletedFor: account._id } },
       );
+      if (result.modifiedCount > 0) void publishAdminChatUpdate([account._id.toString()]);
       return NextResponse.json({ deleted: result.modifiedCount });
     }
 
-    const messages = await AdminChatMessage.find({ ...participantFilter, senderId: account._id }).select('_id attachment').lean();
+    const messages = await AdminChatMessage.find({
+      ...participantFilter,
+      senderId: account._id,
+      isDeleted: { $ne: true },
+    }).select('_id attachment recipientId').lean();
     if (messages.length !== messageIds.length) {
       return NextResponse.json({ error: 'Hapus untuk semua hanya tersedia untuk pesan yang Anda kirim' }, { status: 403 });
     }
 
     const uploadIds = messages.flatMap((message) => message.attachment?.uploadId ? [message.attachment.uploadId] : []);
     await Promise.all([
-      AdminChatMessage.deleteMany({ _id: { $in: messageIds }, senderId: account._id }),
+      AdminChatMessage.updateMany(
+        { _id: { $in: messageIds }, senderId: account._id, isDeleted: { $ne: true } },
+        { $set: { isDeleted: true, ciphertext: '', iv: '', wrappedKeys: [], attachment: null } },
+      ),
       uploadIds.length
         ? AdminChatMediaChunk.deleteMany({ uploadId: { $in: uploadIds }, uploadedBy: account._id })
         : Promise.resolve(),
+    ]);
+    void publishAdminChatUpdate([
+      account._id.toString(),
+      ...messages.map((message) => message.recipientId.toString()),
     ]);
     return NextResponse.json({ deleted: messages.length });
   } catch (error) {

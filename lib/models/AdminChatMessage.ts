@@ -15,6 +15,8 @@ export interface IAdminChatMessage extends Document {
   iv: string;
   wrappedKeys: { userId: Types.ObjectId; keyId?: string; encryptedKey: string }[];
   deletedFor: Types.ObjectId[];
+  isDeleted: boolean;
+  readAt: Date | null;
   attachment: IAdminChatAttachment | null;
   createdAt: Date;
   expiresAt: Date;
@@ -39,6 +41,8 @@ const AdminChatMessageSchema = new Schema<IAdminChatMessage>({
     encryptedKey: { type: String, required: true, maxlength: 2048 },
   }],
   deletedFor: { type: [Schema.Types.ObjectId], default: [] },
+  isDeleted: { type: Boolean, default: false },
+  readAt: { type: Date, default: null },
   attachment: { type: attachmentSchema, default: null },
   expiresAt: { type: Date, required: true },
 }, { timestamps: { createdAt: true, updatedAt: false } });

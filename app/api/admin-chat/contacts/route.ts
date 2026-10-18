@@ -13,9 +13,9 @@ export async function GET() {
     const currentUser = await getCurrentUser();
     const [account, users] = await Promise.all([
       User.findOne({ username: currentUser?.username, isActive: { $ne: false } })
-        .select('_id chatPublicKey chatRecoveryPublicKey chatRecoveryKeyId chatRecoveryCiphertext chatRecoverySalt chatRecoveryIv chatRecoveryStatus chatRecoveryPendingPublicKey chatRecoveryPendingKeyId chatRecoveryPendingCiphertext chatRecoveryPendingSalt chatRecoveryPendingIv').lean(),
+        .select('_id chatKeyVersion chatPublicKey chatRecoveryPublicKey chatRecoveryKeyId chatRecoveryCiphertext chatRecoverySalt chatRecoveryIv chatRecoveryStatus chatRecoveryPendingPublicKey chatRecoveryPendingKeyId chatRecoveryPendingCiphertext chatRecoveryPendingSalt chatRecoveryPendingIv').lean(),
       User.find({ isActive: { $ne: false } })
-        .select('_id username role roles profileImage chatPublicKey chatRecoveryPublicKey chatRecoveryKeyId chatRecoveryStatus')
+        .select('_id username role roles profileImage bio chatPublicKey chatRecoveryPublicKey chatRecoveryKeyId chatRecoveryStatus')
         .sort({ username: 1 }).lean(),
     ]);
     if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 401 });
@@ -23,6 +23,7 @@ export async function GET() {
     return NextResponse.json({
       currentUser: {
         id: account._id.toString(),
+        keyVersion: account.chatKeyVersion || 0,
         publicKey: account.chatPublicKey || '',
         recovery: account.chatRecoveryPublicKey ? {
           publicKey: account.chatRecoveryPublicKey,
@@ -47,6 +48,7 @@ export async function GET() {
           id: user._id.toString(),
           username: user.username,
           profileImage: user.profileImage || '',
+          bio: user.bio || '',
           publicKey: user.chatPublicKey || '',
           recoveryPublicKey: user.chatRecoveryPublicKey || '',
           recoveryKeyId: user.chatRecoveryKeyId || '',

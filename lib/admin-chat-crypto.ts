@@ -20,6 +20,7 @@ export interface EncryptedAdminChatPayload {
 }
 
 export interface AdminChatIdentity {
+  keyVersion?: number;
   publicKey: string;
   privateKey?: CryptoKey;
   recoveryPublicKey?: string;
@@ -273,16 +274,17 @@ export async function restoreAdminChatRecoveryIdentity(
 export async function getOrCreateAdminChatIdentity(
   userId: string,
   registeredPublicKey: string | null,
+  keyVersion = 0,
 ): Promise<AdminChatIdentity> {
   const stored = await readStoredIdentity(userId);
-  if (stored) {
+  if (stored && (stored.keyVersion || 0) === keyVersion) {
     if (registeredPublicKey && stored.publicKey !== registeredPublicKey) {
       throw new Error('Kunci chat di browser ini berbeda dengan kunci akun. Gunakan browser tempat kunci dibuat.');
     }
     return stored;
   }
   if (registeredPublicKey) {
-    throw new Error('Kunci privat tidak ditemukan di browser ini. Chat lama tidak dapat dipulihkan tanpa kunci tersebut.');
+    throw new Error('Kunci akun belum direset sepenuhnya. Muat ulang halaman dan coba lagi.');
   }
 
   const pair = await crypto.subtle.generateKey({
@@ -302,7 +304,7 @@ export async function getOrCreateAdminChatIdentity(
     false,
     ['decrypt'],
   );
-  const identity = { userId, publicKey: toBase64(publicDer), privateKey };
+  const identity = { userId, keyVersion, publicKey: toBase64(publicDer), privateKey };
   await storeIdentity(identity);
   return identity;
 }

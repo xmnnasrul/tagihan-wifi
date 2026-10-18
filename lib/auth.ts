@@ -13,6 +13,7 @@ function getJwtSecret(): string {
   return 'wifi-billing-secret-change-in-development';
 }
 export interface TokenPayload {
+  userId?: string;
   username: string;
   role: string;
   roles?: UserRole[];

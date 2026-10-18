@@ -15,8 +15,11 @@ export async function POST(request: Request) {
     await connectDB();
     await ensureAdminChatIndexes();
     const currentUser = await getCurrentUser();
-    const account = await User.findOne({ username: currentUser?.username, isActive: { $ne: false } }).select('_id').lean();
+    const account = await User.findOne({ username: currentUser?.username, isActive: { $ne: false } }).select('_id chatRecoveryStatus').lean();
     if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 401 });
+    if (account.chatRecoveryStatus !== 'ready') {
+      return NextResponse.json({ error: 'Buat sandi Chat terlebih dahulu untuk menggunakan chat.' }, { status: 403 });
+    }
 
     const formData = await request.formData();
     const chunk = formData.get('chunk');

@@ -28,7 +28,7 @@ Panduan ini ditujukan untuk pemilik aplikasi atau operator yang belum terbiasa d
 - **Laporan tunggakan:** melihat saldo tagihan per pelanggan dan periode.
 - **Arsip pelanggan:** mengarsipkan dan memulihkan pelanggan. Penghapusan permanen juga menghapus riwayat tagihannya dan tidak dapat dibatalkan.
 - **Ekspor:** mengunduh data tagihan sebagai CSV atau Excel.
-- **Chat admin:** percakapan satu lawan satu antar-admin dengan enkripsi end-to-end untuk pesan, balasan, dan media. Kunci privat disimpan di browser; setiap admin perlu membuka halaman chat untuk pertama kali dari browser yang akan dipakai. Pesan dan media dihapus otomatis setelah 15 hari.
+- **Chat admin:** percakapan satu lawan satu antar-admin dengan enkripsi end-to-end untuk pesan, balasan, dan media; pesan diperbarui realtime dengan tanda terkirim, terbaca, dan gagal dikirim. Admin dapat mereset kunci Chat yang terlupa (riwayat lama disembunyikan dari akun yang direset) dan melihat detail foto profil, nama, serta bio admin lain. Kunci privat disimpan di browser; setiap admin perlu membuka halaman chat untuk pertama kali dari browser yang akan dipakai. Pesan dan media dihapus otomatis setelah 15 hari.
 - **Audit:** melihat catatan perubahan data dan akun.
 - **Pengelolaan akun:** admin dapat membuat akun dan mengatur role.
 - **Profil dan tema:** halaman profil mengelola username dan password sesuai role; tema dapat mengikuti jadwal waktu Jakarta atau dipilih manual.
@@ -212,7 +212,7 @@ Setelah admin berhasil dibuat, hapus `SEED_SECRET` dan `INITIAL_ADMIN_PASSWORD` 
 
 Socket.IO membutuhkan proses server Node.js yang terus berjalan. Karena website utama berjalan di Vercel, jalankan server Socket.IO sebagai **Web Service terpisah**, misalnya di Render. Ini bukan project Vercel baru dan tidak perlu repository GitHub baru: starter server sudah ada di folder `socket-server/` dalam repository yang sama, dan Render akan menjalankan folder itu sebagai layanan sendiri.
 
-> Event realtime yang tersedia saat ini adalah notifikasi `payment.received`, khusus untuk akun admin dan collector. Event ini bukan sumber data utama; database tetap menjadi sumber kebenaran.
+> Socket.IO dipakai khusus untuk pembaruan chat admin. Socket hanya mengirim sinyal bahwa percakapan berubah; isi pesan tetap terenkripsi dan diambil dari API.
 
 ### 1. Jalankan starter server secara lokal
 
@@ -223,7 +223,7 @@ cd socket-server
 npm install
 ```
 
-Untuk menguji dari website lokal, tambahkan URL ini ke `.env.local` di folder utama repository:
+Untuk menguji dari website lokal, pastikan `.env.local` di folder utama repository berisi URL socket dan secret publisher:
 
 ```env
 NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
@@ -231,22 +231,21 @@ SOCKET_SERVER_URL=http://localhost:3001
 SOCKET_PUBLISH_SECRET=secret-random-lokal-yang-sama-dengan-server-socket
 ```
 
-Gunakan nilai acak yang berbeda dari `JWT_SECRET` untuk `SOCKET_PUBLISH_SECRET`. Jalankan server dengan origin Next.js lokal dan dua secret yang sama dengan aplikasi. Contoh Bash membaca secret dari `.env.local`, tanpa mencetak nilainya:
+Untuk menguji melalui URL publik Codespaces, teruskan port `3001` dan ubah visibilitasnya menjadi **Public** di tab **Ports**. Atur `NEXT_PUBLIC_SOCKET_URL` ke URL HTTPS port `3001` yang ditampilkan Codespaces, dan `APP_ORIGIN` ke URL HTTPS port `3000`:
+
+```env
+NEXT_PUBLIC_SOCKET_URL=https://<codespace>-3001.<forwarding-domain>
+SOCKET_SERVER_URL=http://localhost:3001
+APP_ORIGIN=https://<codespace>-3000.<forwarding-domain>
+```
+
+Ganti placeholder dengan URL port Codespaces yang sebenarnya. `SOCKET_SERVER_URL` tetap memakai `localhost` karena komunikasi ini terjadi dari server aplikasi. Gunakan nilai acak yang berbeda dari `JWT_SECRET` untuk `SOCKET_PUBLISH_SECRET`. Dari folder `socket-server`, jalankan server development:
 
 ```bash
-JWT_SECRET="$(sed -n 's/^JWT_SECRET=//p' ../.env.local)" SOCKET_PUBLISH_SECRET="$(sed -n 's/^SOCKET_PUBLISH_SECRET=//p' ../.env.local)" APP_ORIGIN=http://localhost:3000 npm start
+npm run dev
 ```
 
-Di PowerShell, gunakan:
-
-```powershell
-$env:JWT_SECRET = (Get-Content ..\.env.local | Where-Object { $_ -match '^JWT_SECRET=' }) -replace '^JWT_SECRET=', ''
-$env:SOCKET_PUBLISH_SECRET = (Get-Content ..\.env.local | Where-Object { $_ -match '^SOCKET_PUBLISH_SECRET=' }) -replace '^SOCKET_PUBLISH_SECRET=', ''
-$env:APP_ORIGIN = "http://localhost:3000"
-npm start
-```
-
-Biarkan proses ini berjalan saat menguji, lalu mulai ulang Next.js agar membaca URL dan secret publisher. Komponen client sudah meminta tiket saat connect/reconnect dan menampilkan toast pembayaran.
+Skrip development memuat `../.env.local` dan menggunakan `APP_ORIGIN`; jika tidak diatur, origin lokal `http://localhost:3000` digunakan. Biarkan proses ini berjalan saat menguji. Socket hanya aktif di halaman chat admin.
 
 ### 2. Deploy folder server ke Render
 
@@ -266,15 +265,15 @@ Render menyediakan variable `PORT`; jangan menetapkan `PORT` sendiri. Setelah de
 2. Tambahkan `NEXT_PUBLIC_SOCKET_URL` dengan URL layanan Render, misalnya `https://nama-socket.onrender.com`.
 3. Tambahkan `SOCKET_SERVER_URL` dengan URL Render yang sama. Variable ini server-only, jangan beri awalan `NEXT_PUBLIC_`.
 4. Tambahkan `SOCKET_PUBLISH_SECRET` yang sama dengan secret di Render. Pastikan `JWT_SECRET` juga sama persis di Vercel dan Render.
-5. Pilih environment yang dipakai, biasanya **Production**, lalu lakukan redeploy. Client Socket.IO sudah dipasang pada layout aplikasi.
+5. Pilih environment yang dipakai, biasanya **Production**, lalu lakukan redeploy.
 
 ### 4. Hak akses dan pengujian
 
-Server membatasi origin dan memverifikasi tiket bertanda tangan ketika handshake. Endpoint `POST /api/auth/socket-ticket` menerbitkan tiket 15 menit setelah sesi dan status akun diperiksa. Peran dalam tiket menentukan room: event pembayaran dikirim hanya ke room `admin` dan `collector`, bukan role `user`.
+Server membatasi origin dan memverifikasi tiket bertanda tangan ketika handshake. Endpoint `POST /api/auth/socket-ticket` hanya menerbitkan tiket 15 menit untuk admin aktif. Setiap koneksi masuk ke room privat berdasarkan ID admin.
 
-`payment.received` dipancarkan dari `POST /api/billings` setelah pembayaran tersimpan. Payload hanya memuat nama pelanggan, nominal, periode, metode, pencatat, dan waktu. Jika Socket.IO sedang tidak tersedia, pembayaran tetap berhasil tersimpan tetapi notifikasi realtime bisa terlewat; jangan jadikan socket satu-satunya catatan transaksi.
+Setelah pesan chat disimpan, server mengirim event `admin-chat:updated` kepada kedua peserta. Event tidak membawa isi pesan; klien mengambil ciphertext melalui API lalu mendekripsinya di browser. Saat percakapan terbuka, klien juga menyinkronkan pesan setiap lima detik sebagai fallback jika koneksi Socket.IO terputus.
 
-Untuk menguji, buka sesi admin/collector dan sesi role `user`, lalu catat pembayaran. Admin dan collector harus mendapat toast `Pembayaran diterima`; user tidak. Jangan mengekspos `JWT_SECRET`, `SOCKET_PUBLISH_SECRET`, atau `MONGODB_URI` dengan awalan `NEXT_PUBLIC_`. Jika nanti ada event lain, batasi penerima dan otorisasi event tersebut secara terpisah. Jika server dijalankan di beberapa instance, tambahkan adapter Socket.IO seperti Redis agar broadcast antar-instance berfungsi.
+Untuk menguji, buka dua sesi admin, kirim pesan dari salah satunya, dan pastikan chat penerima diperbarui tanpa polling. Role non-admin tidak dapat menerbitkan tiket socket. Jangan mengekspos `JWT_SECRET`, `SOCKET_PUBLISH_SECRET`, atau `MONGODB_URI` dengan awalan `NEXT_PUBLIC_`. Jika server dijalankan di beberapa instance, tambahkan adapter Socket.IO seperti Redis agar broadcast antar-instance berfungsi.
 
 ## Alternatif Deploy
 

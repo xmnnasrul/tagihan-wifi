@@ -5,7 +5,6 @@ import Customer from '@/lib/models/Customer';
 import '@/lib/models/Package';
 import { getCurrentUser, requireAdmin, requireAuthenticatedUser, requireCollectorOrAdmin } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
-import { publishPaymentReceived } from '@/lib/socket-events';
 import { applyPaymentToPreviousBillings, getBillingOutstandingAmount, getBillingTotalDue } from '@/lib/billing-amounts';
 import mongoose from 'mongoose';
 
@@ -219,17 +218,6 @@ export async function POST(request: Request) {
         summary: `Pembayaran ${paymentAmount} diterima dan dialokasikan ke tagihan tertua; total saldo pelanggan sebelum pembayaran ${totalOutstanding}`,
         changes: { before, after: getBillingAuditSnapshot(existingBilling) },
       });
-      if (receipt) {
-        await publishPaymentReceived({
-          customerName: customer.name,
-          amount: receipt.amount,
-          month,
-          year: Number(year),
-          method: paymentMethod || null,
-          recordedBy: adminName,
-          receivedAt: receiptAt.toISOString(),
-        });
-      }
       return NextResponse.json({
         ...existingBilling.toObject(),
         allocationUpdates: affectedBillings.map(getBillingAllocationSnapshot),
@@ -291,18 +279,6 @@ export async function POST(request: Request) {
         : `Pembayaran ${paymentAmount} diterima dan dialokasikan ke tagihan tertua; total saldo pelanggan sebelum pembayaran ${totalOutstanding}`,
       changes: { before: null, after: getBillingAuditSnapshot(billing) },
     });
-
-    if (receipt) {
-      await publishPaymentReceived({
-        customerName: customer.name,
-        amount: receipt.amount,
-        month,
-        year: Number(year),
-        method: paymentMethod || null,
-        recordedBy: adminName,
-        receivedAt: receiptAt.toISOString(),
-      });
-    }
 
     return NextResponse.json({
       ...billing.toObject(),

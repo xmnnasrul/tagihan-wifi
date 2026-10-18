@@ -7,6 +7,7 @@ export interface IUser extends Document {
   roles: string[];
   isActive: boolean;
   tokenVersion: number;
+  chatKeyVersion: number;
   createdAt: Date;
   profileImage: string;
   originalProfileImage: string;
@@ -32,6 +33,7 @@ const UserSchema = new Schema<IUser>({
   roles: { type: [String], default: [] },
   isActive: { type: Boolean, default: true },
   tokenVersion: { type: Number, default: 0 },
+  chatKeyVersion: { type: Number, default: 0 },
   profileImage: { type: String, default: '', maxlength: 700000 },
   originalProfileImage: { type: String, default: '', maxlength: 3500000 },
   chatPublicKey: { type: String, default: '', maxlength: 2048 },
@@ -58,6 +60,7 @@ if (cachedUserModel && (!cachedUserModel.schema.path('profileImage')
   || !cachedUserModel.schema.path('chatRecoveryCiphertext')
   || !cachedUserModel.schema.path('chatRecoveryPendingPublicKey')
   || !cachedUserModel.schema.path('chatRecoveryPendingKeyId')
+  || !cachedUserModel.schema.path('chatKeyVersion')
   || !cachedUserModel.schema.path('bio'))) {
   delete models.User;
 }

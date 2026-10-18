@@ -2,8 +2,9 @@
 
 import { FormEvent, KeyboardEvent, TouchEvent, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import { io } from 'socket.io-client';
 import {
-  AlertCircle, ArrowLeft, Check, EllipsisVertical, ImagePlus, Loader2, LockKeyhole,
+  AlertCircle, ArrowLeft, Check, CheckCheck, EllipsisVertical, ImagePlus, Loader2, LockKeyhole,
   KeyRound, MessageCircle, Paperclip, Reply, Send, ShieldCheck, Trash2, Video, X,
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -26,6 +27,7 @@ interface Contact {
   id: string;
   username: string;
   profileImage: string;
+  bio: string;
   publicKey: string;
   recoveryPublicKey: string;
   recoveryKeyId: string;
@@ -70,16 +72,18 @@ interface EncryptedMessage {
   wrappedKeys: { userId: string; keyId?: 'primary' | 'recovery'; encryptedKey: string }[];
   createdAt: string;
   expiresAt: string;
+  isDeleted?: boolean;
+  readAt?: string | null;
   attachment: ServerAttachment | null;
 }
 
 interface ChatMessage extends Omit<EncryptedMessage, 'attachment'>, ChatContent {
+  deliveryStatus?: 'failed';
   encryptedAttachment: ServerAttachment | null;
   attachmentUrl: string | null;
   decryptionError: boolean;
 }
 
-const POLL_INTERVAL_MS = 3000;
 const MAX_MESSAGE_LENGTH = 4000;
 
 function formatMessageTime(value: string): string {
@@ -112,7 +116,7 @@ export default function AdminDirectChat() {
   const [accountPublicKey, setAccountPublicKey] = useState('');
   const [accountRecoveryPublicKey, setAccountRecoveryPublicKey] = useState('');
   const [accountRecoveryKeyId, setAccountRecoveryKeyId] = useState('');
-  const [recoveryStatus, setRecoveryStatus] = useState<'none' | 'migrating' | 'ready'>('none');
+  const [recoveryStatus, setRecoveryStatus] = useState<'loading' | 'none' | 'migrating' | 'ready'>('loading');
   const [recoveryBackup, setRecoveryBackup] = useState<RecoveryInfo | null>(null);
   const [recoveryMode, setRecoveryMode] = useState<'setup' | 'restore' | 'rotate' | null>(null);
   const [cancelPendingRotationOnRestore, setCancelPendingRotationOnRestore] = useState(false);
@@ -120,10 +124,11 @@ export default function AdminDirectChat() {
   const [recoveryConfirmPassword, setRecoveryConfirmPassword] = useState('');
   const [recoveryError, setRecoveryError] = useState('');
   const [showEndToEndWarning, setShowEndToEndWarning] = useState(false);
-  const recoverySetupPromptKey = 'tagihan-admin-chat-recovery-popup-shown';
   const [recoveryProgress, setRecoveryProgress] = useState('');
   const [isRecoveryBusy, setIsRecoveryBusy] = useState(false);
   const [selectedContactId, setSelectedContactId] = useState('');
+  const [profileContact, setProfileContact] = useState<Contact | null>(null);
+  const [isProfileImageOpen, setIsProfileImageOpen] = useState(false);
   const [isMobileConversationOpen, setIsMobileConversationOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -131,6 +136,7 @@ export default function AdminDirectChat() {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [actionMessageId, setActionMessageId] = useState('');
+  const [deleteChoiceMessageId, setDeleteChoiceMessageId] = useState('');
   const [isSelecting, setIsSelecting] = useState(false);
   const [isLoadingContacts, setIsLoadingContacts] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
@@ -138,13 +144,15 @@ export default function AdminDirectChat() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [connectionError, setConnectionError] = useState('');
   const [sendError, setSendError] = useState('');
-  const [isConnected, setIsConnected] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const selectedContactIdRef = useRef('');
   const holdTimer = useRef<number | null>(null);
   const touchStartX = useRef<number | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
+  const loadMessagesRef = useRef<(() => Promise<void>) | null>(null);
+  const refreshContactsRef = useRef<(() => Promise<void>) | null>(null);
   const messageBubblesRef = useRef(new Map<string, HTMLDivElement>());
   const recoveryMigrationActive = useRef(false);
 
@@ -153,21 +161,50 @@ export default function AdminDirectChat() {
   const identityReady = Boolean(identity && identityUsername === currentUser?.username && currentUserId);
   const canSend = Boolean(identityReady && (identity?.privateKey || identity?.recoveryPrivateKey)
     && recoveryStatus === 'ready' && accountPublicKey && selectedContact?.publicKey
-    && selectedContact.recoveryStatus !== 'migrating');
+    && selectedContact.recoveryStatus === 'ready');
   const selectedMessages = messages.filter((message) => selectedMessageIds.includes(message.id));
 
   useEffect(() => {
-    if (!isAdmin || !currentUserId || recoveryMode || recoveryStatus === 'ready' || recoveryStatus === 'migrating') {
-      return;
-    }
+    if (!isAdmin || recoveryStatus !== 'ready') return;
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
+    if (!socketUrl) return;
 
-    if (typeof window === 'undefined') return;
-    const hasSeenRecoverySetupPrompt = window.localStorage.getItem(recoverySetupPromptKey) === 'true';
-    if (!hasSeenRecoverySetupPrompt) {
-      window.localStorage.setItem(recoverySetupPromptKey, 'true');
-      setRecoveryMode('setup');
-    }
-  }, [currentUserId, isAdmin, recoveryMode, recoveryStatus, recoverySetupPromptKey]);
+    const socket = io(socketUrl, {
+      autoConnect: false,
+      auth: (callback) => {
+        void fetch('/api/auth/socket-ticket', { method: 'POST', cache: 'no-store' })
+          .then(async (response) => {
+            if (!response.ok) throw new Error('Gagal membuat tiket socket');
+            const result = await response.json() as { ticket?: unknown };
+            if (typeof result.ticket !== 'string') throw new Error('Tiket socket tidak valid');
+            callback({ ticket: result.ticket });
+          })
+          .catch(() => callback({}));
+      },
+    });
+    const refreshChat = () => {
+      void loadMessagesRef.current?.();
+      void refreshContactsRef.current?.();
+    };
+
+    socket.on('connect', () => {
+      refreshChat();
+    });
+    socket.on('disconnect', (reason) => {
+      if (reason === 'io server disconnect') socket.connect();
+    });
+    socket.on('admin-chat:updated', refreshChat);
+    socket.connect();
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [isAdmin, recoveryStatus]);
+
+  useEffect(() => {
+    if (!isAdmin || recoveryStatus === 'loading' || recoveryStatus === 'ready') return;
+    setRecoveryMode((mode) => mode || 'setup');
+  }, [isAdmin, recoveryMode, recoveryStatus]);
   const allSelectedAreOwn = selectedMessages.length === selectedMessageIds.length
     && selectedMessages.every((message) => message.senderId === currentUserId);
 
@@ -309,11 +346,60 @@ export default function AdminDirectChat() {
     }
   };
 
+  const handleResetChatPassword = async () => {
+    const confirmed = window.confirm(
+      'Lupa sandi Chat? Reset akan membuat kunci dan sandi Chat baru. Semua pesan lama yang dienkripsi dengan kunci sebelumnya tidak akan bisa dibaca lagi. Lanjutkan?',
+    );
+    if (!confirmed || isRecoveryBusy || !currentUserId) return;
+
+    setRecoveryError('');
+    setIsRecoveryBusy(true);
+    try {
+      const resetResponse = await fetch('/api/admin-chat/identity', { method: 'POST' });
+      const resetData = await resetResponse.json() as { keyVersion?: unknown; error?: string };
+      if (!resetResponse.ok || typeof resetData.keyVersion !== 'number') {
+        throw new Error(resetData.error || 'Gagal mereset kunci Chat.');
+      }
+
+      const newIdentity = await getOrCreateAdminChatIdentity(currentUserId, null, resetData.keyVersion);
+      const registerResponse = await fetch('/api/admin-chat/identity', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey: newIdentity.publicKey, keyVersion: resetData.keyVersion }),
+      });
+      const registerData = await registerResponse.json() as { error?: string };
+      if (!registerResponse.ok) throw new Error(registerData.error || 'Kunci baru gagal didaftarkan.');
+
+      messagesRef.current.forEach((message) => {
+        if (message.attachmentUrl) URL.revokeObjectURL(message.attachmentUrl);
+      });
+      messagesRef.current = [];
+      setMessages([]);
+      setReplyTo(null);
+      setIdentity(newIdentity);
+      setIdentityUsername(currentUser?.username || '');
+      setAccountPublicKey(newIdentity.publicKey);
+      setAccountRecoveryPublicKey('');
+      setAccountRecoveryKeyId('');
+      setRecoveryBackup(null);
+      setRecoveryStatus('none');
+      setRecoveryMode('setup');
+      setRecoveryPassword('');
+      setRecoveryConfirmPassword('');
+      setRecoveryProgress('');
+      setCancelPendingRotationOnRestore(false);
+      setConnectionError('');
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : 'Gagal mereset sandi Chat.');
+    } finally {
+      setIsRecoveryBusy(false);
+    }
+  };
+
   useEffect(() => {
     if (!isAdmin || !currentUser?.username) {
       setIsLoadingContacts(false);
       setIsLoadingMessages(false);
-      setIsConnected(false);
       setContacts([]);
       setCurrentUserId('');
       setIdentity(null);
@@ -335,7 +421,6 @@ export default function AdminDirectChat() {
     setIsLoadingContacts(true);
     setIsLoadingMessages(true);
     setConnectionError('');
-    setIsConnected(false);
     setContacts([]);
     setCurrentUserId('');
     setIdentity(null);
@@ -343,7 +428,7 @@ export default function AdminDirectChat() {
     setAccountPublicKey('');
     setAccountRecoveryPublicKey('');
     setAccountRecoveryKeyId('');
-    setRecoveryStatus('none');
+    setRecoveryStatus('loading');
     setRecoveryBackup(null);
     setRecoveryMode(null);
     setCancelPendingRotationOnRestore(false);
@@ -362,6 +447,7 @@ export default function AdminDirectChat() {
         setCurrentUserId(userId);
         setContacts(nextContacts);
         const publicKey = String(data.currentUser.publicKey || '');
+        const keyVersion = Number(data.currentUser.keyVersion) || 0;
         const activeRecovery = data.currentUser.recovery as RecoveryInfo | null;
         const pendingRecovery = data.currentUser.pendingRecovery as RecoveryInfo | null;
         const serverRecovery = pendingRecovery || activeRecovery;
@@ -384,7 +470,10 @@ export default function AdminDirectChat() {
           && storedIdentity.recoveryKeyId === serverRecovery.recoveryKeyId);
         let localIdentity: AdminChatIdentity | null = null;
 
-        if (pendingRecovery && activeRecovery && !storedRecoveryMatches) {
+        if (storedIdentity && (storedIdentity.keyVersion || 0) !== keyVersion) {
+          if (publicKey) throw new Error('Versi key chat berubah tetapi key server masih terdaftar. Hubungi admin aplikasi.');
+          localIdentity = await getOrCreateAdminChatIdentity(userId, null, keyVersion);
+        } else if (pendingRecovery && activeRecovery && !storedRecoveryMatches) {
           setAccountRecoveryPublicKey(activeRecovery.publicKey);
           setAccountRecoveryKeyId(activeRecovery.recoveryKeyId);
           setRecoveryBackup(activeRecovery);
@@ -436,7 +525,7 @@ export default function AdminDirectChat() {
         } else if (publicKey) {
           throw new Error('Private key akun ini tidak ada di browser ini dan belum memiliki backup pemulihan.');
         } else {
-          localIdentity = await getOrCreateAdminChatIdentity(userId, null);
+          localIdentity = await getOrCreateAdminChatIdentity(userId, null, keyVersion);
         }
 
         if (!localIdentity) throw new Error('Kunci chat tidak dapat dimuat.');
@@ -444,7 +533,7 @@ export default function AdminDirectChat() {
           const keyResponse = await fetch('/api/admin-chat/identity', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ publicKey: localIdentity.publicKey }),
+            body: JSON.stringify({ publicKey: localIdentity.publicKey, keyVersion }),
           });
           const keyData = await keyResponse.json();
           if (!keyResponse.ok) throw new Error(keyData.error || 'Gagal mendaftarkan kunci chat');
@@ -489,8 +578,12 @@ export default function AdminDirectChat() {
         // Keep the last known contact list while offline.
       }
     };
-    const interval = window.setInterval(() => { void refreshContacts(); }, 10000);
-    return () => { active = false; window.clearInterval(interval); };
+    refreshContactsRef.current = refreshContacts;
+    void refreshContacts();
+    return () => {
+      active = false;
+      if (refreshContactsRef.current === refreshContacts) refreshContactsRef.current = null;
+    };
   }, [currentUserId, isAdmin]);
 
   useEffect(() => {
@@ -504,19 +597,32 @@ export default function AdminDirectChat() {
     setIsSelecting(false);
     setActionMessageId('');
 
-    if (!isAdmin || !identityReady || !identity || !selectedContactId || !currentUserId) {
+    if (!isAdmin || recoveryStatus !== 'ready' || !identityReady || !identity || !selectedContactId || !currentUserId) {
       setIsLoadingMessages(false);
       return;
     }
     if (!selectedContactPublicKey) {
       setIsLoadingMessages(false);
-      setIsConnected(true);
       return;
     }
 
     let active = true;
     let isFetching = false;
+    let isMarkingRead = false;
+    let shouldFetchAgain = false;
     async function decryptMessage(message: EncryptedMessage): Promise<ChatMessage> {
+      if (message.isDeleted) {
+        const { attachment: _attachment, ...encryptedFields } = message;
+        return {
+          ...encryptedFields,
+          text: 'Pesan dihapus',
+          replyTo: null,
+          media: null,
+          encryptedAttachment: null,
+          attachmentUrl: null,
+          decryptionError: false,
+        };
+      }
       const { content, messageKey } = await decryptAdminChatPayload<ChatContent>(message, currentUserId, identity!);
       let attachmentUrl: string | null = null;
       if (message.attachment && content.media) {
@@ -531,7 +637,10 @@ export default function AdminDirectChat() {
     }
 
     async function loadMessages() {
-      if (isFetching) return;
+      if (isFetching) {
+        shouldFetchAgain = true;
+        return;
+      }
       isFetching = true;
       try {
         const response = await fetch(`/api/admin-chat/messages?with=${encodeURIComponent(selectedContactId)}`, { cache: 'no-store' });
@@ -540,9 +649,11 @@ export default function AdminDirectChat() {
         if (!active) return;
 
         const oldMessages = new Map(messagesRef.current.map((message) => [message.id, message]));
-        const nextMessages = await Promise.all((data.messages as EncryptedMessage[]).map(async (message) => {
+        const decryptedMessages = await Promise.all((data.messages as EncryptedMessage[]).map(async (message) => {
           const previous = oldMessages.get(message.id);
-          if (previous) return previous;
+          if (previous && previous.isDeleted === message.isDeleted) {
+            return { ...previous, readAt: message.readAt || null };
+          }
           try {
             return await decryptMessage(message);
           } catch {
@@ -558,6 +669,12 @@ export default function AdminDirectChat() {
             };
           }
         }));
+        const retainedFailures = messagesRef.current.filter((message) => (
+          message.deliveryStatus === 'failed' && message.recipientId === selectedContactId
+        ));
+        const nextMessages = [...decryptedMessages, ...retainedFailures]
+          .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+          .slice(-100);
         if (!active) {
           nextMessages.forEach((message) => {
             if (message.attachmentUrl && !oldMessages.has(message.id)) URL.revokeObjectURL(message.attachmentUrl);
@@ -572,32 +689,72 @@ export default function AdminDirectChat() {
         messagesRef.current = nextMessages;
         setMessages(nextMessages);
         setConnectionError('');
-        setIsConnected(true);
+        if (!isMarkingRead && document.visibilityState === 'visible'
+          && nextMessages.some((message) => message.senderId === selectedContactId
+            && message.recipientId === currentUserId && !message.readAt && !message.isDeleted)) {
+          isMarkingRead = true;
+          void fetch('/api/admin-chat/messages', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ with: selectedContactId }),
+          }).then(async (readResponse) => {
+            const readData = await readResponse.json();
+            if (!readResponse.ok || typeof readData.readAt !== 'string') {
+              throw new Error(readData.error || 'Gagal memperbarui status baca pesan');
+            }
+            if (!active) return;
+            const updatedMessages = messagesRef.current.map((message) => (
+              message.senderId === selectedContactId && message.recipientId === currentUserId && !message.readAt && !message.isDeleted
+                ? { ...message, readAt: readData.readAt }
+                : message
+            ));
+            messagesRef.current = updatedMessages;
+            setMessages(updatedMessages);
+          }).catch((error) => {
+            if (active) setConnectionError(error instanceof Error ? error.message : 'Gagal memperbarui status baca pesan');
+          }).finally(() => {
+            isMarkingRead = false;
+          });
+        }
       } catch (error) {
         if (active) {
           setConnectionError(error instanceof Error ? error.message : 'Koneksi chat terputus');
-          setIsConnected(false);
         }
       } finally {
         isFetching = false;
         if (active) setIsLoadingMessages(false);
+        if (active && shouldFetchAgain) {
+          shouldFetchAgain = false;
+          void loadMessages();
+        }
       }
     }
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void loadMessagesRef.current?.();
+    };
+    loadMessagesRef.current = loadMessages;
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     setIsLoadingMessages(true);
     void loadMessages();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void loadMessages();
-    }, POLL_INTERVAL_MS);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (loadMessagesRef.current === loadMessages) loadMessagesRef.current = null;
     };
-  }, [currentUser?.username, currentUserId, identity, identityReady, isAdmin, selectedContactId, selectedContactPublicKey]);
+  }, [currentUser?.username, currentUserId, identity, identityReady, isAdmin, recoveryStatus, selectedContactId, selectedContactPublicKey]);
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length]);
+
+  useEffect(() => {
+    if (!isAdmin || recoveryStatus !== 'ready' || !identityReady || !selectedContactId) return;
+    const refreshTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void loadMessagesRef.current?.();
+    }, 5000);
+    return () => window.clearInterval(refreshTimer);
+  }, [identityReady, isAdmin, recoveryStatus, selectedContactId]);
 
   useEffect(() => () => {
     if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
@@ -619,11 +776,13 @@ export default function AdminDirectChat() {
   const handleSend = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = draft.trim();
-    if (isSending || (!text && !selectedFile) || !identity || !accountPublicKey || !selectedContact?.publicKey) return;
+    if (isSending || !canSend || (!text && !selectedFile) || !identity || !accountPublicKey || !selectedContact?.publicKey) return;
 
     setIsSending(true);
     setSendError('');
     setUploadProgress(0);
+    let attemptedContent: ChatContent | null = null;
+    let serverAccepted = false;
     try {
       const attachmentBytes = selectedFile ? await selectedFile.arrayBuffer() : undefined;
       const replyText = replyTo?.text.slice(0, 240) || (replyTo?.media ? '[Lampiran]' : '');
@@ -632,6 +791,7 @@ export default function AdminDirectChat() {
         replyTo: replyTo ? { messageId: replyTo.id, senderId: replyTo.senderId, text: replyText } : null,
         media: selectedFile ? { fileName: selectedFile.name, contentType: selectedFile.type } : null,
       };
+      attemptedContent = content;
       const encrypted = await encryptAdminChatPayload(content, [
         { userId: currentUserId, publicKey: accountPublicKey, recoveryPublicKey: accountRecoveryPublicKey || undefined, recoveryKeyId: accountRecoveryKeyId || undefined },
         { userId: selectedContact.id, publicKey: selectedContact.publicKey, recoveryPublicKey: selectedContact.recoveryPublicKey || undefined, recoveryKeyId: selectedContact.recoveryKeyId || undefined },
@@ -666,6 +826,7 @@ export default function AdminDirectChat() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Gagal mengirim pesan');
 
+      serverAccepted = true;
       const serverMessage = data.message as EncryptedMessage;
       const decrypted = await decryptAdminChatPayload<ChatContent>(serverMessage, currentUserId, identity);
       let attachmentUrl: string | null = null;
@@ -685,16 +846,53 @@ export default function AdminDirectChat() {
         attachmentUrl,
         decryptionError: false,
       };
-      const nextMessages = [...messagesRef.current, sentMessage].slice(-100);
-      messagesRef.current = nextMessages;
-      setMessages(nextMessages);
-      setDraft('');
-      setReplyTo(null);
-      setSelectedFile(null);
-      setUploadProgress(0);
-      if (fileInput.current) fileInput.current.value = '';
+      if (selectedContactIdRef.current === serverMessage.recipientId) {
+        const matchingFailure = messagesRef.current.find((message) => (
+          message.deliveryStatus === 'failed'
+          && message.recipientId === serverMessage.recipientId
+          && message.text === sentMessage.text
+          && message.media?.fileName === sentMessage.media?.fileName
+          && message.replyTo?.messageId === sentMessage.replyTo?.messageId
+        ));
+        const nextMessages = [
+          ...messagesRef.current.filter((message) => message.id !== sentMessage.id && message.id !== matchingFailure?.id),
+          sentMessage,
+        ].slice(-100);
+        messagesRef.current = nextMessages;
+        setMessages(nextMessages);
+        setDraft('');
+        setReplyTo(null);
+        setSelectedFile(null);
+        setUploadProgress(0);
+        if (fileInput.current) fileInput.current.value = '';
+      }
     } catch (error) {
       setSendError(error instanceof Error ? error.message : 'Gagal mengirim pesan');
+      if (attemptedContent && !serverAccepted && selectedContactIdRef.current === selectedContact.id) {
+        const createdAt = new Date().toISOString();
+        const failedMessage: ChatMessage = {
+          id: `failed-${crypto.randomUUID()}`,
+          senderId: currentUserId,
+          recipientId: selectedContact.id,
+          ciphertext: '',
+          iv: '',
+          wrappedKeys: [],
+          createdAt,
+          expiresAt: createdAt,
+          isDeleted: false,
+          readAt: null,
+          text: attemptedContent.text,
+          replyTo: attemptedContent.replyTo,
+          media: attemptedContent.media,
+          deliveryStatus: 'failed',
+          encryptedAttachment: null,
+          attachmentUrl: null,
+          decryptionError: false,
+        };
+        const nextMessages = [...messagesRef.current, failedMessage].slice(-100);
+        messagesRef.current = nextMessages;
+        setMessages(nextMessages);
+      }
     } finally {
       setIsSending(false);
     }
@@ -708,6 +906,7 @@ export default function AdminDirectChat() {
   };
 
   const selectContact = (contactId: string) => {
+    selectedContactIdRef.current = contactId;
     setSelectedContactId(contactId);
     setIsMobileConversationOpen(true);
     setDraft('');
@@ -719,10 +918,10 @@ export default function AdminDirectChat() {
     if (fileInput.current) fileInput.current.value = '';
   };
 
-  const handleDelete = async (scope: 'me' | 'everyone', ids: string[]) => {
+  const handleDelete = async (scope: 'me' | 'everyone', ids: string[], confirmed = false) => {
     if (!ids.length || ids.length > 100 || isDeleting) return;
     const description = scope === 'everyone' ? 'Hapus pesan terpilih untuk kedua admin?' : 'Hapus pesan terpilih dari chat Anda?';
-    if (!window.confirm(description)) return;
+    if (!confirmed && !window.confirm(description)) return;
     setIsDeleting(true);
     setSendError('');
     try {
@@ -743,6 +942,7 @@ export default function AdminDirectChat() {
       setSelectedMessageIds([]);
       setIsSelecting(false);
       setActionMessageId('');
+      setDeleteChoiceMessageId('');
     } catch (error) {
       setSendError(error instanceof Error ? error.message : 'Gagal menghapus pesan');
     } finally {
@@ -762,7 +962,7 @@ export default function AdminDirectChat() {
           { transform: 'translateX(70px)', offset: 0.45 },
           { transform: 'translateX(0)' },
         ],
-        { duration: 500, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
+        { duration: 700, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
       );
     }
   };
@@ -796,10 +996,9 @@ export default function AdminDirectChat() {
   if (!isAdmin) return <Alert variant="destructive"><ShieldCheck className="h-4 w-4" /><AlertDescription>Fitur chat hanya dapat digunakan oleh akun dengan role Admin.</AlertDescription></Alert>;
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5 sm:space-y-6">
-      <header className="flex flex-col gap-2 border-b border-border pb-3 sm:pb-4">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col gap-3 overflow-hidden">
+      <header className="flex shrink-0 flex-col gap-2 border-b border-border pb-3 sm:pb-4">
         <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Komunikasi internal</p>
           <h1 className="text-2xl font-bold sm:text-3xl">Chat Admin</h1>
           <p className="text-center text-sm text-muted-foreground sm:text-left">
             Percakapan pribadi di
@@ -809,15 +1008,8 @@ export default function AdminDirectChat() {
             .
           </p>
         </div>
-        <div className="flex items-center justify-between gap-2 pt-1">
-          <div className="inline-flex w-fit items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground" aria-live="polite">
-            <span className={`h-2 w-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-            {isConnected ? 'Terhubung' : 'Menghubungkan...'}
-          </div>
+        <div className="flex items-center justify-end gap-2 pt-1">
           <div className="flex items-center gap-2">
-            {!recoveryMode && recoveryStatus !== 'ready' && <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => { setRecoveryError(''); setRecoveryMode('setup'); }}>
-              {recoveryStatus === 'migrating' ? 'Lanjutkan migrasi' : 'Atur sandi Chat'}
-            </Button>}
             {!recoveryMode && recoveryStatus === 'ready' && identityReady && <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => { setRecoveryError(''); setRecoveryMode('rotate'); }}>
               Ganti sandi Chat
             </Button>}
@@ -839,8 +1031,56 @@ export default function AdminDirectChat() {
 
       {recoveryError && <Alert variant="destructive"><AlertDescription>{recoveryError}</AlertDescription></Alert>}
 
-      <Dialog open={Boolean(recoveryMode)} onOpenChange={(open) => {
-        if (!open && !isRecoveryBusy) setRecoveryMode(null);
+      <Dialog open={Boolean(profileContact)} onOpenChange={(open) => {
+        if (!open) setProfileContact(null);
+      }}>
+        <DialogContent className="rounded-2xl sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Detail admin</DialogTitle>
+            <DialogDescription>Informasi profil admin.</DialogDescription>
+          </DialogHeader>
+          {profileContact && <div className="flex flex-col items-center gap-4 py-2 text-center">
+            <button
+              type="button"
+              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+              onClick={() => setIsProfileImageOpen(true)}
+              disabled={!profileContact.profileImage}
+              aria-label={profileContact.profileImage ? `Lihat foto asli ${profileContact.username}` : 'Foto profil tidak tersedia'}
+            >
+              <AdminAvatar contact={profileContact} size="h-24 w-24 text-3xl" />
+            </button>
+            <div className="w-full space-y-2">
+              <h3 className="text-lg font-semibold">{profileContact.username}</h3>
+              <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
+                {profileContact.bio || 'Bio belum ditambahkan.'}
+              </p>
+            </div>
+          </div>}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isProfileImageOpen} onOpenChange={setIsProfileImageOpen}>
+        <DialogContent className="max-h-[90dvh] max-w-3xl overflow-hidden rounded-2xl p-3 pt-12 sm:p-5 sm:pt-12">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Foto profil {profileContact?.username}</DialogTitle>
+            <DialogDescription>Foto profil asli admin.</DialogDescription>
+          </DialogHeader>
+          {profileContact && <div className="flex max-h-[66dvh] justify-center overflow-auto">
+            <Image
+              src={`/api/admin-chat/contacts/${encodeURIComponent(profileContact.id)}/profile-image`}
+              alt={`Foto profil ${profileContact.username}`}
+              width={1200}
+              height={1200}
+              unoptimized
+              className="h-auto max-h-[64dvh] w-auto max-w-full rounded-md object-contain"
+            />
+          </div>}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={recoveryStatus !== 'loading' && (recoveryStatus !== 'ready' || Boolean(recoveryMode))} onOpenChange={(open) => {
+        if (!open && !isRecoveryBusy && recoveryStatus === 'ready') setRecoveryMode(null);
+        if (open && recoveryStatus !== 'ready' && !recoveryMode) setRecoveryMode('setup');
       }}>
         <DialogContent className="rounded-2xl">
           <DialogHeader>
@@ -870,6 +1110,9 @@ export default function AdminDirectChat() {
             </div>}
             {recoveryError && <Alert variant="destructive"><AlertDescription>{recoveryError}</AlertDescription></Alert>}
             {recoveryStatus === 'migrating' && recoveryProgress && <p className="text-xs text-muted-foreground">{recoveryProgress}</p>}
+            {(recoveryMode === 'rotate' || recoveryMode === 'restore') && recoveryStatus === 'ready' && <Button type="button" variant="outline" className="w-full" disabled={isRecoveryBusy} onClick={() => void handleResetChatPassword()}>
+              Lupa sandi? Reset sandi Chat
+            </Button>}
             <DialogFooter>
               <Button type="submit" disabled={isRecoveryBusy || ((recoveryMode === 'setup' || recoveryMode === 'rotate') && recoveryStatus !== 'migrating' && recoveryPassword !== recoveryConfirmPassword)}>
                 {isRecoveryBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
@@ -880,9 +1123,41 @@ export default function AdminDirectChat() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={Boolean(deleteChoiceMessageId)} onOpenChange={(open) => {
+        if (!open && !isDeleting) setDeleteChoiceMessageId('');
+      }}>
+        <DialogContent className="rounded-2xl sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Hapus pesan</DialogTitle>
+            <DialogDescription>
+              {messages.find((message) => message.id === deleteChoiceMessageId)?.isDeleted
+                ? 'Hapus pesan ini dari chat Anda.'
+                : 'Pilih siapa yang akan menghapus pesan ini.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col-reverse sm:flex-row">
+            <Button type="button" variant="outline" disabled={isDeleting} onClick={() => {
+              const messageId = deleteChoiceMessageId;
+              setDeleteChoiceMessageId('');
+              void handleDelete('me', [messageId], true);
+            }}>
+              Hapus untuk saya
+            </Button>
+            {!messages.find((message) => message.id === deleteChoiceMessageId)?.isDeleted && <Button type="button" variant="destructive" disabled={isDeleting} onClick={() => {
+              const messageId = deleteChoiceMessageId;
+              setDeleteChoiceMessageId('');
+              void handleDelete('everyone', [messageId], true);
+            }}>
+              Hapus untuk semua orang
+            </Button>}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {connectionError && !identity && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{connectionError}</AlertDescription></Alert>}
 
-      <section className="grid h-[calc(100dvh-17rem)] min-h-[440px] max-h-[900px] grid-cols-1 overflow-hidden rounded-md border border-border bg-card shadow-sm sm:min-h-[480px] md:grid-cols-[250px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]" aria-label="Chat pribadi admin">
+      {recoveryStatus === 'ready' ? (
+      <section className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-md border border-border bg-card shadow-sm md:grid-cols-[250px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]" aria-label="Chat pribadi admin">
         <aside className={`${isMobileConversationOpen ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-col border-b border-border bg-muted/20 md:flex md:border-b-0 md:border-r`} aria-label="Daftar admin">
           <div className="flex items-center justify-between px-3 pb-1 pt-3 sm:px-4 sm:pt-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Percakapan</p>
@@ -890,59 +1165,80 @@ export default function AdminDirectChat() {
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2 sm:p-3 md:p-2">
           {isLoadingContacts ? <div className="flex min-h-12 items-center gap-2 rounded-md border border-border bg-card p-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat admin...</div> : contacts.length ? contacts.map((contact) => (
-            <button key={contact.id} type="button" onClick={() => selectContact(contact.id)} className={`flex min-h-14 w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${selectedContactId === contact.id ? 'border-primary/30 bg-primary/10 text-foreground' : 'border-transparent bg-card/70 hover:border-border hover:bg-card'}`}>
-              <AdminAvatar contact={contact} size="h-9 w-9" /><span className="min-w-0 flex-1 truncate text-sm font-medium">{contact.username}</span>
+            <div key={contact.id} className={`flex min-h-14 w-full items-center gap-3 rounded-md border px-3 py-2 transition-colors ${selectedContactId === contact.id ? 'border-primary/30 bg-primary/10 text-foreground' : 'border-transparent bg-card/70 hover:border-border hover:bg-card'}`}>
+              <button type="button" onClick={() => setProfileContact(contact)} aria-label={`Lihat profil ${contact.username}`} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <AdminAvatar contact={contact} size="h-9 w-9" />
+              </button>
+              <button type="button" onClick={() => selectContact(contact.id)} className="min-w-0 flex-1 truncate text-left text-sm font-medium">{contact.username}</button>
               {!contact.publicKey && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" title="Belum mengaktifkan chat" />}
-            </button>
+            </div>
           )) : <p className="px-3 py-2 text-sm text-muted-foreground">Belum ada admin lain.</p>}
           </div>
         </aside>
 
         <div className={`${isMobileConversationOpen ? 'flex' : 'hidden'} min-h-0 min-w-0 flex-col bg-background/50 md:flex`}>
           <div className="flex min-h-[72px] items-center justify-between gap-2 border-b border-border bg-card px-3 py-3 sm:gap-3 sm:px-5">
-            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-              {selectedContact && <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 md:hidden" onClick={() => setIsMobileConversationOpen(false)} aria-label="Kembali ke daftar admin"><ArrowLeft className="h-4 w-4" /></Button>}
-              {selectedContact ? <><AdminAvatar contact={selectedContact} /><div className="min-w-0"><p className="truncate text-sm font-semibold">{selectedContact.username}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{selectedContact.publicKey ? 'Percakapan terenkripsi' : 'Menunggu admin menyiapkan kunci chat'}</p></div></> : <div className="hidden min-w-0 md:block"><p className="text-sm font-semibold">Belum ada percakapan dipilih</p><p className="mt-0.5 text-xs text-muted-foreground">Pilih admin untuk membuka chat.</p></div>}
-            </div>
-            {selectedContact && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Menu chat" title="Menu chat"><EllipsisVertical className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => { setIsSelecting(true); setSelectedMessageIds([]); }}>Pilih beberapa pesan</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+            {actionMessageId ? <>
+              <p className="mr-auto text-sm font-medium">Pesan dipilih</p>
+              <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-destructive" disabled={isDeleting} onClick={() => {
+                const heldMessage = messages.find((message) => message.id === actionMessageId);
+                if (heldMessage?.senderId === currentUserId) setDeleteChoiceMessageId(actionMessageId);
+                else void handleDelete('me', [actionMessageId]);
+              }} aria-label="Hapus pesan" title="Hapus pesan">
+                {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </Button>
+              <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={() => setActionMessageId('')} aria-label="Batalkan pilihan pesan" title="Batal">
+                <X className="h-4 w-4" />
+              </Button>
+            </> : <>
+              <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                {selectedContact && <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 md:hidden" onClick={() => setIsMobileConversationOpen(false)} aria-label="Kembali ke daftar admin"><ArrowLeft className="h-4 w-4" /></Button>}
+                {selectedContact ? <><button type="button" onClick={() => setProfileContact(selectedContact)} aria-label={`Lihat profil ${selectedContact.username}`} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><AdminAvatar contact={selectedContact} /></button><div className="min-w-0"><p className="truncate text-sm font-semibold">{selectedContact.username}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{selectedContact.publicKey ? 'Percakapan terenkripsi' : 'Menunggu admin menyiapkan kunci chat'}</p></div></> : <div className="hidden min-w-0 md:block"><p className="text-sm font-semibold">Belum ada percakapan dipilih</p><p className="mt-0.5 text-xs text-muted-foreground">Pilih admin untuk membuka chat.</p></div>}
+              </div>
+              {selectedContact && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Menu chat" title="Menu chat"><EllipsisVertical className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => { setIsSelecting(true); setSelectedMessageIds([]); }}>Pilih beberapa pesan</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+            </>}
           </div>
 
           {isSelecting && <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-3 py-2.5 sm:px-5"><span className="mr-auto text-sm font-medium">{selectedMessageIds.length} dipilih</span><Button type="button" variant="ghost" size="sm" onClick={() => { setIsSelecting(false); setSelectedMessageIds([]); }}>Batal</Button><Button type="button" variant="outline" size="sm" disabled={!selectedMessageIds.length || isDeleting} onClick={() => void handleDelete('me', selectedMessageIds)}><Trash2 className="mr-2 h-4 w-4" /> Hapus untuk saya</Button>{selectedMessageIds.length > 0 && allSelectedAreOwn && <Button type="button" variant="destructive" size="sm" disabled={isDeleting} onClick={() => void handleDelete('everyone', selectedMessageIds)}><Trash2 className="mr-2 h-4 w-4" /> Hapus untuk semua</Button>}</div>}
 
           {selectedContact && currentUser?.username && <div className="flex items-start gap-2 border-b border-border bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground sm:px-5"><LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /><p className="min-w-0 leading-relaxed">Chat ini hanya bisa dilihat oleh <span className="font-semibold text-foreground">{currentUser.username}</span> dan <span className="font-semibold text-foreground">{selectedContact.username}</span>.</p></div>}
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6" aria-live="polite" aria-relevant="additions">
+          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden px-3 py-4 sm:px-6 sm:py-6" aria-live="polite" aria-relevant="additions">
             {!selectedContact ? <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-muted-foreground"><span className="flex h-12 w-12 items-center justify-center rounded-md border border-border bg-card"><MessageCircle className="h-5 w-5 text-primary" /></span><p>Pilih admin untuk memulai chat.</p></div>
               : !selectedContact.publicKey ? <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-sm text-muted-foreground"><span className="flex h-12 w-12 items-center justify-center rounded-md border border-primary/20 bg-primary/5"><ShieldCheck className="h-5 w-5 text-primary" /></span><p className="max-w-sm leading-relaxed">Admin ini perlu membuka halaman Chat Admin sekali untuk menyiapkan kunci enkripsi.</p></div>
                 : !identityReady ? <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-sm text-muted-foreground"><span className="flex h-12 w-12 items-center justify-center rounded-md border border-destructive/20 bg-destructive/5"><AlertCircle className="h-5 w-5 text-destructive" /></span><p className="max-w-sm leading-relaxed">Kunci privat chat untuk akun {currentUser?.username} tidak cocok atau tidak tersedia di browser ini. Pesan terenkripsi hanya dapat dibaca dengan kunci asli akun tersebut.</p></div>
                 : isLoadingMessages ? <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat percakapan...</div>
                   : messages.length === 0 ? <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground"><span className="flex h-12 w-12 items-center justify-center rounded-md border border-border bg-card"><MessageCircle className="h-5 w-5 text-primary" /></span><p className="text-sm">Belum ada pesan. Mulai percakapan pribadi.</p></div>
-                    : <div className="space-y-3">{messages.map((message) => {
+                    : <div className="flex min-h-full min-w-0 flex-col justify-end space-y-3 overflow-x-clip">{messages.map((message) => {
                       const own = message.senderId === currentUserId;
                       const selected = selectedMessageIds.includes(message.id);
                       const replySender = message.replyTo?.senderId === currentUserId ? 'Anda' : selectedContact.username;
-                      return <article key={message.id} className={`relative flex items-start gap-2 ${own ? 'justify-end' : 'justify-start'} ${selected ? 'rounded-md bg-primary/5 ring-1 ring-primary/30' : ''}`} onTouchStart={(event) => handleTouchStart(message, event)} onTouchEnd={(event) => handleTouchEnd(message, event)} onTouchMove={() => { if (holdTimer.current !== null) window.clearTimeout(holdTimer.current); }} onContextMenu={(event) => { event.preventDefault(); setActionMessageId(message.id); }}>
+                      return <article key={message.id} className={`relative flex select-none items-start gap-2 ${own ? 'justify-end' : 'justify-start'} ${selected ? 'rounded-md bg-primary/5 ring-1 ring-primary/30' : ''}`} onTouchStart={(event) => handleTouchStart(message, event)} onTouchEnd={(event) => handleTouchEnd(message, event)} onTouchMove={() => { if (holdTimer.current !== null) window.clearTimeout(holdTimer.current); }} onContextMenu={(event) => { event.preventDefault(); setActionMessageId(message.id); }}>
                         {isSelecting && <Checkbox checked={selected} onCheckedChange={() => toggleSelectedMessage(message.id)} aria-label={`Pilih pesan ${formatMessageTime(message.createdAt)}`} className="mt-3" />}
                         <div className={`flex min-w-0 max-w-[90%] flex-col ${own ? 'items-end' : 'items-start'} sm:max-w-[76%]`}>
-                          <p className="mb-1 px-1 text-[11px] font-medium text-muted-foreground">{own ? currentUser?.username : selectedContact.username}</p>
+                          <p className="mb-2 px-3 text-[11px] font-medium text-muted-foreground">{own ? currentUser?.username : selectedContact.username}</p>
                           <div ref={(element) => {
                             if (element) messageBubblesRef.current.set(message.id, element);
                             else messageBubblesRef.current.delete(message.id);
-                          }} className={`min-w-0 overflow-hidden rounded-md border px-[11.5px] pt-2.5 pb-5 shadow-sm ${own ? 'border-primary/20 bg-primary text-primary-foreground' : 'border-border bg-card text-foreground'}`}>
-                            {message.replyTo && <div className={`mb-2 border-l-2 pl-2 text-xs ${own ? 'border-primary-foreground/60 text-primary-foreground/80' : 'border-primary text-muted-foreground'}`}><span className="font-semibold">{replySender}</span><p className="line-clamp-2 break-words">{message.replyTo.text || '[Lampiran]'}</p></div>}
+                          }} className={`relative min-w-[6rem] overflow-hidden rounded-2xl border p-3 pb-9 shadow-sm ${own ? 'rounded-br-sm border-emerald-200 bg-emerald-100 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-50' : 'rounded-bl-sm border-border bg-card text-foreground'}`}>
+                            {message.replyTo && <div className={`mb-3 border-l-2 pl-2 text-xs ${own ? 'border-primary-foreground/60 text-primary-foreground/80' : 'border-primary text-muted-foreground'}`}><span className="font-semibold">{replySender}</span><p className="line-clamp-2 break-words">{message.replyTo.text || '[Lampiran]'}</p></div>}
                             {message.decryptionError ? <p className="text-sm italic opacity-80">Pesan tidak dapat didekripsi di browser ini.</p> : <>
-                              {message.media && <div className="mb-2">{message.attachmentUrl && message.media.contentType.startsWith('image/') ? <a href={message.attachmentUrl} target="_blank" rel="noreferrer" aria-label={`Buka ${message.media.fileName}`}><Image src={message.attachmentUrl} alt={message.media.fileName} width={480} height={360} unoptimized className="max-h-[360px] max-w-full rounded-md object-contain" /></a> : message.attachmentUrl ? <video src={message.attachmentUrl} controls playsInline preload="metadata" className="max-h-[360px] max-w-full rounded-md" aria-label={message.media.fileName} /> : <p className="text-xs opacity-75">Lampiran tidak tersedia.</p>}<p className="mt-1 max-w-full truncate text-[11px] opacity-75">{message.media.fileName}{message.encryptedAttachment ? ` · ${formatFileSize(message.encryptedAttachment.size)}` : ''}</p></div>}
-                              {message.text && <div className="flex min-w-0 items-end gap-2">
-                                <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm">{message.text}</p>
-                                <div className={`flex shrink-0 translate-y-2.5 items-center gap-1.5 text-[10px] ${own ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                                  <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
-                                  {own && <Check className="h-3 w-3" aria-label="Terkirim" />}
-                                </div>
-                              </div>}
+                              {message.isDeleted ? <p className="text-sm italic text-muted-foreground">Pesan dihapus</p> : <>
+                                {message.media && <div className="mb-3">{message.attachmentUrl && message.media.contentType.startsWith('image/') ? <a href={message.attachmentUrl} target="_blank" rel="noreferrer" aria-label={`Buka ${message.media.fileName}`}><Image src={message.attachmentUrl} alt={message.media.fileName} width={480} height={360} unoptimized className="max-h-[360px] max-w-full rounded-md object-contain" /></a> : message.attachmentUrl ? <video src={message.attachmentUrl} controls playsInline preload="metadata" className="max-h-[360px] max-w-full rounded-md" aria-label={message.media.fileName} /> : <p className="text-xs opacity-75">Lampiran tidak tersedia.</p>}<p className="mt-2 max-w-full truncate text-[11px] opacity-75">{message.media.fileName}{message.encryptedAttachment ? ` · ${formatFileSize(message.encryptedAttachment.size)}` : ''}</p></div>}
+                                {message.text && <div className="min-w-0">
+                                  <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
+                                </div>}
+                              </>}
                             </>}
-                            {!message.text && <div className={`mt-1 flex translate-y-2.5 items-center justify-end gap-1.5 text-[10px] ${own ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}><time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>{own && <Check className="h-3 w-3" aria-label="Terkirim" />}</div>}
+                            <div className={`absolute bottom-3 right-3 flex w-1/2 items-center justify-end gap-1.5 whitespace-nowrap text-[10px] ${own ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                              <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+                              {own && !message.isDeleted && (message.deliveryStatus === 'failed'
+                                ? <AlertCircle className="h-3 w-3 text-destructive" aria-label="Gagal dikirim" />
+                                : message.readAt
+                                  ? <CheckCheck className="h-3 w-3 text-sky-600 dark:text-sky-400" aria-label="Sudah dibaca" />
+                                  : <Check className="h-3 w-3" aria-label="Terkirim, belum dibaca" />)}
+                            </div>
                           </div>
-                          {actionMessageId === message.id && !isSelecting && <div className="mt-1 flex flex-wrap gap-1 rounded-md border border-border bg-popover p-1 shadow-sm"><Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => selectReply(message)}><Reply className="mr-1.5 h-3.5 w-3.5" /> Balas</Button><Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => void handleDelete('me', [message.id])}><Trash2 className="mr-1.5 h-3.5 w-3.5" /> Hapus untuk saya</Button>{own && <Button type="button" variant="ghost" size="sm" className="h-8 text-destructive" onClick={() => void handleDelete('everyone', [message.id])}><Trash2 className="mr-1.5 h-3.5 w-3.5" /> Hapus untuk semua</Button>}<Button type="button" variant="ghost" size="icon" className="h-8 w-8" aria-label="Tutup aksi pesan" onClick={() => setActionMessageId('')}><X className="h-4 w-4" /></Button></div>}
                         </div>
                       </article>;
                     })}<div ref={messagesEnd} /></div>}
@@ -957,12 +1253,29 @@ export default function AdminDirectChat() {
             <form onSubmit={handleSend} className="flex items-end gap-2 sm:gap-3">
               <input ref={fileInput} type="file" accept="image/*,video/*" className="sr-only" onChange={(event) => handleFileChange(event.target.files?.[0] || null)} disabled={isSending || !canSend} aria-label="Pilih gambar atau video" />
               <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => fileInput.current?.click()} disabled={isSending || !canSend} aria-label="Lampirkan gambar atau video" title="Lampirkan gambar/video"><Paperclip className="h-4 w-4" /></Button>
-              <Textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={canSend ? 'Tulis pesan terenkripsi...' : selectedContact.recoveryStatus === 'migrating' || recoveryStatus === 'migrating' ? 'Pengiriman dijeda selama migrasi kunci...' : 'Menunggu kunci admin...'} maxLength={MAX_MESSAGE_LENGTH} rows={2} className="min-h-10 max-h-32 resize-y" disabled={isSending || !canSend} aria-label="Isi pesan" />
+              <Textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={canSend ? 'Tulis pesan terenkripsi...' : selectedContact.recoveryStatus === 'migrating' ? 'Pengiriman dijeda selama migrasi kunci...' : selectedContact.recoveryStatus !== 'ready' ? 'Menunggu admin membuat sandi Chat...' : 'Menunggu kunci admin...'} maxLength={MAX_MESSAGE_LENGTH} rows={2} className="min-h-10 max-h-32 resize-y" disabled={isSending || !canSend} aria-label="Isi pesan" />
               <Button type="submit" size="icon" className="h-10 w-10 shrink-0" disabled={isSending || !canSend || (!draft.trim() && !selectedFile)} aria-label="Kirim pesan">{isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : uploadProgress === 100 ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}</Button>
             </form>
           </div>}
         </div>
       </section>
+      ) : (
+        <section className="flex min-h-0 flex-1 items-center justify-center rounded-md border border-border bg-card px-5 py-10 text-center" aria-label="Chat admin terkunci">
+          <div className="flex max-w-md flex-col items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-md border border-primary/20 bg-primary/5"><LockKeyhole className="h-5 w-5 text-primary" /></span>
+            <h2 className="text-lg font-semibold">Buat sandi Chat untuk melanjutkan</h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {recoveryStatus === 'migrating'
+                ? 'Selesaikan migrasi key terlebih dahulu. Chat akan terbuka setelah proses selesai.'
+                : 'Chat, riwayat pesan, dan lampiran dikunci sampai backup key aman dengan sandi Chat.'}
+            </p>
+            <Button type="button" onClick={() => { setRecoveryError(''); setRecoveryMode('setup'); }} disabled={isRecoveryBusy}>
+              <KeyRound className="mr-2 h-4 w-4" />
+              {recoveryStatus === 'migrating' ? 'Lanjutkan migrasi' : 'Buat sandi Chat'}
+            </Button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

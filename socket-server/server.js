@@ -7,7 +7,7 @@ const port = Number(process.env.PORT || 3001);
 const jwtSecret = process.env.JWT_SECRET;
 const publishSecret = process.env.SOCKET_PUBLISH_SECRET;
 const allowedOrigins = new Set(
-  (process.env.APP_ORIGIN || '')
+  (process.env.APP_ORIGIN || 'http://localhost:3000')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean)
@@ -57,15 +57,10 @@ async function readJsonBody(request) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
-function isPaymentReceivedPayload(data) {
-  return data &&
-    typeof data.customerName === 'string' && data.customerName.length <= 160 &&
-    Number.isFinite(data.amount) && data.amount > 0 &&
-    typeof data.month === 'string' && data.month.length <= 20 &&
-    Number.isInteger(data.year) && data.year >= 2000 && data.year <= 2200 &&
-    (data.method === null || data.method === 'Cash' || data.method === 'TF') &&
-    typeof data.recordedBy === 'string' && data.recordedBy.length <= 64 &&
-    typeof data.receivedAt === 'string' && Number.isFinite(Date.parse(data.receivedAt));
+function isAdminChatUpdatePayload(userIds) {
+  return Array.isArray(userIds) && userIds.length > 0 && userIds.length <= 100 &&
+    userIds.every((userId) => typeof userId === 'string' && /^[a-f\d]{24}$/i.test(userId)) &&
+    new Set(userIds).size === userIds.length;
 }
 
 const httpServer = createServer(async (request, response) => {
@@ -75,7 +70,7 @@ const httpServer = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === 'POST' && request.url === '/internal/events') {
+  if (request.method === 'POST' && request.url === '/internal/chat-events') {
     if (!hasValidPublishSecret(request.headers.authorization)) {
       sendJson(response, 401, { error: 'Tidak diizinkan' });
       return;
@@ -92,12 +87,12 @@ const httpServer = createServer(async (request, response) => {
       return;
     }
 
-    if (body?.event !== 'payment.received' || !isPaymentReceivedPayload(body.data)) {
+    if (body?.event !== 'admin-chat.updated' || !isAdminChatUpdatePayload(body.userIds)) {
       sendJson(response, 400, { error: 'Event tidak valid' });
       return;
     }
 
-    io.to('role:admin').to('role:collector').emit('payment.received', body.data);
+    io.to(body.userIds.map((userId) => `admin:${userId}`)).emit('admin-chat:updated');
     sendJson(response, 202, { accepted: true });
     return;
   }
@@ -132,8 +127,10 @@ io.use((socket, next) => {
     if (
       typeof payload === 'string' ||
       payload.purpose !== 'socket-ticket' ||
+      typeof payload.userId !== 'string' || !/^[a-f\d]{24}$/i.test(payload.userId) ||
       typeof payload.username !== 'string' ||
       typeof payload.role !== 'string' ||
+      !Array.isArray(payload.roles) || !payload.roles.includes('admin') ||
       typeof payload.exp !== 'number'
     ) {
       next(new Error('Tiket socket tidak valid'));
@@ -141,9 +138,10 @@ io.use((socket, next) => {
     }
 
     socket.data.user = {
+      userId: payload.userId,
       username: payload.username,
       role: payload.role,
-      roles: Array.isArray(payload.roles) ? payload.roles : [payload.role],
+      roles: payload.roles,
       tokenVersion: payload.tokenVersion,
     };
     socket.data.ticketExpiresAt = payload.exp * 1000;
@@ -154,9 +152,7 @@ io.use((socket, next) => {
 });
 
 io.on('connection', (socket) => {
-  const roles = socket.data.user.roles;
-  if (roles.includes('admin')) socket.join('role:admin');
-  if (roles.includes('collector')) socket.join('role:collector');
+  socket.join(`admin:${socket.data.user.userId}`);
 
   const disconnectTimer = setTimeout(() => socket.disconnect(true), Math.max(socket.data.ticketExpiresAt - Date.now(), 0));
   socket.once('disconnect', () => clearTimeout(disconnectTimer));

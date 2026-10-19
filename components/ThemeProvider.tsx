@@ -36,12 +36,16 @@ function ThemeSchedule() {
   return null;
 }
 
-export default function ThemeProvider({ children }: { children: React.ReactNode }) {
+export default function ThemeProvider({ children, nonce }: { children: React.ReactNode; nonce?: string }) {
+  // Browsers hide nonce attributes from hydration reads, so match the masked client-side value.
+  const providerNonce = typeof window === 'undefined' ? nonce : '';
+
   return (
     <NextThemesProvider
       attribute="class"
       defaultTheme={getScheduledTheme()}
       enableSystem={false}
+      nonce={providerNonce}
       storageKey={THEME_PREFERENCE_KEY}
     >
       <ThemeSchedule />

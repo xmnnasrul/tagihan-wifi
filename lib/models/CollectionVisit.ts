@@ -24,6 +24,7 @@ const CollectionVisitSchema = new Schema<ICollectionVisit>(
 );
 
 CollectionVisitSchema.index({ customerId: 1, month: 1, year: 1 }, { unique: true });
+CollectionVisitSchema.index({ month: 1, year: 1 });
 
 const CollectionVisit: Model<ICollectionVisit> = models.CollectionVisit || model<ICollectionVisit>('CollectionVisit', CollectionVisitSchema);
 

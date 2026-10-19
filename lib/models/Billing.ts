@@ -64,6 +64,8 @@ const BillingSchema = new Schema<IBilling>(
 BillingSchema.index({ customerId: 1, month: 1, year: 1 }, { unique: true });
 BillingSchema.index({ year: 1, month: 1 });
 BillingSchema.index({ customerId: 1, year: -1, createdAt: -1 });
+BillingSchema.index({ year: -1, createdAt: -1 });
+BillingSchema.index({ 'paymentHistory.addedAt': 1 });
 
 const Billing: Model<IBilling> = models.Billing || model<IBilling>('Billing', BillingSchema);
 

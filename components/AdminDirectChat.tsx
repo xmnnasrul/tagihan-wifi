@@ -2,10 +2,10 @@
 
 import { FormEvent, KeyboardEvent, TouchEvent, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { io } from 'socket.io-client';
+import Pusher from 'pusher-js';
 import {
   AlertCircle, ArrowLeft, Check, CheckCheck, EllipsisVertical, ImagePlus, Loader2, LockKeyhole,
-  KeyRound, MessageCircle, Paperclip, Reply, Send, ShieldCheck, Trash2, Video, X,
+  KeyRound, MessageCircle, Music2, Paperclip, Reply, Send, ShieldCheck, Trash2, Video, X,
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -17,11 +17,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useCurrentUser, useCurrentUserLoading } from '@/components/CurrentUserProvider';
 import {
-  clearAdminChatMigrationSource, createAdminChatRecoveryIdentity, decryptAdminChatAttachment, decryptAdminChatPayload, encryptAdminChatPayload,
+  clearAdminChatMigrationSource, createAdminChatRecoveryIdentity, decodeAdminChatBytes, decryptAdminChatAttachment, decryptAdminChatPayload, encodeAdminChatBytes, encryptAdminChatPayload,
   getOrCreateAdminChatIdentity, getStoredAdminChatIdentity, restoreAdminChatRecoveryIdentity,
   rewrapAdminChatMessageKey, type AdminChatIdentity,
 } from '@/lib/admin-chat-crypto';
 import { ADMIN_CHAT_MAX_ATTACHMENT_SIZE, ADMIN_CHAT_UPLOAD_CHUNK_SIZE, isAdminChatMediaType } from '@/lib/admin-chat-constants';
+import {
+  ADMIN_CHAT_WALLPAPERS, ADMIN_CHAT_WALLPAPER_MAX_SIZE, DEFAULT_ADMIN_CHAT_WALLPAPER,
+  getAdminChatWallpaperBackground, type AdminChatWallpaperPreset, type AdminChatWallpaperSettings,
+} from '@/lib/admin-chat-wallpaper';
+import { Slider } from '@/components/ui/slider';
 
 interface Contact {
   id: string;
@@ -95,6 +100,34 @@ function formatFileSize(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+async function prepareAdminChatWallpaper(file: File): Promise<Blob> {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 12 * 1024 * 1024) {
+    throw new Error('Pilih gambar JPG, PNG, atau WebP dengan ukuran maksimal 12 MB.');
+  }
+  const bitmap = await createImageBitmap(file);
+  try {
+    if (bitmap.width > 6000 || bitmap.height > 6000 || bitmap.width * bitmap.height > 24_000_000) {
+      throw new Error('Resolusi gambar terlalu besar. Pilih gambar maksimal 24 megapiksel.');
+    }
+    const scale = Math.min(1, 1920 / bitmap.width, 1080 / bitmap.height);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Browser tidak dapat memproses gambar wallpaper.');
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    for (const quality of [0.86, 0.74, 0.62, 0.5]) {
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+      if (!blob) throw new Error('Gagal menyiapkan gambar wallpaper.');
+      if (blob.size <= ADMIN_CHAT_WALLPAPER_MAX_SIZE) return blob;
+    }
+    throw new Error('Ukuran gambar masih terlalu besar setelah dikompres. Pilih gambar lain.');
+  } finally {
+    bitmap.close();
+  }
+}
+
 function AdminAvatar({ contact, size = 'h-10 w-10' }: { contact: Pick<Contact, 'username' | 'profileImage'>; size?: string }) {
   return contact.profileImage ? (
     <Image src={contact.profileImage} alt={`Foto profil ${contact.username}`} width={40} height={40} unoptimized className={`${size} shrink-0 rounded-full object-cover`} />
@@ -129,10 +162,20 @@ export default function AdminDirectChat() {
   const [selectedContactId, setSelectedContactId] = useState('');
   const [profileContact, setProfileContact] = useState<Contact | null>(null);
   const [isProfileImageOpen, setIsProfileImageOpen] = useState(false);
+  const [wallpaper, setWallpaper] = useState<AdminChatWallpaperSettings>(DEFAULT_ADMIN_CHAT_WALLPAPER);
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+  const [wallpaperDraft, setWallpaperDraft] = useState<AdminChatWallpaperSettings>(DEFAULT_ADMIN_CHAT_WALLPAPER);
+  const [wallpaperFile, setWallpaperFile] = useState<File | null>(null);
+  const [wallpaperFilePreviewUrl, setWallpaperFilePreviewUrl] = useState<string | null>(null);
+  const [wallpaperDialogOpen, setWallpaperDialogOpen] = useState(false);
+  const [wallpaperStep, setWallpaperStep] = useState<'choose' | 'customize'>('choose');
+  const [wallpaperError, setWallpaperError] = useState('');
+  const [isSavingWallpaper, setIsSavingWallpaper] = useState(false);
   const [isMobileConversationOpen, setIsMobileConversationOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedAudioPreviewUrl, setSelectedAudioPreviewUrl] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [actionMessageId, setActionMessageId] = useState('');
@@ -147,11 +190,14 @@ export default function AdminDirectChat() {
   const [isDeleting, setIsDeleting] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const wallpaperFileInput = useRef<HTMLInputElement>(null);
   const selectedContactIdRef = useRef('');
   const holdTimer = useRef<number | null>(null);
   const touchStartX = useRef<number | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   const loadMessagesRef = useRef<(() => Promise<void>) | null>(null);
+  const loadWallpaperRef = useRef<(() => Promise<void>) | null>(null);
+  const wallpaperVersionRef = useRef('');
   const refreshContactsRef = useRef<(() => Promise<void>) | null>(null);
   const messageBubblesRef = useRef(new Map<string, HTMLDivElement>());
   const recoveryMigrationActive = useRef(false);
@@ -166,40 +212,34 @@ export default function AdminDirectChat() {
 
   useEffect(() => {
     if (!isAdmin || recoveryStatus !== 'ready') return;
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
-    if (!socketUrl) return;
+    const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
+    const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+    if (!key || !cluster || !currentUserId) return;
 
-    const socket = io(socketUrl, {
-      autoConnect: false,
-      auth: (callback) => {
-        void fetch('/api/auth/socket-ticket', { method: 'POST', cache: 'no-store' })
-          .then(async (response) => {
-            if (!response.ok) throw new Error('Gagal membuat tiket socket');
-            const result = await response.json() as { ticket?: unknown };
-            if (typeof result.ticket !== 'string') throw new Error('Tiket socket tidak valid');
-            callback({ ticket: result.ticket });
-          })
-          .catch(() => callback({}));
+    const pusher = new Pusher(key, {
+      cluster,
+      channelAuthorization: {
+        endpoint: '/api/pusher/auth',
+        transport: 'ajax',
       },
     });
+    const channel = pusher.subscribe(`private-admin-chat-${currentUserId}`);
     const refreshChat = () => {
       void loadMessagesRef.current?.();
+      void loadWallpaperRef.current?.();
       void refreshContactsRef.current?.();
     };
 
-    socket.on('connect', () => {
-      refreshChat();
-    });
-    socket.on('disconnect', (reason) => {
-      if (reason === 'io server disconnect') socket.connect();
-    });
-    socket.on('admin-chat:updated', refreshChat);
-    socket.connect();
+    pusher.connection.bind('connected', refreshChat);
+    channel.bind('admin-chat:updated', refreshChat);
 
     return () => {
-      socket.disconnect();
+      pusher.connection.unbind('connected', refreshChat);
+      channel.unbind('admin-chat:updated', refreshChat);
+      pusher.unsubscribe(`private-admin-chat-${currentUserId}`);
+      pusher.disconnect();
     };
-  }, [isAdmin, recoveryStatus]);
+  }, [currentUserId, isAdmin, recoveryStatus]);
 
   useEffect(() => {
     if (!isAdmin || recoveryStatus === 'loading' || recoveryStatus === 'ready') return;
@@ -745,16 +785,105 @@ export default function AdminDirectChat() {
   }, [currentUser?.username, currentUserId, identity, identityReady, isAdmin, recoveryStatus, selectedContactId, selectedContactPublicKey]);
 
   useEffect(() => {
+    setWallpaperUrl(null);
+    setWallpaper(DEFAULT_ADMIN_CHAT_WALLPAPER);
+    setWallpaperError('');
+    wallpaperVersionRef.current = '';
+
+    if (!isAdmin || recoveryStatus !== 'ready' || !identityReady || !identity || !selectedContactId
+      || !selectedContactPublicKey || selectedContact?.recoveryStatus !== 'ready' || !currentUserId) {
+      loadWallpaperRef.current = null;
+      return;
+    }
+
+    let active = true;
+    const loadWallpaper = async () => {
+      try {
+        const query = new URLSearchParams({ with: selectedContactId });
+        if (wallpaperVersionRef.current) query.set('since', wallpaperVersionRef.current);
+        const response = await fetch(`/api/admin-chat/wallpaper?${query.toString()}`, { cache: 'no-store' });
+        const data = await response.json();
+        if (data.unchanged) return;
+        if (!response.ok || !data.settings) throw new Error(data.error || 'Gagal memuat wallpaper chat.');
+        const nextWallpaper = data.settings as AdminChatWallpaperSettings;
+        let nextWallpaperUrl: string | null = null;
+        if (nextWallpaper.preset === 'custom') {
+          const encryptedWallpaper = nextWallpaper.encryptedWallpaper;
+          if (!encryptedWallpaper) throw new Error('Data wallpaper bersama tidak lengkap.');
+          const { content, messageKey } = await decryptAdminChatPayload<{ type: string; contentType: string }>(
+            encryptedWallpaper,
+            currentUserId,
+            identity,
+          );
+          if (content.type !== 'wallpaper' || content.contentType !== 'image/jpeg') {
+            throw new Error('Format wallpaper terenkripsi tidak valid.');
+          }
+          const clearBytes = await decryptAdminChatAttachment(
+            decodeAdminChatBytes(encryptedWallpaper.image),
+            encryptedWallpaper.imageIv,
+            messageKey,
+          );
+          nextWallpaperUrl = URL.createObjectURL(new Blob([clearBytes], { type: content.contentType }));
+        }
+        if (!active) {
+          if (nextWallpaperUrl) URL.revokeObjectURL(nextWallpaperUrl);
+          return;
+        }
+        setWallpaper(nextWallpaper);
+        setWallpaperUrl(nextWallpaperUrl);
+        wallpaperVersionRef.current = typeof data.version === 'string' ? data.version : '';
+        setWallpaperError('');
+      } catch (error) {
+        if (active) setWallpaperError(error instanceof Error ? error.message : 'Gagal memuat wallpaper chat.');
+      }
+    };
+    loadWallpaperRef.current = loadWallpaper;
+    void loadWallpaper();
+
+    return () => {
+      active = false;
+      if (loadWallpaperRef.current === loadWallpaper) loadWallpaperRef.current = null;
+    };
+  }, [currentUserId, identity, identityReady, isAdmin, recoveryStatus, selectedContact?.recoveryStatus, selectedContactId, selectedContactPublicKey]);
+
+  useEffect(() => {
+    if (!wallpaperFile) {
+      setWallpaperFilePreviewUrl(null);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(wallpaperFile);
+    setWallpaperFilePreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [wallpaperFile]);
+
+  useEffect(() => {
+    if (!selectedFile?.type.startsWith('audio/')) {
+      setSelectedAudioPreviewUrl(null);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(selectedFile);
+    setSelectedAudioPreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [selectedFile]);
+
+  useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length]);
 
   useEffect(() => {
     if (!isAdmin || recoveryStatus !== 'ready' || !identityReady || !selectedContactId) return;
     const refreshTimer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void loadMessagesRef.current?.();
+      if (document.visibilityState === 'visible') {
+        void loadMessagesRef.current?.();
+        void loadWallpaperRef.current?.();
+      }
     }, 5000);
     return () => window.clearInterval(refreshTimer);
   }, [identityReady, isAdmin, recoveryStatus, selectedContactId]);
+
+  useEffect(() => () => {
+    if (wallpaperUrl) URL.revokeObjectURL(wallpaperUrl);
+  }, [wallpaperUrl]);
 
   useEffect(() => () => {
     if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
@@ -766,11 +895,122 @@ export default function AdminDirectChat() {
   const handleFileChange = (file: File | null) => {
     setSendError('');
     if (file && (!isAdminChatMediaType(file.type) || file.size === 0 || file.size > ADMIN_CHAT_MAX_ATTACHMENT_SIZE)) {
-      setSendError('Pilih gambar/video yang didukung, berukuran maksimal 25 MB.');
+      setSendError('Pilih gambar, video, atau audio yang didukung, berukuran maksimal 25 MB.');
       if (fileInput.current) fileInput.current.value = '';
       return;
     }
     setSelectedFile(file);
+  };
+
+  const openWallpaperDialog = () => {
+    setWallpaperDraft(wallpaper);
+    setWallpaperFile(null);
+    if (wallpaperFileInput.current) wallpaperFileInput.current.value = '';
+    setWallpaperStep('choose');
+    setWallpaperError('');
+    setWallpaperDialogOpen(true);
+  };
+
+  const selectWallpaperPreset = (preset: AdminChatWallpaperSettings['preset']) => {
+    setWallpaperDraft({
+      ...wallpaperDraft,
+      preset,
+      encryptedWallpaper: preset === 'custom' ? wallpaperDraft.encryptedWallpaper : null,
+    });
+    setWallpaperFile(null);
+    if (wallpaperFileInput.current) wallpaperFileInput.current.value = '';
+  };
+
+  const handleWallpaperFileChange = (file: File | null) => {
+    setWallpaperError('');
+    if (!file) {
+      setWallpaperFile(null);
+      return;
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 12 * 1024 * 1024) {
+      setWallpaperError('Pilih gambar JPG, PNG, atau WebP dengan ukuran maksimal 12 MB.');
+      if (wallpaperFileInput.current) wallpaperFileInput.current.value = '';
+      return;
+    }
+    setWallpaperFile(file);
+    setWallpaperDraft({ ...wallpaperDraft, preset: 'custom' });
+  };
+
+  const continueWallpaperCustomization = () => {
+    if (wallpaperDraft.preset === 'custom' && !wallpaperFile && !wallpaperDraft.encryptedWallpaper) {
+      setWallpaperError('Pilih gambar wallpaper terlebih dahulu.');
+      return;
+    }
+    setWallpaperError('');
+    setWallpaperStep('customize');
+  };
+
+  const saveWallpaper = async (draft = wallpaperDraft) => {
+    if (isSavingWallpaper || !selectedContact || !identity || !accountPublicKey || !selectedContact.publicKey) return;
+    setIsSavingWallpaper(true);
+    setWallpaperError('');
+    try {
+      let encryptedWallpaper = draft.encryptedWallpaper;
+      if (draft.preset === 'custom' && wallpaperFile) {
+        const image = await prepareAdminChatWallpaper(wallpaperFile);
+        const encrypted = await encryptAdminChatPayload(
+          { type: 'wallpaper', contentType: 'image/jpeg' },
+          [
+            {
+              userId: currentUserId,
+              publicKey: accountPublicKey,
+              recoveryPublicKey: accountRecoveryPublicKey || undefined,
+              recoveryKeyId: accountRecoveryKeyId || undefined,
+            },
+            {
+              userId: selectedContact.id,
+              publicKey: selectedContact.publicKey,
+              recoveryPublicKey: selectedContact.recoveryPublicKey || undefined,
+              recoveryKeyId: selectedContact.recoveryKeyId || undefined,
+            },
+          ],
+          await image.arrayBuffer(),
+        );
+        if (!encrypted.encryptedAttachment || !encrypted.attachmentIv) {
+          throw new Error('Gagal mengenkripsi gambar wallpaper.');
+        }
+        encryptedWallpaper = {
+          ciphertext: encrypted.ciphertext,
+          iv: encrypted.iv,
+          image: encodeAdminChatBytes(encrypted.encryptedAttachment),
+          imageIv: encrypted.attachmentIv,
+          wrappedKeys: encrypted.wrappedKeys.map((key) => ({
+            userId: key.userId,
+            keyId: key.keyId || 'primary',
+            encryptedKey: key.encryptedKey,
+          })),
+        };
+      }
+      if (draft.preset === 'custom' && !encryptedWallpaper) {
+        throw new Error('Pilih gambar wallpaper terlebih dahulu.');
+      }
+      const settings = {
+        ...draft,
+        encryptedWallpaper: draft.preset === 'custom' ? encryptedWallpaper : null,
+      };
+      const response = await fetch('/api/admin-chat/wallpaper', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ with: selectedContact.id, settings }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.settings) throw new Error(data.error || 'Gagal menyimpan wallpaper chat.');
+      setWallpaper(data.settings as AdminChatWallpaperSettings);
+      wallpaperVersionRef.current = '';
+      setWallpaperDialogOpen(false);
+      setWallpaperFile(null);
+      if (wallpaperFileInput.current) wallpaperFileInput.current.value = '';
+      await loadWallpaperRef.current?.();
+    } catch (error) {
+      setWallpaperError(error instanceof Error ? error.message : 'Gagal menyimpan wallpaper chat.');
+    } finally {
+      setIsSavingWallpaper(false);
+    }
   };
 
   const handleSend = async (event: FormEvent<HTMLFormElement>) => {
@@ -995,6 +1235,8 @@ export default function AdminDirectChat() {
   if (isUserLoading) return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
   if (!isAdmin) return <Alert variant="destructive"><ShieldCheck className="h-4 w-4" /><AlertDescription>Fitur chat hanya dapat digunakan oleh akun dengan role Admin.</AlertDescription></Alert>;
 
+  const wallpaperBackground = getAdminChatWallpaperBackground(wallpaper.preset, wallpaperUrl);
+
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col gap-3 overflow-hidden">
       <header className="flex shrink-0 flex-col gap-2 border-b border-border pb-3 sm:pb-4">
@@ -1075,6 +1317,139 @@ export default function AdminDirectChat() {
               className="h-auto max-h-[64dvh] w-auto max-w-full rounded-md object-contain"
             />
           </div>}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={wallpaperDialogOpen} onOpenChange={(open) => {
+        if (!isSavingWallpaper) {
+          setWallpaperDialogOpen(open);
+          if (!open) setWallpaperError('');
+        }
+      }}>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-3xl gap-4 overflow-y-auto rounded-2xl p-4 sm:max-h-[calc(100dvh-3rem)] sm:gap-5 sm:p-6">
+          <DialogHeader>
+            <DialogTitle>Wallpaper chat</DialogTitle>
+            <DialogDescription>
+              {wallpaperStep === 'choose'
+                ? `Pilih salah satu dari enam tema atau unggah gambar untuk chat dengan ${selectedContact?.username || 'admin ini'}.`
+                : 'Sesuaikan tampilan wallpaper.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 sm:space-y-5">
+            <input
+              ref={wallpaperFileInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              onChange={(event) => handleWallpaperFileChange(event.target.files?.[0] || null)}
+              aria-label="Pilih gambar wallpaper"
+            />
+            {wallpaperStep === 'choose' ? <>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+                {(Object.entries(ADMIN_CHAT_WALLPAPERS) as [AdminChatWallpaperPreset, { label: string; background: string }][]).map(([preset, option]) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    disabled={isSavingWallpaper}
+                    aria-pressed={wallpaperDraft.preset === preset}
+                    onClick={() => selectWallpaperPreset(preset)}
+                    className={`overflow-hidden rounded-xl border text-left transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${wallpaperDraft.preset === preset ? 'border-primary ring-2 ring-primary/30' : 'border-border'}`}
+                  >
+                    <span className="block h-20 bg-cover bg-center sm:h-24" style={{ backgroundImage: option.background }} />
+                    <span className="block px-2.5 py-2 text-xs font-medium sm:text-sm">{option.label}</span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  disabled={isSavingWallpaper}
+                  aria-pressed={wallpaperDraft.preset === 'custom'}
+                  onClick={() => {
+                    if (wallpaperDraft.preset !== 'custom') selectWallpaperPreset('custom');
+                    wallpaperFileInput.current?.click();
+                  }}
+                  className={`overflow-hidden rounded-xl border text-left transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${wallpaperDraft.preset === 'custom' ? 'border-primary ring-2 ring-primary/30' : 'border-border'}`}
+                >
+                  <span
+                    className="block h-20 bg-cover bg-center sm:h-24"
+                    style={{ backgroundImage: wallpaperFilePreviewUrl || wallpaperUrl ? `url("${wallpaperFilePreviewUrl || wallpaperUrl}")` : 'linear-gradient(135deg, #64748b, #334155)' }}
+                  />
+                  <span className="block px-2.5 py-2 text-xs font-medium sm:text-sm">{wallpaperFile?.name || 'Unggah gambar'}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingWallpaper}
+                  aria-pressed={wallpaperDraft.preset === 'none'}
+                  onClick={() => {
+                    const noWallpaper = { ...wallpaperDraft, preset: 'none' as const, encryptedWallpaper: null };
+                    setWallpaperDraft(noWallpaper);
+                    void saveWallpaper(noWallpaper);
+                  }}
+                  className={`flex min-h-[110px] flex-col items-center justify-center gap-2 rounded-xl border bg-muted/30 p-3 text-center text-xs font-medium transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[132px] sm:text-sm ${wallpaperDraft.preset === 'none' ? 'border-primary ring-2 ring-primary/30' : 'border-border'}`}
+                >
+                  <X className="h-5 w-5 text-muted-foreground" />
+                  Tanpa wallpaper
+                </button>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">Gambar JPG, PNG, atau WebP maksimal 12 MB. Gambar dikompres dan dienkripsi sebelum disimpan.</p>
+              <DialogFooter className="flex-col-reverse gap-2 border-t border-border pt-3 sm:flex-row sm:justify-between sm:gap-0">
+                <Button type="button" variant="ghost" disabled={isSavingWallpaper} onClick={() => setWallpaperDialogOpen(false)}>Batal</Button>
+                <Button type="button" disabled={isSavingWallpaper || (wallpaperDraft.preset === 'custom' && !wallpaperFile && !wallpaperDraft.encryptedWallpaper)} onClick={continueWallpaperCustomization}>
+                  Lanjut ke kustomisasi
+                </Button>
+              </DialogFooter>
+            </> : <>
+              <div
+                className="relative isolate h-44 overflow-hidden rounded-xl border border-border bg-muted sm:h-56"
+                aria-label="Pratinjau wallpaper chat"
+              >
+                <div
+                  aria-hidden="true"
+                  className="absolute -inset-3 bg-cover bg-center"
+                  style={{
+                    backgroundImage: getAdminChatWallpaperBackground(
+                      wallpaperDraft.preset,
+                      wallpaperFilePreviewUrl || wallpaperUrl,
+                    ),
+                    filter: `blur(${wallpaperDraft.blur}px) brightness(${wallpaperDraft.brightness}%)`,
+                    transform: 'scale(1.05)',
+                  }}
+                />
+                <div aria-hidden="true" className="absolute inset-0 bg-black" style={{ opacity: wallpaperDraft.overlay / 100 }} />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3 sm:gap-5">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm"><Label>Blur</Label><span className="text-muted-foreground">{wallpaperDraft.blur}px</span></div>
+                  <Slider min={0} max={12} step={1} value={[wallpaperDraft.blur]} onValueChange={([blur]) => setWallpaperDraft({ ...wallpaperDraft, blur })} disabled={isSavingWallpaper} aria-label="Tingkat blur wallpaper" />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm"><Label>Kecerahan</Label><span className="text-muted-foreground">{wallpaperDraft.brightness}%</span></div>
+                  <Slider min={50} max={125} step={5} value={[wallpaperDraft.brightness]} onValueChange={([brightness]) => setWallpaperDraft({ ...wallpaperDraft, brightness })} disabled={isSavingWallpaper} aria-label="Kecerahan wallpaper" />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm"><Label>Lapisan gelap</Label><span className="text-muted-foreground">{wallpaperDraft.overlay}%</span></div>
+                  <Slider min={0} max={60} step={5} value={[wallpaperDraft.overlay]} onValueChange={([overlay]) => setWallpaperDraft({ ...wallpaperDraft, overlay })} disabled={isSavingWallpaper} aria-label="Lapisan gelap wallpaper" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{wallpaperDraft.preset === 'custom' ? wallpaperFile?.name || 'Gambar khusus tersimpan' : wallpaperDraft.preset === 'none' ? 'Tanpa wallpaper' : ADMIN_CHAT_WALLPAPERS[wallpaperDraft.preset].label}</p>
+                  <p className="text-xs text-muted-foreground">Pratinjau menampilkan efek yang sedang dipilih.</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" disabled={isSavingWallpaper} onClick={() => setWallpaperStep('choose')}>Ganti</Button>
+              </div>
+              <DialogFooter className="flex-col-reverse gap-2 border-t border-border pt-3 sm:flex-row sm:justify-between sm:gap-0">
+                <Button type="button" variant="ghost" disabled={isSavingWallpaper} onClick={() => setWallpaperStep('choose')}>Kembali</Button>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                  <Button type="button" variant="outline" disabled={isSavingWallpaper} onClick={() => setWallpaperDialogOpen(false)}>Batal</Button>
+                  <Button type="button" disabled={isSavingWallpaper || !selectedContact} onClick={() => void saveWallpaper()}>
+                    {isSavingWallpaper && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Simpan
+                  </Button>
+                </div>
+              </DialogFooter>
+            </>}
+            {wallpaperError && <Alert variant="destructive"><AlertDescription>{wallpaperError}</AlertDescription></Alert>}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1193,9 +1568,9 @@ export default function AdminDirectChat() {
             </> : <>
               <div className="flex min-w-0 items-center gap-2 sm:gap-3">
                 {selectedContact && <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 md:hidden" onClick={() => setIsMobileConversationOpen(false)} aria-label="Kembali ke daftar admin"><ArrowLeft className="h-4 w-4" /></Button>}
-                {selectedContact ? <><button type="button" onClick={() => setProfileContact(selectedContact)} aria-label={`Lihat profil ${selectedContact.username}`} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><AdminAvatar contact={selectedContact} /></button><div className="min-w-0"><p className="truncate text-sm font-semibold">{selectedContact.username}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{selectedContact.publicKey ? 'Percakapan terenkripsi' : 'Menunggu admin menyiapkan kunci chat'}</p></div></> : <div className="hidden min-w-0 md:block"><p className="text-sm font-semibold">Belum ada percakapan dipilih</p><p className="mt-0.5 text-xs text-muted-foreground">Pilih admin untuk membuka chat.</p></div>}
+                {selectedContact ? <><button type="button" onClick={() => setProfileContact(selectedContact)} aria-label={`Lihat profil ${selectedContact.username}`} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><AdminAvatar contact={selectedContact} /></button><div className="min-w-0"><p className="truncate text-sm font-semibold">{selectedContact.username}</p>{!selectedContact.publicKey && <p className="mt-0.5 truncate text-xs text-muted-foreground">Menunggu admin menyiapkan kunci chat</p>}</div></> : <div className="hidden min-w-0 md:block"><p className="text-sm font-semibold">Belum ada percakapan dipilih</p><p className="mt-0.5 text-xs text-muted-foreground">Pilih admin untuk membuka chat.</p></div>}
               </div>
-              {selectedContact && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Menu chat" title="Menu chat"><EllipsisVertical className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => { setIsSelecting(true); setSelectedMessageIds([]); }}>Pilih beberapa pesan</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+              {selectedContact && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Menu chat" title="Menu chat"><EllipsisVertical className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem disabled={!canSend} onSelect={openWallpaperDialog}><ImagePlus className="mr-2 h-4 w-4" />Ganti wallpaper chat</DropdownMenuItem><DropdownMenuItem onSelect={() => { setIsSelecting(true); setSelectedMessageIds([]); }}>Pilih beberapa pesan</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
             </>}
           </div>
 
@@ -1203,7 +1578,22 @@ export default function AdminDirectChat() {
 
           {selectedContact && currentUser?.username && <div className="flex items-start gap-2 border-b border-border bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground sm:px-5"><LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /><p className="min-w-0 leading-relaxed">Chat ini hanya bisa dilihat oleh <span className="font-semibold text-foreground">{currentUser.username}</span> dan <span className="font-semibold text-foreground">{selectedContact.username}</span>.</p></div>}
 
-          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden px-3 py-4 sm:px-6 sm:py-6" aria-live="polite" aria-relevant="additions">
+          <div
+            className="relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden px-3 py-4 sm:px-6 sm:py-6"
+            aria-live="polite"
+            aria-relevant="additions"
+            style={{ backgroundImage: wallpaperBackground, backgroundSize: 'cover', backgroundPosition: 'center' }}
+          >
+            {selectedContact && <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-0"
+              style={{
+                backdropFilter: `blur(${wallpaper.blur}px) brightness(${wallpaper.brightness}%)`,
+                WebkitBackdropFilter: `blur(${wallpaper.blur}px) brightness(${wallpaper.brightness}%)`,
+                backgroundColor: `rgba(0, 0, 0, ${wallpaper.overlay / 100})`,
+              }}
+            />}
+            <div className="relative z-10 min-h-full">
             {!selectedContact ? <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-muted-foreground"><span className="flex h-12 w-12 items-center justify-center rounded-md border border-border bg-card"><MessageCircle className="h-5 w-5 text-primary" /></span><p>Pilih admin untuk memulai chat.</p></div>
               : !selectedContact.publicKey ? <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-sm text-muted-foreground"><span className="flex h-12 w-12 items-center justify-center rounded-md border border-primary/20 bg-primary/5"><ShieldCheck className="h-5 w-5 text-primary" /></span><p className="max-w-sm leading-relaxed">Admin ini perlu membuka halaman Chat Admin sekali untuk menyiapkan kunci enkripsi.</p></div>
                 : !identityReady ? <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-sm text-muted-foreground"><span className="flex h-12 w-12 items-center justify-center rounded-md border border-destructive/20 bg-destructive/5"><AlertCircle className="h-5 w-5 text-destructive" /></span><p className="max-w-sm leading-relaxed">Kunci privat chat untuk akun {currentUser?.username} tidak cocok atau tidak tersedia di browser ini. Pesan terenkripsi hanya dapat dibaca dengan kunci asli akun tersebut.</p></div>
@@ -1216,21 +1606,21 @@ export default function AdminDirectChat() {
                       return <article key={message.id} className={`relative flex select-none items-start gap-2 ${own ? 'justify-end' : 'justify-start'} ${selected ? 'rounded-md bg-primary/5 ring-1 ring-primary/30' : ''}`} onTouchStart={(event) => handleTouchStart(message, event)} onTouchEnd={(event) => handleTouchEnd(message, event)} onTouchMove={() => { if (holdTimer.current !== null) window.clearTimeout(holdTimer.current); }} onContextMenu={(event) => { event.preventDefault(); setActionMessageId(message.id); }}>
                         {isSelecting && <Checkbox checked={selected} onCheckedChange={() => toggleSelectedMessage(message.id)} aria-label={`Pilih pesan ${formatMessageTime(message.createdAt)}`} className="mt-3" />}
                         <div className={`flex min-w-0 max-w-[90%] flex-col ${own ? 'items-end' : 'items-start'} sm:max-w-[76%]`}>
-                          <p className="mb-2 px-3 text-[11px] font-medium text-muted-foreground">{own ? currentUser?.username : selectedContact.username}</p>
+                          <p className="mb-2 rounded-full border border-white/70 bg-white/90 px-3 py-1 text-[11px] font-medium text-slate-800 shadow-sm backdrop-blur-sm">{own ? currentUser?.username : selectedContact.username}</p>
                           <div ref={(element) => {
                             if (element) messageBubblesRef.current.set(message.id, element);
                             else messageBubblesRef.current.delete(message.id);
-                          }} className={`relative min-w-[6rem] overflow-hidden rounded-2xl border p-3 pb-9 shadow-sm ${own ? 'rounded-br-sm border-emerald-200 bg-emerald-100 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-50' : 'rounded-bl-sm border-border bg-card text-foreground'}`}>
-                            {message.replyTo && <div className={`mb-3 border-l-2 pl-2 text-xs ${own ? 'border-primary-foreground/60 text-primary-foreground/80' : 'border-primary text-muted-foreground'}`}><span className="font-semibold">{replySender}</span><p className="line-clamp-2 break-words">{message.replyTo.text || '[Lampiran]'}</p></div>}
+                                          }} className={`relative min-w-[6rem] overflow-hidden rounded-2xl border px-3 pb-6 pt-1.5 shadow-sm ${own ? 'rounded-br-sm border-emerald-800 bg-emerald-700 text-white dark:border-emerald-950 dark:bg-emerald-800' : 'rounded-bl-sm border-white/80 bg-white/95 text-slate-900 dark:border-slate-600 dark:bg-slate-900/95 dark:text-slate-50'}`}>
+                            {message.replyTo && <div className={`mb-3 border-l-2 pl-2 text-xs ${own ? 'border-white/70 text-white/85' : 'border-primary text-slate-600 dark:text-slate-300'}`}><span className="font-semibold">{replySender}</span><p className="line-clamp-2 break-words">{message.replyTo.text || '[Lampiran]'}</p></div>}
                             {message.decryptionError ? <p className="text-sm italic opacity-80">Pesan tidak dapat didekripsi di browser ini.</p> : <>
                               {message.isDeleted ? <p className="text-sm italic text-muted-foreground">Pesan dihapus</p> : <>
-                                {message.media && <div className="mb-3">{message.attachmentUrl && message.media.contentType.startsWith('image/') ? <a href={message.attachmentUrl} target="_blank" rel="noreferrer" aria-label={`Buka ${message.media.fileName}`}><Image src={message.attachmentUrl} alt={message.media.fileName} width={480} height={360} unoptimized className="max-h-[360px] max-w-full rounded-md object-contain" /></a> : message.attachmentUrl ? <video src={message.attachmentUrl} controls playsInline preload="metadata" className="max-h-[360px] max-w-full rounded-md" aria-label={message.media.fileName} /> : <p className="text-xs opacity-75">Lampiran tidak tersedia.</p>}<p className="mt-2 max-w-full truncate text-[11px] opacity-75">{message.media.fileName}{message.encryptedAttachment ? ` · ${formatFileSize(message.encryptedAttachment.size)}` : ''}</p></div>}
+                                {message.media && <div className="mb-3">{message.attachmentUrl && message.media.contentType.startsWith('image/') ? <a href={message.attachmentUrl} target="_blank" rel="noreferrer" aria-label={`Buka ${message.media.fileName}`}><Image src={message.attachmentUrl} alt={message.media.fileName} width={480} height={360} unoptimized className="max-h-[360px] max-w-full rounded-md object-contain" /></a> : message.attachmentUrl && message.media.contentType.startsWith('audio/') ? <audio src={message.attachmentUrl} controls preload="metadata" className="w-full max-w-[min(18rem,70vw)]" aria-label={`Audio ${message.media.fileName}`} /> : message.attachmentUrl ? <video src={message.attachmentUrl} controls playsInline preload="metadata" className="max-h-[360px] max-w-full rounded-md" aria-label={message.media.fileName} /> : <p className="text-xs opacity-75">Lampiran tidak tersedia.</p>}<p className="mt-2 max-w-full truncate text-[11px] opacity-75">{message.media.contentType.startsWith('audio/') ? 'Audio' : message.media.fileName}{message.encryptedAttachment ? ` · ${formatFileSize(message.encryptedAttachment.size)}` : ''}</p></div>}
                                 {message.text && <div className="min-w-0">
                                   <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
                                 </div>}
                               </>}
                             </>}
-                            <div className={`absolute bottom-3 right-3 flex w-1/2 items-center justify-end gap-1.5 whitespace-nowrap text-[10px] ${own ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                            <div className={`absolute bottom-1.5 right-2 flex w-1/2 items-center justify-end gap-1.5 whitespace-nowrap text-[10px] ${own ? 'text-white/80' : 'text-slate-600 dark:text-slate-300'}`}>
                               <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
                               {own && !message.isDeleted && (message.deliveryStatus === 'failed'
                                 ? <AlertCircle className="h-3 w-3 text-destructive" aria-label="Gagal dikirim" />
@@ -1242,17 +1632,24 @@ export default function AdminDirectChat() {
                         </div>
                       </article>;
                     })}<div ref={messagesEnd} /></div>}
+            </div>
           </div>
 
           {connectionError && <Alert variant="destructive" className="mx-3 mb-2 py-2 sm:mx-5"><AlertCircle className="h-4 w-4" /><AlertDescription>{connectionError}</AlertDescription></Alert>}
           {sendError && <Alert variant="destructive" className="mx-3 mb-2 py-2 sm:mx-5"><AlertCircle className="h-4 w-4" /><AlertDescription>{sendError}</AlertDescription></Alert>}
           {selectedContact && <div className="border-t border-border bg-card p-3 sm:p-4">
             {replyTo && <div className="mb-2 flex items-center gap-2 rounded-md border-l-2 border-primary bg-muted/50 px-3 py-2 text-xs"><Reply className="h-4 w-4 shrink-0 text-primary" /><div className="min-w-0 flex-1"><p className="font-semibold">Membalas {replyTo.senderId === currentUserId ? 'pesan Anda' : selectedContact.username}</p><p className="truncate text-muted-foreground">{replyTo.text || (replyTo.media ? '[Lampiran]' : '')}</p></div><Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="Batal membalas" onClick={() => setReplyTo(null)}><X className="h-4 w-4" /></Button></div>}
-            {selectedFile && <div className="mb-2 flex min-w-0 items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">{selectedFile.type.startsWith('video/') ? <Video className="h-4 w-4 shrink-0 text-primary" /> : <ImagePlus className="h-4 w-4 shrink-0 text-primary" />}<span className="min-w-0 flex-1 truncate">{selectedFile.name}</span><span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(selectedFile.size)}</span>{!isSending && <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleFileChange(null)} aria-label="Hapus lampiran"><X className="h-4 w-4" /></Button>}</div>}
+            {selectedFile && <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+              {selectedFile.type.startsWith('video/') ? <Video className="h-4 w-4 shrink-0 text-primary" /> : selectedFile.type.startsWith('audio/') ? <Music2 className="h-4 w-4 shrink-0 text-primary" /> : <ImagePlus className="h-4 w-4 shrink-0 text-primary" />}
+              <span className="min-w-0 flex-1 truncate">{selectedFile.type.startsWith('audio/') ? 'Pratinjau audio' : selectedFile.name}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(selectedFile.size)}</span>
+              {!isSending && <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleFileChange(null)} aria-label="Hapus lampiran"><X className="h-4 w-4" /></Button>}
+              {selectedFile.type.startsWith('audio/') && selectedAudioPreviewUrl && <audio src={selectedAudioPreviewUrl} controls preload="metadata" className="h-10 w-full" aria-label="Dengarkan audio sebelum dikirim" />}
+            </div>}
             {isSending && selectedFile && <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-primary transition-[width]" style={{ width: `${uploadProgress}%` }} /></div>}
             <form onSubmit={handleSend} className="flex items-end gap-2 sm:gap-3">
-              <input ref={fileInput} type="file" accept="image/*,video/*" className="sr-only" onChange={(event) => handleFileChange(event.target.files?.[0] || null)} disabled={isSending || !canSend} aria-label="Pilih gambar atau video" />
-              <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => fileInput.current?.click()} disabled={isSending || !canSend} aria-label="Lampirkan gambar atau video" title="Lampirkan gambar/video"><Paperclip className="h-4 w-4" /></Button>
+              <input ref={fileInput} type="file" accept="image/*,video/*,audio/*" className="sr-only" onChange={(event) => handleFileChange(event.target.files?.[0] || null)} disabled={isSending || !canSend} aria-label="Pilih gambar, video, atau audio" />
+              <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => fileInput.current?.click()} disabled={isSending || !canSend} aria-label="Lampirkan media" title="Lampirkan gambar, video, atau audio"><Paperclip className="h-4 w-4" /></Button>
               <Textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={canSend ? 'Tulis pesan terenkripsi...' : selectedContact.recoveryStatus === 'migrating' ? 'Pengiriman dijeda selama migrasi kunci...' : selectedContact.recoveryStatus !== 'ready' ? 'Menunggu admin membuat sandi Chat...' : 'Menunggu kunci admin...'} maxLength={MAX_MESSAGE_LENGTH} rows={2} className="min-h-10 max-h-32 resize-y" disabled={isSending || !canSend} aria-label="Isi pesan" />
               <Button type="submit" size="icon" className="h-10 w-10 shrink-0" disabled={isSending || !canSend || (!draft.trim() && !selectedFile)} aria-label="Kirim pesan">{isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : uploadProgress === 100 ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}</Button>
             </form>

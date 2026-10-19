@@ -5,7 +5,7 @@ import AdminChatMessage from '@/lib/models/AdminChatMessage';
 import User from '@/lib/models/User';
 import { getCurrentUser, requireAdmin } from '@/lib/session';
 import { normalizeUserRoles } from '@/lib/roles';
-import { publishAdminChatUpdate } from '@/lib/socket-events';
+import { publishAdminChatUpdate } from '@/lib/pusher-events';
 
 export async function POST() {
   try {

@@ -19,6 +19,8 @@ const PackageSchema = new Schema<IPackage>(
   { timestamps: true }
 );
 
+PackageSchema.index({ price: 1 });
+
 const Package: Model<IPackage> = models.Package || model<IPackage>('Package', PackageSchema);
 
 export default Package;

@@ -11,7 +11,7 @@ Panduan ini ditujukan untuk pemilik aplikasi atau operator yang belum terbiasa d
 - [Menyiapkan MongoDB Atlas](#menyiapkan-mongodb-atlas)
 - [Menjalankan di Komputer Sendiri](#menjalankan-di-komputer-sendiri)
 - [Deploy ke Vercel](#deploy-ke-vercel)
-- [Deploy Socket.IO Terpisah](#deploy-socketio-terpisah)
+- [Menyiapkan Pusher untuk Chat Real-Time](#menyiapkan-pusher-untuk-chat-real-time)
 - [Alternatif Deploy](#alternatif-deploy)
 - [Membuat Akun Admin Pertama](#membuat-akun-admin-pertama)
 - [Keamanan](#keamanan)
@@ -182,6 +182,12 @@ Di pengaturan project Vercel, buka **Settings → Environment Variables**. Tamba
 | `JWT_SECRET` | Secret random panjang untuk sesi login |
 | `SEED_SECRET` | Secret random lain, hanya untuk proses membuat akun awal production |
 | `INITIAL_ADMIN_PASSWORD` | Password kuat untuk akun admin pertama |
+| `PUSHER_APP_ID` | App ID dari aplikasi Pusher Channels |
+| `PUSHER_APP_KEY` | App Key dari aplikasi Pusher Channels |
+| `PUSHER_APP_SECRET` | App Secret Pusher, hanya untuk server |
+| `PUSHER_APP_CLUSTER` | Cluster aplikasi Pusher |
+| `NEXT_PUBLIC_PUSHER_KEY` | Key Pusher yang sama untuk koneksi browser |
+| `NEXT_PUBLIC_PUSHER_CLUSTER` | Cluster Pusher yang sama untuk koneksi browser |
 
 Pilih environment yang sesuai, biasanya **Production** dan **Preview** bila diperlukan. Jangan beri awalan `NEXT_PUBLIC_` pada variable rahasia ini. Setelah mengubah variable, lakukan deployment ulang agar perubahan terbaca.
 
@@ -208,72 +214,66 @@ Jika berhasil, server membalas `Seed berhasil`. Masuk dengan username `admin` da
 
 Setelah admin berhasil dibuat, hapus `SEED_SECRET` dan `INITIAL_ADMIN_PASSWORD` dari Environment Variables hosting lalu deploy ulang. Jangan menghapus `MONGODB_URI` atau `JWT_SECRET`.
 
-## Deploy Socket.IO Terpisah
+## Menyiapkan Pusher untuk Chat Real-Time
 
-Socket.IO membutuhkan proses server Node.js yang terus berjalan. Karena website utama berjalan di Vercel, jalankan server Socket.IO sebagai **Web Service terpisah**, misalnya di Render. Ini bukan project Vercel baru dan tidak perlu repository GitHub baru: starter server sudah ada di folder `socket-server/` dalam repository yang sama, dan Render akan menjalankan folder itu sebagai layanan sendiri.
+Chat admin menggunakan Pusher Channels untuk notifikasi real-time. Pusher hanya meneruskan event `admin-chat:updated` tanpa isi pesan; ciphertext tetap diambil dari API dan didekripsi di browser. Jika Pusher belum dikonfigurasi atau koneksi terputus, chat tetap menyinkronkan pesan setiap lima detik saat percakapan terbuka.
 
-> Socket.IO dipakai khusus untuk pembaruan chat admin. Socket hanya mengirim sinyal bahwa percakapan berubah; isi pesan tetap terenkripsi dan diambil dari API.
+### 1. Buat akun dan aplikasi Pusher Channels
 
-### 1. Jalankan starter server secara lokal
+Ikuti langkah berikut untuk mendapatkan kredensial yang dibutuhkan aplikasi:
 
-File server sudah tersedia di `socket-server/server.js`. Dari folder utama repository, jalankan:
+1. Buka [Pusher Dashboard](https://dashboard.pusher.com/) dan buat akun, atau masuk jika sudah punya akun. Ikuti instruksi pendaftaran/verifikasi yang muncul.
+2. Dari dashboard, pilih **Channels**. Pastikan produknya **Channels**, bukan Beams.
+3. Pilih **Create app** atau **Get started** untuk membuat aplikasi Channels.
+4. Isi nama aplikasi, misalnya `tagihan-wifi-chat`. Nama ini hanya label agar mudah dikenali.
+5. Pilih **Cluster** yang disarankan Pusher atau yang paling dekat dengan lokasi pengguna aplikasi. Catat nilai cluster yang dipilih, misalnya `ap1` atau `us2`.
+6. Jika diminta memilih framework atau frontend, pilihan itu hanya contoh integrasi Pusher. Aplikasi ini memakai Next.js; pilihan framework di dashboard tidak mengubah kode project.
+7. Tekan tombol untuk membuat aplikasi. Setelah aplikasi dibuat, buka menu **App Keys**.
+8. Di halaman **App Keys**, temukan dan salin **app_id**, **key**, **secret**, dan **cluster**. Simpan nilainya secara aman. Jangan kirim atau tempelkan **secret** ke chat, screenshot publik, atau kode frontend.
 
-```bash
-cd socket-server
-npm install
-```
+### 2. Tambahkan kredensial di Vercel
 
-Untuk menguji dari website lokal, pastikan `.env.local` di folder utama repository berisi URL socket dan secret publisher:
+Karena website sudah di-deploy ke Vercel, tambahkan nilai tersebut ke pengaturan project:
+
+1. Buka [Vercel Dashboard](https://vercel.com/dashboard), pilih project website ini.
+2. Buka **Settings → Environment Variables**.
+3. Tambahkan setiap variabel berikut satu per satu. Untuk masing-masing, isi **Name** sesuai tabel, **Value** dari Pusher, dan pilih environment **Production**. Jika chat juga ingin dipakai di Preview, pilih **Preview** juga.
+
+| Name di Vercel | Value yang diisi |
+|---|---|
+| `PUSHER_APP_ID` | Nilai **app_id** dari halaman App Keys |
+| `PUSHER_APP_KEY` | Nilai **key** dari halaman App Keys |
+| `PUSHER_APP_SECRET` | Nilai **secret** dari halaman App Keys |
+| `PUSHER_APP_CLUSTER` | Nilai **cluster** dari halaman App Keys |
+| `NEXT_PUBLIC_PUSHER_KEY` | Nilai **key** yang sama dengan `PUSHER_APP_KEY` |
+| `NEXT_PUBLIC_PUSHER_CLUSTER` | Nilai **cluster** yang sama dengan `PUSHER_APP_CLUSTER` |
+
+Perhatikan huruf besar/kecil dan jangan menambahkan tanda kutip atau spasi pada awal/akhir nilai. `PUSHER_APP_SECRET` harus tetap tanpa awalan `NEXT_PUBLIC_` karena hanya boleh digunakan server.
+
+4. Klik **Save** setelah setiap variabel ditambahkan.
+5. Setelah keenam variabel disimpan, buka tab **Deployments**, pilih menu titik tiga pada deployment Production terbaru, lalu pilih **Redeploy**. Perubahan environment variable baru berlaku setelah deployment baru selesai.
+6. Tunggu status deployment menjadi **Ready**.
+
+### 3. (Opsional) Jalankan project di komputer sendiri
+
+Untuk pengembangan lokal, tambahkan nilai yang sama ke file `.env.local` di folder utama project. Buat file tersebut jika belum ada. Jangan mengisi file `.env.example` dengan secret asli karena file itu contoh konfigurasi yang boleh dibagikan.
 
 ```env
-NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
-SOCKET_SERVER_URL=http://localhost:3001
-SOCKET_PUBLISH_SECRET=secret-random-lokal-yang-sama-dengan-server-socket
+PUSHER_APP_ID=isi-app-id-dari-pusher
+PUSHER_APP_KEY=isi-key-dari-pusher
+PUSHER_APP_SECRET=isi-secret-dari-pusher
+PUSHER_APP_CLUSTER=isi-cluster-dari-pusher
+NEXT_PUBLIC_PUSHER_KEY=isi-key-yang-sama
+NEXT_PUBLIC_PUSHER_CLUSTER=isi-cluster-yang-sama
 ```
 
-Untuk menguji melalui URL publik Codespaces, teruskan port `3001` dan ubah visibilitasnya menjadi **Public** di tab **Ports**. Atur `NEXT_PUBLIC_SOCKET_URL` ke URL HTTPS port `3001` yang ditampilkan Codespaces, dan `APP_ORIGIN` ke URL HTTPS port `3000`:
+Ganti semua teks `isi-...` dengan nilai dari halaman App Keys. Pastikan `NEXT_PUBLIC_PUSHER_KEY` sama persis dengan `PUSHER_APP_KEY`, dan `NEXT_PUBLIC_PUSHER_CLUSTER` sama persis dengan `PUSHER_APP_CLUSTER`. Simpan `.env.local`, lalu mulai ulang server pengembangan agar nilainya dimuat. Jangan commit atau mengirimkan `.env.local`.
 
-```env
-NEXT_PUBLIC_SOCKET_URL=https://<codespace>-3001.<forwarding-domain>
-SOCKET_SERVER_URL=http://localhost:3001
-APP_ORIGIN=https://<codespace>-3000.<forwarding-domain>
-```
+### 4. Otorisasi dan pengujian
 
-Ganti placeholder dengan URL port Codespaces yang sebenarnya. `SOCKET_SERVER_URL` tetap memakai `localhost` karena komunikasi ini terjadi dari server aplikasi. Gunakan nilai acak yang berbeda dari `JWT_SECRET` untuk `SOCKET_PUBLISH_SECRET`. Dari folder `socket-server`, jalankan server development:
+Browser berlangganan ke private channel khusus ID admin yang sedang login. Endpoint `POST /api/pusher/auth` memeriksa sesi admin, status akun, status sandi Chat, serta memastikan admin hanya dapat mengautentikasi channel miliknya sendiri. Setelah perubahan chat tersimpan, server Next.js mengirim event kosong ke channel peserta; klien lalu mengambil pesan lewat API. Isi pesan tidak dikirim ke Pusher.
 
-```bash
-npm run dev
-```
-
-Skrip development memuat `../.env.local` dan menggunakan `APP_ORIGIN`; jika tidak diatur, origin lokal `http://localhost:3000` digunakan. Biarkan proses ini berjalan saat menguji. Socket hanya aktif di halaman chat admin.
-
-### 2. Deploy folder server ke Render
-
-1. Di Render, pilih **New → Web Service**, lalu hubungkan repository GitHub yang sama dengan website.
-2. Pada pengaturan layanan, isi **Root Directory** dengan `socket-server`.
-3. Isi **Build Command** dengan `npm ci` dan **Start Command** dengan `npm start`.
-4. Tambahkan `APP_ORIGIN` dengan origin website Vercel yang persis, misalnya `https://nama-aplikasi.vercel.app` (tanpa garis miring di akhir). Beberapa origin boleh dipisahkan koma; jangan gunakan wildcard untuk Preview.
-5. Tambahkan `JWT_SECRET` dengan nilai rahasia yang sama persis seperti di Vercel. Tandai sebagai secret di Render dan jangan beri awalan `NEXT_PUBLIC_`.
-6. Tambahkan `SOCKET_PUBLISH_SECRET` dengan nilai acak terpisah yang sama dengan environment Vercel, dan tandai sebagai secret.
-7. Isi **Health Check Path** dengan `/health`, lalu buat layanan dan tunggu sampai statusnya berjalan.
-
-Render menyediakan variable `PORT`; jangan menetapkan `PORT` sendiri. Setelah deploy, catat URL layanan Render, misalnya `https://nama-socket.onrender.com`.
-
-### 3. Hubungkan website Vercel ke server
-
-1. Di Vercel, buka **Project → Settings → Environment Variables**.
-2. Tambahkan `NEXT_PUBLIC_SOCKET_URL` dengan URL layanan Render, misalnya `https://nama-socket.onrender.com`.
-3. Tambahkan `SOCKET_SERVER_URL` dengan URL Render yang sama. Variable ini server-only, jangan beri awalan `NEXT_PUBLIC_`.
-4. Tambahkan `SOCKET_PUBLISH_SECRET` yang sama dengan secret di Render. Pastikan `JWT_SECRET` juga sama persis di Vercel dan Render.
-5. Pilih environment yang dipakai, biasanya **Production**, lalu lakukan redeploy.
-
-### 4. Hak akses dan pengujian
-
-Server membatasi origin dan memverifikasi tiket bertanda tangan ketika handshake. Endpoint `POST /api/auth/socket-ticket` hanya menerbitkan tiket 15 menit untuk admin aktif. Setiap koneksi masuk ke room privat berdasarkan ID admin.
-
-Setelah pesan chat disimpan, server mengirim event `admin-chat:updated` kepada kedua peserta. Event tidak membawa isi pesan; klien mengambil ciphertext melalui API lalu mendekripsinya di browser. Saat percakapan terbuka, klien juga menyinkronkan pesan setiap lima detik sebagai fallback jika koneksi Socket.IO terputus.
-
-Untuk menguji, buka dua sesi admin, kirim pesan dari salah satunya, dan pastikan chat penerima diperbarui tanpa polling. Role non-admin tidak dapat menerbitkan tiket socket. Jangan mengekspos `JWT_SECRET`, `SOCKET_PUBLISH_SECRET`, atau `MONGODB_URI` dengan awalan `NEXT_PUBLIC_`. Jika server dijalankan di beberapa instance, tambahkan adapter Socket.IO seperti Redis agar broadcast antar-instance berfungsi.
+Untuk memastikan konfigurasi berhasil, buka chat admin di dua browser atau dua sesi admin yang berbeda, pastikan keduanya sudah memiliki sandi Chat, lalu kirim pesan dari salah satunya. Chat penerima seharusnya diperbarui tanpa refresh halaman. Jika tidak, periksa bahwa keenam variabel sudah benar dan deployment Vercel berstatus **Ready**. Chat tetap mencoba mengambil pesan otomatis berkala sebagai fallback. Jangan mengekspos `PUSHER_APP_SECRET`, `JWT_SECRET`, atau `MONGODB_URI` dengan awalan `NEXT_PUBLIC_`.
 
 ## Alternatif Deploy
 

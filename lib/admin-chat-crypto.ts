@@ -62,6 +62,14 @@ function fromBase64(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
+export function encodeAdminChatBytes(value: ArrayBuffer): string {
+  return toBase64(value);
+}
+
+export function decodeAdminChatBytes(value: string): ArrayBuffer {
+  return copyBuffer(fromBase64(value));
+}
+
 function openKeyDatabase(): Promise<IDBDatabase> {
   if (typeof indexedDB === 'undefined') {
     return Promise.reject(new Error('Browser ini tidak mendukung penyimpanan kunci chat.'));

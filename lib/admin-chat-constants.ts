@@ -8,7 +8,9 @@ export function getAdminChatExpiry(startedAt = new Date()): Date {
 }
 
 export function isAdminChatMediaType(contentType: string): boolean {
-  return /^(image|video)\//i.test(contentType) && !/^image\/svg\+xml$/i.test(contentType);
+  const normalizedType = contentType.split(';', 1)[0].trim().toLowerCase();
+  if (/^(image|video)\//.test(normalizedType)) return !/^image\/svg\+xml$/.test(normalizedType);
+  return ['audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm'].includes(normalizedType);
 }
 
 export function sanitizeAdminChatFileName(fileName: string): string {

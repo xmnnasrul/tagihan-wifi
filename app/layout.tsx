@@ -17,12 +17,13 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  await headers();
+  const requestHeaders = await headers();
+  const nonce = requestHeaders.get('x-nonce') || undefined;
 
   return (
     <html lang="id" suppressHydrationWarning>
       <body suppressHydrationWarning className={`${inter.className} bg-background text-foreground antialiased`}>
-        <ThemeProvider>
+        <ThemeProvider nonce={nonce}>
           {children}
           <Toaster position="top-right" richColors closeButton />
         </ThemeProvider>

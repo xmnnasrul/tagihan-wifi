@@ -35,7 +35,14 @@ export async function GET(request: Request) {
       filter.$or = searchFields.map((field) => ({ [field]: searchRegex }));
     }
 
-    const customers = await Customer.find(filter).populate('packageId').sort({ name: 1 });
+    const query = Customer.find(filter);
+    const customers = id
+      ? await query.populate('packageId').lean()
+      : await query
+        .select('name address packageId createdAt createdBy status archivedAt')
+        .populate('packageId', 'name speed')
+        .sort({ name: 1 })
+        .lean();
     return NextResponse.json(id ? customers[0] || null : customers);
   } catch (error) {
     console.error('GET /api/customers failed:', error);

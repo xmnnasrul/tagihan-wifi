@@ -21,6 +21,7 @@ const AdminChatMediaChunkSchema = new Schema<IAdminChatMediaChunk>({
 }, { versionKey: false });
 
 AdminChatMediaChunkSchema.index({ uploadId: 1, chunkIndex: 1 }, { unique: true });
+AdminChatMediaChunkSchema.index({ uploadId: 1, uploadedBy: 1, chunkIndex: 1 });
 AdminChatMediaChunkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const AdminChatMediaChunk: Model<IAdminChatMediaChunk> = models.AdminChatMediaChunk

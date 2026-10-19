@@ -24,18 +24,6 @@ export function signToken(payload: TokenPayload): string {
   return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' });
 }
 
-export function signSocketTicket(payload: TokenPayload): string {
-  return jwt.sign(
-    { ...payload, purpose: 'socket-ticket' },
-    getJwtSecret(),
-    {
-      algorithm: 'HS256',
-      audience: 'wifi-billing-socket',
-      expiresIn: '15m',
-    }
-  );
-}
-
 export function verifyToken(token: string): TokenPayload | null {
   try {
     return jwt.verify(token, getJwtSecret()) as TokenPayload;

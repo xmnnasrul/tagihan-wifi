@@ -6,7 +6,7 @@ import AdminChatMessage from '@/lib/models/AdminChatMessage';
 import User from '@/lib/models/User';
 import { getCurrentUser, requireAdmin } from '@/lib/session';
 import { serializeAdminChatMessage } from '@/lib/admin-chat-serialization';
-import { publishAdminChatUpdate } from '@/lib/socket-events';
+import { publishAdminChatUpdate } from '@/lib/pusher-events';
 import { normalizeUserRoles } from '@/lib/roles';
 import mongoose from 'mongoose';
 

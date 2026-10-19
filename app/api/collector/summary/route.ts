@@ -40,31 +40,45 @@ export async function GET(request: Request) {
     const currentUser = await getCurrentUser();
     const roles = normalizeUserRoles(currentUser?.role, currentUser?.roles);
     const isAdmin = roles.includes('admin');
-    const bills = await Billing.find({ 'paymentHistory.addedAt': { $gte: start, $lt: end } })
-      .select('customerName month year paymentHistory')
-      .lean();
+    const paymentMatch: Record<string, unknown> = {
+      'paymentHistory.addedAt': { $gte: start, $lt: end },
+      'paymentHistory.isSettlementAllocation': { $ne: true },
+      'paymentHistory.note': { $not: /^Pelunasan otomatis dari pembayaran / },
+    };
+    if (!isAdmin) paymentMatch['paymentHistory.addedBy'] = currentUser?.username;
+    const payments = await Billing.aggregate([
+      { $match: { 'paymentHistory.addedAt': { $gte: start, $lt: end } } },
+      { $unwind: { path: '$paymentHistory', includeArrayIndex: 'paymentIndex' } },
+      { $match: paymentMatch },
+      { $sort: { 'paymentHistory.addedAt': -1 } },
+      {
+        $project: {
+          customerName: 1,
+          month: 1,
+          year: 1,
+          paymentIndex: 1,
+          amount: '$paymentHistory.amount',
+          method: '$paymentHistory.method',
+          status: '$paymentHistory.status',
+          addedBy: '$paymentHistory.addedBy',
+          addedAt: '$paymentHistory.addedAt',
+          note: '$paymentHistory.note',
+        },
+      },
+    ]);
 
-    const transactions = bills.flatMap((billing) => (billing.paymentHistory || [])
-      .map((payment, index) => ({ payment, index }))
-      .filter(({ payment }) => {
-        const addedAt = new Date(payment.addedAt);
-        if (addedAt < start || addedAt >= end) return false;
-        if (payment.isSettlementAllocation || payment.note?.startsWith('Pelunasan otomatis dari pembayaran ')) return false;
-        return isAdmin || payment.addedBy === currentUser?.username;
-      })
-      .map(({ payment, index }) => ({
-        id: `${billing._id.toString()}-${index}`,
-        customerName: billing.customerName,
-        month: billing.month,
-        year: billing.year,
-        amount: payment.amount,
-        method: payment.method || (payment.status === 'Cash' || payment.status === 'TF' ? payment.status : null),
-        status: payment.status,
-        collectorUsername: payment.addedBy || 'Admin',
-        addedAt: payment.addedAt,
-        note: payment.note || '',
-      })))
-      .sort((first, second) => new Date(second.addedAt).getTime() - new Date(first.addedAt).getTime());
+    const transactions = payments.map((payment) => ({
+      id: `${payment._id.toString()}-${payment.paymentIndex}`,
+      customerName: payment.customerName,
+      month: payment.month,
+      year: payment.year,
+      amount: payment.amount,
+      method: payment.method || (payment.status === 'Cash' || payment.status === 'TF' ? payment.status : null),
+      status: payment.status,
+      collectorUsername: payment.addedBy || 'Admin',
+      addedAt: payment.addedAt,
+      note: payment.note || '',
+    }));
 
     return NextResponse.json({
       date,

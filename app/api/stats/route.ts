@@ -36,12 +36,34 @@ export async function GET(request: Request) {
       : currentYear;
     const selectedMonthIndex = months.indexOf(month);
     const selectedPeriodIsFuture = year > currentYear || (year === currentYear && selectedMonthIndex > currentMonthIndex);
-    const activeCustomerIds = await Customer.distinct('_id', { status: { $ne: 'inactive' } });
-    const currentBillings = await Billing.find({ year, month, customerId: { $in: activeCustomerIds } })
-      .select('customerId totalDue packagePrice carriedAmount paidAmount status installmentAmount')
-      .lean();
-    const archivedCustomers = await Customer.countDocuments({ status: 'inactive' });
-    const totalCustomers = activeCustomerIds.length;
+    const [totalCustomers, archivedCustomers, currentBillings] = await Promise.all([
+      Customer.countDocuments({ status: { $ne: 'inactive' } }),
+      Customer.countDocuments({ status: 'inactive' }),
+      Billing.aggregate([
+        { $match: { year, month } },
+        {
+          $lookup: {
+            from: Customer.collection.name,
+            localField: 'customerId',
+            foreignField: '_id',
+            as: 'customer',
+          },
+        },
+        { $unwind: '$customer' },
+        { $match: { 'customer.status': { $ne: 'inactive' } } },
+        {
+          $project: {
+            customerId: 1,
+            totalDue: 1,
+            packagePrice: 1,
+            carriedAmount: 1,
+            paidAmount: 1,
+            installmentAmount: 1,
+            status: 1,
+          },
+        },
+      ]),
+    ]);
     const totalBillings = currentBillings.length;
     const monthlyAmounts = currentBillings.map(getMonthlyBillingAmounts);
     const totalDue = monthlyAmounts.reduce((sum, amounts) => sum + amounts.due, 0);

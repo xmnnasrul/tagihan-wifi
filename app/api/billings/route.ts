@@ -3,10 +3,11 @@ import { connectDB } from '@/lib/mongodb';
 import Billing, { IBilling, PaymentMethod } from '@/lib/models/Billing';
 import Customer from '@/lib/models/Customer';
 import '@/lib/models/Package';
-import { getCurrentUser, requireAdmin, requireAuthenticatedUser, requireCollectorOrAdmin } from '@/lib/session';
+import { getCurrentUser, requireAdmin, requireAuthenticatedUser } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
 import { applyPaymentToPreviousBillings, getBillingOutstandingAmount, getBillingTotalDue } from '@/lib/billing-amounts';
 import mongoose from 'mongoose';
+import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 
 const billingMonths = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -58,6 +59,7 @@ export async function GET(request: Request) {
     if (authError) return authError;
 
     await connectDB();
+    const ownerScope = await getDataOwnerScope();
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
     const year = searchParams.get('year');
@@ -74,8 +76,18 @@ export async function GET(request: Request) {
     if (customerName) query.customerName = { $regex: customerName, $options: 'i' };
     if (status && status !== 'all') query.status = status;
     if (activeOnly) {
-      const activeCustomerIds = await Customer.distinct('_id', { status: { $ne: 'inactive' } });
+      const activeCustomerIds = await Customer.distinct('_id', {
+        status: { $ne: 'inactive' },
+        ...getOwnerFilter(ownerScope),
+      });
       query.customerId = { $in: activeCustomerIds };
+    }
+    if (!ownerScope.isSuperadmin) {
+      const ownedCustomerIds = await Customer.distinct('_id', getOwnerFilter(ownerScope));
+      query.$and = [
+        ...(Array.isArray(query.$and) ? query.$and as Record<string, unknown>[] : []),
+        { customerId: { $in: ownedCustomerIds } },
+      ];
     }
 
     if (summaryOnly) {
@@ -98,10 +110,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const authError = await requireCollectorOrAdmin();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     await connectDB();
+    const ownerScope = await getDataOwnerScope();
     const body = await request.json();
     const { customerId, month, year, status, paidAmount, installmentAmount, note, method } = body;
     const paymentMethod: PaymentMethod | undefined = method === 'Cash' || method === 'TF'
@@ -111,6 +124,7 @@ export async function POST(request: Request) {
         : undefined;
     const currentUser = await getCurrentUser();
     const adminName = currentUser?.username || 'Admin';
+    const adminId = ownerScope.ownerId.toString();
 
     if (!customerId || !month || !year || !status) {
       return NextResponse.json({ error: 'Field wajib belum lengkap' }, { status: 400 });
@@ -123,7 +137,10 @@ export async function POST(request: Request) {
       if (adminError) return adminError;
     }
 
-    const customer = await Customer.findById(customerId).populate('packageId');
+    const customer = await Customer.findOne({
+      _id: customerId,
+      ...getOwnerFilter(ownerScope),
+    }).populate('packageId');
     if (!customer || customer.status === 'inactive') {
       return NextResponse.json({ error: 'Pelanggan tidak ditemukan atau sudah diarsipkan' }, { status: 404 });
     }
@@ -176,6 +193,7 @@ export async function POST(request: Request) {
       amount: paymentAmount,
       addedAt: receiptAt,
       addedBy: adminName,
+      addedById: adminId,
       status: receiptStatus as 'TF' | 'Cash' | 'Nyicil' | 'Lunas',
       method: paymentMethod,
       note: note || '',
@@ -193,6 +211,7 @@ export async function POST(request: Request) {
         paymentAmount,
         {
           addedBy: adminName,
+          addedById: adminId,
           note: `Alokasi dari pembayaran ${month} ${year}`,
           appliedAt: receiptAt,
           method: paymentMethod,
@@ -252,6 +271,7 @@ export async function POST(request: Request) {
           paymentAmount,
           {
             addedBy: adminName,
+            addedById: adminId,
             note: `Alokasi dari pembayaran ${month} ${year}`,
             appliedAt: receiptAt,
             method: paymentMethod,
@@ -296,6 +316,7 @@ export async function PUT(request: Request) {
     if (authError) return authError;
 
     await connectDB();
+    const ownerScope = await getDataOwnerScope();
     const body = await request.json();
     const { id, status, paidAmount, installmentAmount, note } = body;
 
@@ -305,6 +326,9 @@ export async function PUT(request: Request) {
 
     const billing = await Billing.findById(id);
     if (!billing) {
+      return NextResponse.json({ error: 'Tagihan tidak ditemukan' }, { status: 404 });
+    }
+    if (!ownerScope.isSuperadmin && !await Customer.exists({ _id: billing.customerId, ownerId: ownerScope.ownerId })) {
       return NextResponse.json({ error: 'Tagihan tidak ditemukan' }, { status: 404 });
     }
     const before = getBillingAuditSnapshot(billing);
@@ -360,6 +384,7 @@ export async function DELETE(request: Request) {
     if (authError) return authError;
 
     await connectDB();
+    const ownerScope = await getDataOwnerScope();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -367,10 +392,14 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'ID tagihan wajib diisi' }, { status: 400 });
     }
 
-    const billing = await Billing.findByIdAndDelete(id);
+    const billing = await Billing.findById(id);
     if (!billing) {
       return NextResponse.json({ error: 'Tagihan tidak ditemukan' }, { status: 404 });
     }
+    if (!ownerScope.isSuperadmin && !await Customer.exists({ _id: billing.customerId, ownerId: ownerScope.ownerId })) {
+      return NextResponse.json({ error: 'Tagihan tidak ditemukan' }, { status: 404 });
+    }
+    await billing.deleteOne();
 
     const actor = await getCurrentUser();
     await writeAuditLog({

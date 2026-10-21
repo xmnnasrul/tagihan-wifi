@@ -4,6 +4,8 @@ import Billing from '@/lib/models/Billing';
 import ExcelJS from 'exceljs';
 import { requireAuthenticatedUser } from '@/lib/session';
 import { getBillingPaidAmount, getBillingTotalDue } from '@/lib/billing-amounts';
+import Customer from '@/lib/models/Customer';
+import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 
 export async function GET(request: Request) {
   try {
@@ -11,6 +13,7 @@ export async function GET(request: Request) {
     if (authError) return authError;
 
     await connectDB();
+    const ownerScope = await getDataOwnerScope();
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
     const year = searchParams.get('year');
@@ -27,6 +30,9 @@ export async function GET(request: Request) {
     if (customerName) {
       const escapedName = customerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query.customerName = { $regex: escapedName, $options: 'i' };
+    }
+    if (!ownerScope.isSuperadmin) {
+      query.customerId = { $in: await Customer.distinct('_id', getOwnerFilter(ownerScope)) };
     }
 
     const billings = await Billing.find(query).sort({ customerName: 1 });

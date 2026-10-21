@@ -158,7 +158,7 @@ export default function ProfilePage() {
     return null;
   }
 
-  const isAdmin = currentUser.roles.includes('admin');
+  const isAdmin = currentUser.roles.some((role) => role === 'admin' || role === 'superadmin');
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-1 sm:space-y-8 sm:px-0">
@@ -169,7 +169,7 @@ export default function ProfilePage() {
           <div className="mt-3 flex flex-wrap gap-1.5">
             {currentUser.roles.map((role) => (
               <Badge key={role} variant={role === 'admin' ? 'default' : 'secondary'}>
-                {role === 'admin' ? 'Admin' : role === 'collector' ? 'Collector' : 'User'}
+                {role === 'superadmin' ? 'Superadmin' : 'Admin'}
               </Badge>
             ))}
           </div>

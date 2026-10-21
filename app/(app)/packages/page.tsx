@@ -38,7 +38,7 @@ interface Package {
 
 export default function PackagesPage() {
   const currentUser = useCurrentUser();
-  const canManageData = currentUser?.roles.includes('admin') ?? false;
+  const canManageData = currentUser?.roles.some((role) => role === 'admin' || role === 'superadmin') ?? false;
   const [packages, setPackages] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

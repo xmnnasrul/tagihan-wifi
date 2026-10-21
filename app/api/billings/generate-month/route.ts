@@ -4,6 +4,7 @@ import Billing from '@/lib/models/Billing';
 import Customer from '@/lib/models/Customer';
 import { getCurrentUser, requireAdmin } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
+import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 
 const months = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -41,12 +42,17 @@ export async function POST() {
     }
 
     await connectDB();
+    const ownerScope = await getDataOwnerScope();
     const [customers, existingBillings] = await Promise.all([
-      Customer.find({ status: { $ne: 'inactive' } })
+      Customer.find({ status: { $ne: 'inactive' }, ...getOwnerFilter(ownerScope) })
         .select('name address packageId')
         .populate('packageId', 'name price')
         .lean(),
-      Billing.find({ month, year }).select('customerId').lean(),
+      Billing.find({
+        month,
+        year,
+        customerId: { $in: await Customer.distinct('_id', getOwnerFilter(ownerScope)) },
+      }).select('customerId').lean(),
     ]);
     if (!customers.length) {
       return NextResponse.json({ month, year, created: 0 });

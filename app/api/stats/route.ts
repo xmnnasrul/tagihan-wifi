@@ -4,6 +4,7 @@ import Customer from '@/lib/models/Customer';
 import Billing from '@/lib/models/Billing';
 import { requireAuthenticatedUser } from '@/lib/session';
 import { getMonthlyBillingAmounts } from '@/lib/billing-amounts';
+import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 
 const months = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
     if (authError) return authError;
 
     await connectDB();
+    const ownerScope = await getDataOwnerScope();
 
     const { searchParams } = new URL(request.url);
     const now = new Date();
@@ -37,10 +39,18 @@ export async function GET(request: Request) {
     const selectedMonthIndex = months.indexOf(month);
     const selectedPeriodIsFuture = year > currentYear || (year === currentYear && selectedMonthIndex > currentMonthIndex);
     const [totalCustomers, archivedCustomers, currentBillings] = await Promise.all([
-      Customer.countDocuments({ status: { $ne: 'inactive' } }),
-      Customer.countDocuments({ status: 'inactive' }),
+      Customer.countDocuments({ status: { $ne: 'inactive' }, ...getOwnerFilter(ownerScope) }),
+      Customer.countDocuments({ status: 'inactive', ...getOwnerFilter(ownerScope) }),
       Billing.aggregate([
-        { $match: { year, month } },
+        {
+          $match: {
+            year,
+            month,
+            ...(!ownerScope.isSuperadmin
+              ? { customerId: { $in: await Customer.distinct('_id', getOwnerFilter(ownerScope)) } }
+              : {}),
+          },
+        },
         {
           $lookup: {
             from: Customer.collection.name,

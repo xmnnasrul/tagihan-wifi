@@ -71,7 +71,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!currentUser) return;
-    if (!currentUser.roles.includes('admin')) return;
+    if (!currentUser.roles.some((role) => role === 'admin' || role === 'superadmin')) return;
 
     let isCurrentRequest = true;
     async function ensureCurrentMonthBillings() {

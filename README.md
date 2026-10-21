@@ -1,6 +1,6 @@
 # WiFi Billing
 
-Aplikasi web untuk mengelola pelanggan internet WiFi, paket, tagihan bulanan, pembayaran, kunjungan collector, dan laporan operasional.
+Aplikasi web untuk mengelola pelanggan internet WiFi, paket, tagihan bulanan, pembayaran, kunjungan lapangan, dan laporan operasional.
 
 Panduan ini ditujukan untuk pemilik aplikasi atau operator yang belum terbiasa dengan coding. Beberapa tahap tetap memerlukan akun GitHub, MongoDB Atlas, dan akun layanan hosting.
 
@@ -11,7 +11,6 @@ Panduan ini ditujukan untuk pemilik aplikasi atau operator yang belum terbiasa d
 - [Menyiapkan MongoDB Atlas](#menyiapkan-mongodb-atlas)
 - [Menjalankan di Komputer Sendiri](#menjalankan-di-komputer-sendiri)
 - [Deploy ke Vercel](#deploy-ke-vercel)
-- [Menyiapkan Pusher untuk Chat Real-Time](#menyiapkan-pusher-untuk-chat-real-time)
 - [Alternatif Deploy](#alternatif-deploy)
 - [Membuat Akun Admin Pertama](#membuat-akun-admin-pertama)
 - [Keamanan](#keamanan)
@@ -24,24 +23,24 @@ Panduan ini ditujukan untuk pemilik aplikasi atau operator yang belum terbiasa d
 - **Paket internet:** mengelola nama paket, kecepatan, harga, dan deskripsi.
 - **Tagihan bulanan:** membuat tagihan untuk pelanggan aktif dan mencatat pembayaran penuh maupun cicilan.
 - **Alokasi tunggakan:** pembayaran dialokasikan ke tagihan tertua terlebih dahulu. Riwayat penerimaan uang dan alokasi ke tagihan disimpan terpisah.
-- **Operasional collector:** mencari pelanggan berdasarkan nama/alamat, menandai kunjungan, mencatat pembayaran, dan melihat rekap setoran harian.
+- **Operasional harian:** mencari pelanggan berdasarkan nama/alamat, menandai kunjungan, mencatat pembayaran, dan melihat rekap setoran harian.
 - **Laporan tunggakan:** melihat saldo tagihan per pelanggan dan periode.
 - **Arsip pelanggan:** mengarsipkan dan memulihkan pelanggan. Penghapusan permanen juga menghapus riwayat tagihannya dan tidak dapat dibatalkan.
 - **Ekspor:** mengunduh data tagihan sebagai CSV atau Excel.
-- **Chat admin:** percakapan satu lawan satu antar-admin dengan enkripsi end-to-end untuk pesan, balasan, dan media; pesan diperbarui realtime dengan tanda terkirim, terbaca, dan gagal dikirim. Admin dapat mereset kunci Chat yang terlupa (riwayat lama disembunyikan dari akun yang direset) dan melihat detail foto profil, nama, serta bio admin lain. Kunci privat disimpan di browser; setiap admin perlu membuka halaman chat untuk pertama kali dari browser yang akan dipakai. Pesan dan media dihapus otomatis setelah 15 hari.
 - **Audit:** melihat catatan perubahan data dan akun.
-- **Pengelolaan akun:** admin dapat membuat akun dan mengatur role.
+- **Pengelolaan akun:** superadmin dapat membuat akun, mengatur role, dan mengelola status akun.
 - **Profil dan tema:** halaman profil mengelola username dan password sesuai role; tema dapat mengikuti jadwal waktu Jakarta atau dipilih manual.
 - **Header keamanan:** CSP berbasis nonce, proteksi framing dan MIME sniffing, kebijakan referrer/permissions, serta HSTS di production.
 - **Tes keamanan API:** kontrak tes memeriksa guard setiap handler, pengecualian endpoint publik, dan akses berdasarkan role.
 
-### Role Akun
+### Role Akun dan Pembagian Data
 
-- **Admin:** mengelola pelanggan, paket, tagihan, akun, dan audit.
-- **Collector:** menandai kunjungan dan mencatat pembayaran/setoran.
-- **User:** melihat data tanpa melakukan perubahan.
+- **Admin:** mengelola pelanggan, paket, tagihan, kunjungan, dan pembayaran milik akunnya sendiri.
+- **Superadmin:** dapat melihat dan mengelola data semua admin, termasuk pengelolaan akun.
 
-Akun dapat memiliki lebih dari satu role, misalnya Admin sekaligus Collector. Pendaftaran akun publik tidak tersedia; akun dibuat oleh admin.
+Akun tidak memiliki role `user` atau `collector`; tugas operasional kunjungan dan setoran menjadi bagian dari role Admin. Data pelanggan dan paket baru dipisahkan berdasarkan akun pembuat, sedangkan tagihan dan riwayatnya mengikuti pemilik pelanggan. Pembayaran mencatat username dan ID akun pencatatnya. Data yang sudah ada dipertahankan dan ditetapkan ke pemilik legacy yang dikonfigurasi untuk migrasi ini. Katalog paket juga terpisah per akun. Pendaftaran akun publik tidak tersedia; akun dibuat oleh superadmin.
+
+Role Superadmin tidak diberikan otomatis saat setup awal. Pengelolaan akun hanya dapat dibuka setelah akun dipromosikan menjadi Superadmin oleh operator.
 
 ### Aturan Tagihan
 
@@ -182,13 +181,6 @@ Di pengaturan project Vercel, buka **Settings → Environment Variables**. Tamba
 | `JWT_SECRET` | Secret random panjang untuk sesi login |
 | `SEED_SECRET` | Secret random lain, hanya untuk proses membuat akun awal production |
 | `INITIAL_ADMIN_PASSWORD` | Password kuat untuk akun admin pertama |
-| `PUSHER_APP_ID` | App ID dari aplikasi Pusher Channels |
-| `PUSHER_APP_KEY` | App Key dari aplikasi Pusher Channels |
-| `PUSHER_APP_SECRET` | App Secret Pusher, hanya untuk server |
-| `PUSHER_APP_CLUSTER` | Cluster aplikasi Pusher |
-| `NEXT_PUBLIC_PUSHER_KEY` | Key Pusher yang sama untuk koneksi browser |
-| `NEXT_PUBLIC_PUSHER_CLUSTER` | Cluster Pusher yang sama untuk koneksi browser |
-
 Pilih environment yang sesuai, biasanya **Production** dan **Preview** bila diperlukan. Jangan beri awalan `NEXT_PUBLIC_` pada variable rahasia ini. Setelah mengubah variable, lakukan deployment ulang agar perubahan terbaca.
 
 ### 3. Deploy
@@ -213,67 +205,6 @@ Invoke-RestMethod -Method Post -Uri "https://DOMAIN-ANDA/api/seed" -Headers @{ "
 Jika berhasil, server membalas `Seed berhasil`. Masuk dengan username `admin` dan password yang Anda masukkan pada `INITIAL_ADMIN_PASSWORD`, lalu segera ganti password melalui **Profil**.
 
 Setelah admin berhasil dibuat, hapus `SEED_SECRET` dan `INITIAL_ADMIN_PASSWORD` dari Environment Variables hosting lalu deploy ulang. Jangan menghapus `MONGODB_URI` atau `JWT_SECRET`.
-
-## Menyiapkan Pusher untuk Chat Real-Time
-
-Chat admin menggunakan Pusher Channels untuk notifikasi real-time. Pusher hanya meneruskan event `admin-chat:updated` tanpa isi pesan; ciphertext tetap diambil dari API dan didekripsi di browser. Jika Pusher belum dikonfigurasi atau koneksi terputus, chat tetap menyinkronkan pesan setiap lima detik saat percakapan terbuka.
-
-### 1. Buat akun dan aplikasi Pusher Channels
-
-Ikuti langkah berikut untuk mendapatkan kredensial yang dibutuhkan aplikasi:
-
-1. Buka [Pusher Dashboard](https://dashboard.pusher.com/) dan buat akun, atau masuk jika sudah punya akun. Ikuti instruksi pendaftaran/verifikasi yang muncul.
-2. Dari dashboard, pilih **Channels**. Pastikan produknya **Channels**, bukan Beams.
-3. Pilih **Create app** atau **Get started** untuk membuat aplikasi Channels.
-4. Isi nama aplikasi, misalnya `tagihan-wifi-chat`. Nama ini hanya label agar mudah dikenali.
-5. Pilih **Cluster** yang disarankan Pusher atau yang paling dekat dengan lokasi pengguna aplikasi. Catat nilai cluster yang dipilih, misalnya `ap1` atau `us2`.
-6. Jika diminta memilih framework atau frontend, pilihan itu hanya contoh integrasi Pusher. Aplikasi ini memakai Next.js; pilihan framework di dashboard tidak mengubah kode project.
-7. Tekan tombol untuk membuat aplikasi. Setelah aplikasi dibuat, buka menu **App Keys**.
-8. Di halaman **App Keys**, temukan dan salin **app_id**, **key**, **secret**, dan **cluster**. Simpan nilainya secara aman. Jangan kirim atau tempelkan **secret** ke chat, screenshot publik, atau kode frontend.
-
-### 2. Tambahkan kredensial di Vercel
-
-Karena website sudah di-deploy ke Vercel, tambahkan nilai tersebut ke pengaturan project:
-
-1. Buka [Vercel Dashboard](https://vercel.com/dashboard), pilih project website ini.
-2. Buka **Settings → Environment Variables**.
-3. Tambahkan setiap variabel berikut satu per satu. Untuk masing-masing, isi **Name** sesuai tabel, **Value** dari Pusher, dan pilih environment **Production**. Jika chat juga ingin dipakai di Preview, pilih **Preview** juga.
-
-| Name di Vercel | Value yang diisi |
-|---|---|
-| `PUSHER_APP_ID` | Nilai **app_id** dari halaman App Keys |
-| `PUSHER_APP_KEY` | Nilai **key** dari halaman App Keys |
-| `PUSHER_APP_SECRET` | Nilai **secret** dari halaman App Keys |
-| `PUSHER_APP_CLUSTER` | Nilai **cluster** dari halaman App Keys |
-| `NEXT_PUBLIC_PUSHER_KEY` | Nilai **key** yang sama dengan `PUSHER_APP_KEY` |
-| `NEXT_PUBLIC_PUSHER_CLUSTER` | Nilai **cluster** yang sama dengan `PUSHER_APP_CLUSTER` |
-
-Perhatikan huruf besar/kecil dan jangan menambahkan tanda kutip atau spasi pada awal/akhir nilai. `PUSHER_APP_SECRET` harus tetap tanpa awalan `NEXT_PUBLIC_` karena hanya boleh digunakan server.
-
-4. Klik **Save** setelah setiap variabel ditambahkan.
-5. Setelah keenam variabel disimpan, buka tab **Deployments**, pilih menu titik tiga pada deployment Production terbaru, lalu pilih **Redeploy**. Perubahan environment variable baru berlaku setelah deployment baru selesai.
-6. Tunggu status deployment menjadi **Ready**.
-
-### 3. (Opsional) Jalankan project di komputer sendiri
-
-Untuk pengembangan lokal, tambahkan nilai yang sama ke file `.env.local` di folder utama project. Buat file tersebut jika belum ada. Jangan mengisi file `.env.example` dengan secret asli karena file itu contoh konfigurasi yang boleh dibagikan.
-
-```env
-PUSHER_APP_ID=isi-app-id-dari-pusher
-PUSHER_APP_KEY=isi-key-dari-pusher
-PUSHER_APP_SECRET=isi-secret-dari-pusher
-PUSHER_APP_CLUSTER=isi-cluster-dari-pusher
-NEXT_PUBLIC_PUSHER_KEY=isi-key-yang-sama
-NEXT_PUBLIC_PUSHER_CLUSTER=isi-cluster-yang-sama
-```
-
-Ganti semua teks `isi-...` dengan nilai dari halaman App Keys. Pastikan `NEXT_PUBLIC_PUSHER_KEY` sama persis dengan `PUSHER_APP_KEY`, dan `NEXT_PUBLIC_PUSHER_CLUSTER` sama persis dengan `PUSHER_APP_CLUSTER`. Simpan `.env.local`, lalu mulai ulang server pengembangan agar nilainya dimuat. Jangan commit atau mengirimkan `.env.local`.
-
-### 4. Otorisasi dan pengujian
-
-Browser berlangganan ke private channel khusus ID admin yang sedang login. Endpoint `POST /api/pusher/auth` memeriksa sesi admin, status akun, status sandi Chat, serta memastikan admin hanya dapat mengautentikasi channel miliknya sendiri. Setelah perubahan chat tersimpan, server Next.js mengirim event kosong ke channel peserta; klien lalu mengambil pesan lewat API. Isi pesan tidak dikirim ke Pusher.
-
-Untuk memastikan konfigurasi berhasil, buka chat admin di dua browser atau dua sesi admin yang berbeda, pastikan keduanya sudah memiliki sandi Chat, lalu kirim pesan dari salah satunya. Chat penerima seharusnya diperbarui tanpa refresh halaman. Jika tidak, periksa bahwa keenam variabel sudah benar dan deployment Vercel berstatus **Ready**. Chat tetap mencoba mengambil pesan otomatis berkala sebagai fallback. Jangan mengekspos `PUSHER_APP_SECRET`, `JWT_SECRET`, atau `MONGODB_URI` dengan awalan `NEXT_PUBLIC_`.
 
 ## Alternatif Deploy
 

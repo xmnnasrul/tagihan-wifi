@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       if (authError) return authError;
     }
 
-    const existingAdmin = await User.findOne({ username: 'admin' });
+    let existingAdmin = await User.findOne({ username: 'admin' });
     if (!existingAdmin) {
       const initialPassword = process.env.NODE_ENV === 'production'
         ? process.env.INITIAL_ADMIN_PASSWORD
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'INITIAL_ADMIN_PASSWORD wajib dikonfigurasi' }, { status: 500 });
       }
       const hashedPassword = await bcrypt.hash(initialPassword, 10);
-      await User.create({ username: 'admin', password: hashedPassword, role: 'admin' });
+      existingAdmin = await User.create({ username: 'admin', password: hashedPassword, role: 'admin' });
     }
 
     const packages = [
@@ -40,9 +40,9 @@ export async function POST(request: Request) {
     ];
 
     for (const pkg of packages) {
-      const existing = await Package.findOne({ name: pkg.name });
+      const existing = await Package.findOne({ name: pkg.name, ownerId: existingAdmin._id });
       if (!existing) {
-        await Package.create(pkg);
+        await Package.create({ ...pkg, ownerId: existingAdmin._id });
       }
     }
 

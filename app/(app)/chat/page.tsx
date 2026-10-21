@@ -1,5 +1,5 @@
-import AdminDirectChat from '@/components/AdminDirectChat';
+import { redirect } from 'next/navigation';
 
 export default function AdminChatPage() {
-  return <AdminDirectChat />;
+  redirect('/dashboard');
 }

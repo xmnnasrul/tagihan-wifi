@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { verifyToken, COOKIE_NAME, TokenPayload } from './auth';
 import { connectDB } from './mongodb';
 import User from './models/User';
-import { canAccessApi, normalizeUserRoles, UserRole } from './roles';
+import { canAccessApi, getPrimaryRole, normalizeUserRoles, UserRole } from './roles';
 
 export async function getCurrentUser(): Promise<TokenPayload | null> {
   const cookieStore = await cookies();
@@ -23,11 +23,15 @@ export async function requireAuthenticatedUser(): Promise<NextResponse | null> {
     const activeUser = await User.findOne({
       username: user.username,
       isActive: { $ne: false },
-    }).select('_id role tokenVersion').lean();
+    }).select('_id role roles tokenVersion').lean();
     if (!activeUser) {
       return NextResponse.json({ error: 'Akun tidak aktif' }, { status: 403 });
     }
-    if ((activeUser.role || 'admin') !== user.role) {
+    const activeRoles = normalizeUserRoles(activeUser.role, activeUser.roles);
+    if (!activeRoles.length) {
+      return NextResponse.json({ error: 'Akun tidak memiliki role yang dapat mengakses aplikasi' }, { status: 403 });
+    }
+    if (getPrimaryRole(activeRoles) !== user.role) {
       return NextResponse.json({ error: 'Peran akun berubah, silakan masuk kembali' }, { status: 401 });
     }
     if ((user.tokenVersion || 0) !== (activeUser.tokenVersion || 0)) {
@@ -55,9 +59,9 @@ export async function requireAnyRole(allowedRoles: UserRole[]): Promise<NextResp
 }
 
 export async function requireAdmin(): Promise<NextResponse | null> {
-  return requireAnyRole(['admin']);
+  return requireAnyRole(['admin', 'superadmin']);
 }
 
-export async function requireCollectorOrAdmin(): Promise<NextResponse | null> {
-  return requireAnyRole(['admin', 'collector']);
+export async function requireSuperadmin(): Promise<NextResponse | null> {
+  return requireAnyRole(['superadmin']);
 }

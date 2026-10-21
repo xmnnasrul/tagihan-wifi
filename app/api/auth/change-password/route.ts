@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     await account.save();
     await writeAuditLog({
       actorUsername: account.username,
-      action: accountRole === 'admin' ? 'admin.password_changed' : 'user.password_changed',
+      action: accountRole === 'admin' || accountRole === 'superadmin' ? 'admin.password_changed' : 'user.password_changed',
       entityType: 'admin',
       entityId: account._id.toString(),
       entityLabel: account.username,

@@ -3,6 +3,7 @@ import { connectDB } from '@/lib/mongodb';
 import Package from '@/lib/models/Package';
 import { getCurrentUser, requireAdmin, requireAuthenticatedUser } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
+import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 
 export async function GET() {
   try {
@@ -10,7 +11,8 @@ export async function GET() {
     if (authError) return authError;
 
     await connectDB();
-    const packages = await Package.find({}).sort({ price: 1 });
+    const ownerScope = await getDataOwnerScope();
+    const packages = await Package.find(getOwnerFilter(ownerScope)).sort({ price: 1 });
     return NextResponse.json(packages);
   } catch (error) {
     return NextResponse.json({ error: 'Gagal mengambil data paket' }, { status: 500 });
@@ -24,18 +26,25 @@ export async function POST(request: Request) {
 
     await connectDB();
     const body = await request.json();
+    const ownerScope = await getDataOwnerScope();
     const { name, price, speed, description } = body;
 
     if (!name || !price || !speed) {
       return NextResponse.json({ error: 'Nama, harga, dan kecepatan wajib diisi' }, { status: 400 });
     }
 
-    const existing = await Package.findOne({ name });
+    const existing = await Package.findOne({ name, ownerId: ownerScope.ownerId });
     if (existing) {
       return NextResponse.json({ error: 'Nama paket sudah ada' }, { status: 400 });
     }
 
-    const pkg = await Package.create({ name, price: Number(price), speed, description: description || '' });
+    const pkg = await Package.create({
+      name,
+      price: Number(price),
+      speed,
+      description: description || '',
+      ownerId: ownerScope.ownerId,
+    });
     const actor = await getCurrentUser();
     await writeAuditLog({
       actorUsername: actor?.username || 'Admin',
@@ -62,18 +71,19 @@ export async function PUT(request: Request) {
 
     await connectDB();
     const body = await request.json();
+    const ownerScope = await getDataOwnerScope();
     const { id, name, price, speed, description } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID paket wajib diisi' }, { status: 400 });
     }
 
-    const previousPackage = await Package.findById(id).lean();
+    const previousPackage = await Package.findOne({ _id: id, ...getOwnerFilter(ownerScope) }).lean();
     if (!previousPackage) {
       return NextResponse.json({ error: 'Paket tidak ditemukan' }, { status: 404 });
     }
-    const pkg = await Package.findByIdAndUpdate(
-      id,
+    const pkg = await Package.findOneAndUpdate(
+      { _id: id, ...getOwnerFilter(ownerScope) },
       { name, price: Number(price), speed, description: description || '' },
       { returnDocument: 'after' }
     );
@@ -113,6 +123,7 @@ export async function DELETE(request: Request) {
     if (authError) return authError;
 
     await connectDB();
+    const ownerScope = await getDataOwnerScope();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -120,7 +131,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'ID paket wajib diisi' }, { status: 400 });
     }
 
-    const pkg = await Package.findByIdAndDelete(id);
+    const pkg = await Package.findOneAndDelete({ _id: id, ...getOwnerFilter(ownerScope) });
     if (!pkg) {
       return NextResponse.json({ error: 'Paket tidak ditemukan' }, { status: 404 });
     }

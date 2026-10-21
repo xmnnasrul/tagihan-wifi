@@ -23,12 +23,12 @@ export async function GET() {
   return NextResponse.json({ user: {
     id: account._id.toString(),
     username: account.username,
-    role: getPrimaryRole(roles),
+    role: getPrimaryRole(roles) || '',
     roles,
     tokenVersion: account.tokenVersion || 0,
     profileImage: account.profileImage || '',
     hasOriginalProfileImage: Boolean(account.originalProfileImage),
-    ...(roles.includes('admin') ? { bio: account.bio || '' } : {}),
+    ...(roles.some((role) => role === 'admin' || role === 'superadmin') ? { bio: account.bio || '' } : {}),
   } });
 }
 
@@ -105,9 +105,10 @@ export async function PATCH(request: Request) {
     await account.save();
     const roles = normalizeUserRoles(account.role, account.roles);
     const role = getPrimaryRole(roles);
+    if (!role) return NextResponse.json({ error: 'Akun tidak memiliki role yang dapat mengakses aplikasi' }, { status: 403 });
     await writeAuditLog({
       actorUsername: previousUsername,
-      action: role === 'admin' ? 'admin.username_updated' : 'user.username_updated',
+      action: role === 'admin' || role === 'superadmin' ? 'admin.username_updated' : 'user.username_updated',
       entityType: 'admin',
       entityId: account._id.toString(),
       entityLabel: username,
@@ -120,6 +121,7 @@ export async function PATCH(request: Request) {
       username,
       role,
       roles,
+      userId: account._id.toString(),
       tokenVersion: account.tokenVersion || 0,
     }), {
       httpOnly: true,

@@ -142,7 +142,7 @@ function formatAmountInput(value: string) {
 export default function CollectorPage() {
   const router = useRouter();
   const currentUser = useCurrentUser();
-  const canUseCollectorPage = currentUser?.roles.some((role) => role === 'admin' || role === 'collector') ?? false;
+  const canUseCollectorPage = currentUser?.roles.some((role) => role === 'admin' || role === 'superadmin') ?? false;
   const initialPeriod = getCurrentJakartaPeriod();
   const [month, setMonth] = useState(initialPeriod.month);
   const [year, setYear] = useState(String(initialPeriod.year));
@@ -173,7 +173,7 @@ export default function CollectorPage() {
   const normalizedSearch = search.trim().toLocaleLowerCase('id-ID');
 
   useEffect(() => {
-    if (currentUser && !currentUser.roles.some((role) => role === 'admin' || role === 'collector')) router.replace('/dashboard');
+    if (currentUser && !currentUser.roles.some((role) => role === 'admin' || role === 'superadmin')) router.replace('/dashboard');
   }, [currentUser, router]);
 
   const loadData = useCallback(async (searchTerm: string, options: { silent?: boolean } = {}) => {
@@ -411,7 +411,7 @@ export default function CollectorPage() {
       <header>
         <div className="flex items-center gap-2 text-primary">
           <WalletCards className="h-5 w-5" />
-          <span className="text-sm font-semibold">Operasional collector</span>
+          <span className="text-sm font-semibold">Operasional harian</span>
         </div>
         <h1 className="mt-2 text-2xl font-bold tracking-tight">Setoran & Kunjungan</h1>
         <p className="mt-1 text-sm text-muted-foreground">Cari pelanggan, tandai kunjungan, dan catat pembayaran dalam satu halaman.</p>
@@ -531,7 +531,7 @@ export default function CollectorPage() {
         </div>
       </section>
 
-      <section className="space-y-4" aria-label="Cari dan kelola pelanggan collector">
+      <section className="space-y-4" aria-label="Cari dan kelola pelanggan">
         <div className="space-y-3">
           <div className="relative min-w-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -552,7 +552,7 @@ export default function CollectorPage() {
               type="button"
               variant="outline"
               className="min-w-0 w-full justify-between px-2 font-normal sm:px-3"
-              aria-label="Pilih bulan periode collector"
+              aria-label="Pilih bulan periode kunjungan"
               onClick={() => setMonthPickerOpen(true)}
             >
               <span className="truncate">{month}</span>
@@ -653,7 +653,7 @@ export default function CollectorPage() {
         <DialogContent className="rounded-2xl sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Pilih Bulan</DialogTitle>
-            <DialogDescription>Pilih periode kunjungan dan pembayaran collector.</DialogDescription>
+            <DialogDescription>Pilih periode kunjungan dan catat pembayaran pelanggan.</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-3 gap-3">
             {months.map((item, index) => (

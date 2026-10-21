@@ -25,8 +25,15 @@ export async function POST(request: Request) {
     }
 
     const roles = normalizeUserRoles(user.role, user.roles);
+    if (!roles.length) {
+      return NextResponse.json({ error: 'Akun tidak memiliki role yang dapat mengakses aplikasi' }, { status: 403 });
+    }
     const role = getPrimaryRole(roles);
+    if (!role) {
+      return NextResponse.json({ error: 'Akun tidak memiliki role yang dapat mengakses aplikasi' }, { status: 403 });
+    }
     const token = signToken({
+      userId: user._id.toString(),
       username: user.username,
       role,
       roles,

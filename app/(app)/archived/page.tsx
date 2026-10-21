@@ -30,7 +30,7 @@ interface ArchivedCustomer {
 
 export default function ArchivedCustomersPage() {
   const currentUser = useCurrentUser();
-  const canManageData = currentUser?.roles.includes('admin') ?? false;
+  const canManageData = currentUser?.roles.some((role) => role === 'admin' || role === 'superadmin') ?? false;
   const [customers, setCustomers] = useState<ArchivedCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

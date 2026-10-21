@@ -1,27 +1,20 @@
-export const USER_ROLES = ['user', 'collector', 'admin'] as const;
+export const USER_ROLES = ['admin', 'superadmin'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export function normalizeUserRoles(role: unknown, roles: unknown): UserRole[] {
   const assignedRoles: UserRole[] = Array.isArray(roles)
     ? [...new Set<UserRole>(roles.filter((value): value is UserRole => USER_ROLES.includes(value)))]
     : [];
-  const normalizedRoles: UserRole[] = assignedRoles.length
-    ? assignedRoles
-    : USER_ROLES.includes(role as UserRole)
-      ? [role as UserRole]
-      : ['user'];
-
-  if (normalizedRoles.some((assignedRole) => assignedRole === 'admin' || assignedRole === 'collector')) {
-    return normalizedRoles.filter((assignedRole) => assignedRole !== 'user');
-  }
-
-  return ['user'];
+  if (assignedRoles.length) return assignedRoles;
+  if (Array.isArray(roles) && roles.includes('collector')) return ['admin'];
+  if (role === 'collector') return ['admin'];
+  return USER_ROLES.includes(role as UserRole) ? [role as UserRole] : [];
 }
 
-export function getPrimaryRole(roles: UserRole[]): UserRole {
+export function getPrimaryRole(roles: UserRole[]): UserRole | null {
+  if (roles.includes('superadmin')) return 'superadmin';
   if (roles.includes('admin')) return 'admin';
-  if (roles.includes('collector')) return 'collector';
-  return 'user';
+  return null;
 }
 
 export function hasUserRole(roles: unknown, role: UserRole): boolean {
@@ -37,5 +30,5 @@ export function canAccessApi(
   roles: readonly UserRole[],
   allowedRoles?: readonly UserRole[]
 ): boolean {
-  return isAuthenticated && (!allowedRoles || hasAnyRole(roles, allowedRoles));
+  return isAuthenticated && roles.length > 0 && (!allowedRoles || hasAnyRole(roles, allowedRoles));
 }

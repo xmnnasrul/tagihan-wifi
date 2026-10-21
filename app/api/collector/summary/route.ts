@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Billing from '@/lib/models/Billing';
-import { getCurrentUser, requireCollectorOrAdmin } from '@/lib/session';
-import { normalizeUserRoles } from '@/lib/roles';
+import { requireAdmin } from '@/lib/session';
+import Customer from '@/lib/models/Customer';
+import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ const getTodayInJakarta = () => {
 
 export async function GET(request: Request) {
   try {
-    const authError = await requireCollectorOrAdmin();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     const { searchParams } = new URL(request.url);
@@ -37,15 +38,15 @@ export async function GET(request: Request) {
     const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
     await connectDB();
 
-    const currentUser = await getCurrentUser();
-    const roles = normalizeUserRoles(currentUser?.role, currentUser?.roles);
-    const isAdmin = roles.includes('admin');
+    const ownerScope = await getDataOwnerScope();
     const paymentMatch: Record<string, unknown> = {
       'paymentHistory.addedAt': { $gte: start, $lt: end },
       'paymentHistory.isSettlementAllocation': { $ne: true },
       'paymentHistory.note': { $not: /^Pelunasan otomatis dari pembayaran / },
     };
-    if (!isAdmin) paymentMatch['paymentHistory.addedBy'] = currentUser?.username;
+    if (!ownerScope.isSuperadmin) {
+      paymentMatch.customerId = { $in: await Customer.distinct('_id', getOwnerFilter(ownerScope)) };
+    }
     const payments = await Billing.aggregate([
       { $match: { 'paymentHistory.addedAt': { $gte: start, $lt: end } } },
       { $unwind: { path: '$paymentHistory', includeArrayIndex: 'paymentIndex' } },

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import AuditLog, { AuditEntityType } from '@/lib/models/AuditLog';
-import { requireAdmin } from '@/lib/session';
+import { getCurrentUser, requireAdmin } from '@/lib/session';
+import { getDataOwnerScope } from '@/lib/data-ownership';
 
 const entityTypes: AuditEntityType[] = ['billing', 'customer', 'package', 'admin'];
 
@@ -11,11 +12,14 @@ export async function GET(request: Request) {
     if (authError) return authError;
 
     await connectDB();
+    const ownerScope = await getDataOwnerScope();
+    const currentUser = await getCurrentUser();
     const { searchParams } = new URL(request.url);
     const entityType = searchParams.get('entityType');
     const page = Math.max(1, Number(searchParams.get('page')) || 1);
     const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit')) || 30));
     const filter: Record<string, unknown> = {};
+    if (!ownerScope.isSuperadmin) filter.actorUsername = currentUser?.username;
     if (entityType && entityTypes.includes(entityType as AuditEntityType)) {
       filter.entityType = entityType;
     }

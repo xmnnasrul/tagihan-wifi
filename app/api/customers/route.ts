@@ -5,6 +5,7 @@ import Package from '@/lib/models/Package';
 import Billing from '@/lib/models/Billing';
 import { getCurrentUser, requireAdmin, requireAuthenticatedUser } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
+import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 
 export async function GET(request: Request) {
   try {
@@ -13,6 +14,7 @@ export async function GET(request: Request) {
 
     await connectDB();
 
+    const ownerScope = await getDataOwnerScope();
     const { searchParams } = new URL(request.url);
     const archivedOnly = searchParams.get('archived') === 'true';
     const id = searchParams.get('id');
@@ -22,11 +24,12 @@ export async function GET(request: Request) {
     const searchFields = requestedSearchFields?.length
       ? requestedSearchFields
       : ['name', 'address', 'phone'];
-    const filter: Record<string, any> = id
-      ? {}
-      : archivedOnly
+    const filter: Record<string, any> = {
+      ...getOwnerFilter(ownerScope),
+      ...(id ? {} : archivedOnly
         ? { status: 'inactive' }
-        : { status: { $ne: 'inactive' } };
+        : { status: { $ne: 'inactive' } }),
+    };
 
     if (id) filter._id = id;
     if (search) {
@@ -59,6 +62,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { name, address, phone, packageId } = body;
     const currentUser = await getCurrentUser();
+    const ownerScope = await getDataOwnerScope();
     const normalizedName = typeof name === 'string' ? name.trim() : '';
     const normalizedAddress = typeof address === 'string' ? address.trim() : '';
     const normalizedPhone = typeof phone === 'string' ? phone.trim() : '';
@@ -66,7 +70,10 @@ export async function POST(request: Request) {
     if (!normalizedName || !normalizedAddress || typeof packageId !== 'string' || !packageId) {
       return NextResponse.json({ error: 'Nama, alamat, dan paket wajib diisi' }, { status: 400 });
     }
-    const selectedPackage = await Package.findById(packageId).select('_id').lean();
+    const selectedPackage = await Package.findOne({
+      _id: packageId,
+      ...getOwnerFilter(ownerScope),
+    }).select('_id').lean();
     if (!selectedPackage) {
       return NextResponse.json({ error: 'Paket tidak ditemukan' }, { status: 400 });
     }
@@ -74,6 +81,7 @@ export async function POST(request: Request) {
     const existing = await Customer.findOne({
       name: { $regex: new RegExp(`^${normalizedName}$`, 'i') },
       address: normalizedAddress,
+      ownerId: ownerScope.ownerId,
     });
     if (existing) {
       return NextResponse.json({ error: 'Nama pelanggan sudah ada' }, { status: 400 });
@@ -84,6 +92,7 @@ export async function POST(request: Request) {
       address: normalizedAddress,
       phone: normalizedPhone,
       packageId,
+      ownerId: ownerScope.ownerId,
       createdBy: currentUser?.username || 'Admin',
       status: 'active',
       archivedAt: null,
@@ -118,6 +127,7 @@ export async function DELETE(request: Request) {
     if (authError) return authError;
 
     await connectDB();
+    const ownerScope = await getDataOwnerScope();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     const restore = searchParams.get('restore') === 'true';
@@ -127,7 +137,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'ID pelanggan wajib diisi' }, { status: 400 });
     }
 
-    const customer = await Customer.findById(id);
+    const customer = await Customer.findOne({ _id: id, ...getOwnerFilter(ownerScope) });
     if (!customer) {
       return NextResponse.json({ error: 'Pelanggan tidak ditemukan' }, { status: 404 });
     }
@@ -212,6 +222,7 @@ export async function PUT(request: Request) {
     if (authError) return authError;
 
     await connectDB();
+    const ownerScope = await getDataOwnerScope();
     const body = await request.json();
     const { id, address, phone, packageId } = body;
 
@@ -219,12 +230,21 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'ID pelanggan wajib diisi' }, { status: 400 });
     }
 
-    const previousCustomer = await Customer.findById(id);
+    const previousCustomer = await Customer.findOne({ _id: id, ...getOwnerFilter(ownerScope) });
     if (!previousCustomer) {
       return NextResponse.json({ error: 'Pelanggan tidak ditemukan' }, { status: 404 });
     }
-    const customer = await Customer.findByIdAndUpdate(
-      id,
+    if (packageId) {
+      const selectedPackage = await Package.findOne({
+        _id: packageId,
+        ...getOwnerFilter(ownerScope),
+      }).select('_id').lean();
+      if (!selectedPackage) {
+        return NextResponse.json({ error: 'Paket tidak ditemukan' }, { status: 400 });
+      }
+    }
+    const customer = await Customer.findOneAndUpdate(
+      { _id: id, ...getOwnerFilter(ownerScope) },
       {
         address: address || '',
         phone: typeof phone === 'string' ? phone.trim() : previousCustomer.phone || '',

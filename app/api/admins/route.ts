@@ -2,14 +2,16 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
-import { getCurrentUser, requireAdmin } from '@/lib/session';
+import Customer from '@/lib/models/Customer';
+import Package from '@/lib/models/Package';
+import { getCurrentUser, requireSuperadmin } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
 import { COOKIE_NAME, signToken } from '@/lib/auth';
 import { getPrimaryRole, normalizeUserRoles, USER_ROLES, UserRole } from '@/lib/roles';
 
 export async function GET() {
   try {
-    const authError = await requireAdmin();
+    const authError = await requireSuperadmin();
     if (authError) return authError;
 
     await connectDB();
@@ -23,7 +25,7 @@ export async function GET() {
       currentUsername: currentUser?.username || '',
       admins: accounts.map((account) => ({
         ...account,
-        role: getPrimaryRole(normalizeUserRoles(account.role, account.roles)),
+        role: getPrimaryRole(normalizeUserRoles(account.role, account.roles)) || '',
         roles: normalizeUserRoles(account.role, account.roles),
         isActive: account.isActive !== false,
       })),
@@ -35,17 +37,20 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const authError = await requireAdmin();
+    const authError = await requireSuperadmin();
     if (authError) return authError;
 
     await connectDB();
     const body = await request.json();
     const username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
     const password = typeof body.password === 'string' ? body.password : '';
-    if (body.roles !== undefined && (!Array.isArray(body.roles) || body.roles.length === 0 || body.roles.some((role: unknown) => !USER_ROLES.includes(role as UserRole)))) {
-      return NextResponse.json({ error: 'Pilih minimal satu role yang valid' }, { status: 400 });
+    if (body.roles !== undefined && (!Array.isArray(body.roles) || body.roles.length !== 1 || body.roles.some((role: unknown) => !USER_ROLES.includes(role as UserRole)))) {
+      return NextResponse.json({ error: 'Pilih satu role yang valid' }, { status: 400 });
     }
-    const roles = normalizeUserRoles('user', body.roles ?? ['user']);
+    const roles = normalizeUserRoles('admin', body.roles ?? ['admin']);
+    if (!roles.length) {
+      return NextResponse.json({ error: 'Pilih role Admin atau Superadmin' }, { status: 400 });
+    }
     if (!/^[a-z0-9._-]{3,32}$/.test(username) || password.length < 10) {
       return NextResponse.json(
         { error: 'Username harus 3-32 karakter; password minimal 10 karakter' },
@@ -58,6 +63,9 @@ export async function POST(request: Request) {
     }
 
     const primaryRole = getPrimaryRole(roles);
+    if (!primaryRole) {
+      return NextResponse.json({ error: 'Pilih role Admin atau Superadmin' }, { status: 400 });
+    }
     const admin = await User.create({
       username,
       password: await bcrypt.hash(password, 10),
@@ -85,13 +93,13 @@ export async function POST(request: Request) {
       createdAt: admin.createdAt,
     }, { status: 201 });
   } catch {
-    return NextResponse.json({ error: 'Gagal membuat akun pengguna' }, { status: 500 });
+    return NextResponse.json({ error: 'Gagal membuat akun' }, { status: 500 });
   }
 }
 
 export async function PATCH(request: Request) {
   try {
-    const authError = await requireAdmin();
+    const authError = await requireSuperadmin();
     if (authError) return authError;
 
     await connectDB();
@@ -108,8 +116,8 @@ export async function PATCH(request: Request) {
     }
 
     if (requestedRoles !== undefined) {
-      if (!Array.isArray(requestedRoles) || requestedRoles.length === 0 || requestedRoles.some((role: unknown) => !USER_ROLES.includes(role as UserRole))) {
-        return NextResponse.json({ error: 'Pilih minimal satu role yang valid' }, { status: 400 });
+      if (!Array.isArray(requestedRoles) || requestedRoles.length !== 1 || requestedRoles.some((role: unknown) => !USER_ROLES.includes(role as UserRole))) {
+        return NextResponse.json({ error: 'Pilih satu role yang valid' }, { status: 400 });
       }
       if (actor?.username === admin.username) {
         return NextResponse.json({ error: 'Role akun yang sedang digunakan tidak dapat diubah dari sini' }, { status: 400 });
@@ -117,20 +125,23 @@ export async function PATCH(request: Request) {
 
       const previousRoles = normalizeUserRoles(admin.role, admin.roles);
       const nextRoles = normalizeUserRoles(admin.role, requestedRoles);
-      if (actor?.username === admin.username && previousRoles.includes('admin') && !nextRoles.includes('admin')) {
-        return NextResponse.json({ error: 'Role Admin akun yang sedang digunakan tidak dapat dicabut' }, { status: 400 });
+      if (!nextRoles.length) {
+        return NextResponse.json({ error: 'Pilih role Admin atau Superadmin' }, { status: 400 });
       }
-      if (previousRoles.includes('admin') && !nextRoles.includes('admin')) {
+      if (previousRoles.includes('superadmin') && !nextRoles.includes('superadmin') && admin.isActive !== false) {
         const otherAccounts = await User.find({ _id: { $ne: admin._id }, isActive: { $ne: false } })
           .select('role roles')
           .lean();
-        if (!otherAccounts.some((account) => normalizeUserRoles(account.role, account.roles).includes('admin'))) {
-          return NextResponse.json({ error: 'Minimal harus ada satu admin aktif' }, { status: 400 });
+        if (!otherAccounts.some((account) => normalizeUserRoles(account.role, account.roles).includes('superadmin'))) {
+          return NextResponse.json({ error: 'Minimal harus ada satu superadmin aktif' }, { status: 400 });
         }
       }
 
       const previousTokenVersion = admin.tokenVersion || 0;
       const nextPrimaryRole = getPrimaryRole(nextRoles);
+      if (!nextPrimaryRole) {
+        return NextResponse.json({ error: 'Pilih role Admin atau Superadmin' }, { status: 400 });
+      }
       admin.roles = nextRoles;
       admin.role = nextPrimaryRole;
       admin.tokenVersion = previousTokenVersion + 1;
@@ -180,7 +191,9 @@ export async function PATCH(request: Request) {
       const accountRoles = normalizeUserRoles(admin.role, admin.roles);
       await writeAuditLog({
         actorUsername: actor?.username || 'Admin',
-        action: accountRoles.includes('admin') ? 'admin.username_updated' : 'user.username_updated',
+        action: accountRoles.some((role) => role === 'admin' || role === 'superadmin')
+          ? 'admin.username_updated'
+          : 'user.username_updated',
         entityType: 'admin',
         entityId: admin._id.toString(),
         entityLabel: username,
@@ -192,7 +205,7 @@ export async function PATCH(request: Request) {
       if (actor?.username === previousUsername) {
         const token = signToken({
           username,
-          role: getPrimaryRole(normalizeUserRoles(admin.role, admin.roles)),
+          role: getPrimaryRole(normalizeUserRoles(admin.role, admin.roles)) || '',
           roles: normalizeUserRoles(admin.role, admin.roles),
           tokenVersion: admin.tokenVersion || 0,
         });
@@ -245,12 +258,12 @@ export async function PATCH(request: Request) {
 
     const accountRoles = normalizeUserRoles(admin.role, admin.roles);
     const accountRole = getPrimaryRole(accountRoles);
-    if (!isActive && accountRoles.includes('admin') && admin.isActive !== false) {
+    if (!isActive && accountRoles.includes('superadmin') && admin.isActive !== false) {
       const otherAccounts = await User.find({ _id: { $ne: admin._id }, isActive: { $ne: false } })
         .select('role roles')
         .lean();
-      if (!otherAccounts.some((account) => normalizeUserRoles(account.role, account.roles).includes('admin'))) {
-        return NextResponse.json({ error: 'Minimal harus ada satu admin aktif' }, { status: 400 });
+      if (!otherAccounts.some((account) => normalizeUserRoles(account.role, account.roles).includes('superadmin'))) {
+        return NextResponse.json({ error: 'Minimal harus ada satu superadmin aktif' }, { status: 400 });
       }
     }
 
@@ -260,8 +273,8 @@ export async function PATCH(request: Request) {
     await writeAuditLog({
       actorUsername: actor?.username || 'Admin',
       action: isActive
-        ? (accountRole === 'admin' ? 'admin.activated' : 'user.activated')
-        : (accountRole === 'admin' ? 'admin.deactivated' : 'user.deactivated'),
+        ? (accountRole === 'admin' || accountRole === 'superadmin' ? 'admin.activated' : 'user.activated')
+        : (accountRole === 'admin' || accountRole === 'superadmin' ? 'admin.deactivated' : 'user.deactivated'),
       entityType: 'admin',
       entityId: admin._id.toString(),
       entityLabel: admin.username,
@@ -277,7 +290,7 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const authError = await requireAdmin();
+    const authError = await requireSuperadmin();
     if (authError) return authError;
 
     const { searchParams } = new URL(request.url);
@@ -293,14 +306,24 @@ export async function DELETE(request: Request) {
     }
 
     const targetRoles = normalizeUserRoles(targetUser.role, targetUser.roles);
-    if (targetRoles.includes('admin')) {
-      return NextResponse.json({ error: 'Akun yang memiliki role admin tidak dapat dihapus' }, { status: 400 });
-    }
-
     const actor = await getCurrentUser();
+    if (actor?.username === targetUser.username) {
+      return NextResponse.json({ error: 'Akun yang sedang digunakan tidak dapat dihapus' }, { status: 400 });
+    }
+    if (targetRoles.includes('superadmin') && targetUser.isActive !== false) {
+      const otherSuperadmins = await User.find({ _id: { $ne: targetUser._id }, isActive: { $ne: false } })
+        .select('role roles')
+        .lean();
+      if (!otherSuperadmins.some((account) => normalizeUserRoles(account.role, account.roles).includes('superadmin'))) {
+        return NextResponse.json({ error: 'Superadmin aktif terakhir tidak dapat dihapus' }, { status: 400 });
+      }
+    }
+    if (await Customer.exists({ ownerId: targetUser._id }) || await Package.exists({ ownerId: targetUser._id })) {
+      return NextResponse.json({ error: 'Akun pemilik data tidak dapat dihapus. Nonaktifkan akun agar riwayat tetap terjaga.' }, { status: 400 });
+    }
     const deleted = await User.findByIdAndDelete(id);
       if (!deleted) {
-      return NextResponse.json({ error: 'Gagal menghapus akun user' }, { status: 500 });
+      return NextResponse.json({ error: 'Gagal menghapus akun' }, { status: 500 });
     }
 
     await writeAuditLog({
@@ -313,8 +336,8 @@ export async function DELETE(request: Request) {
       changes: { before: { username: deleted.username, roles: targetRoles.join(', '), isActive: deleted.isActive }, after: null },
     });
 
-    return NextResponse.json({ message: 'Akun non-admin berhasil dihapus' });
+    return NextResponse.json({ message: 'Akun berhasil dihapus' });
   } catch {
-    return NextResponse.json({ error: 'Gagal menghapus akun user' }, { status: 500 });
+    return NextResponse.json({ error: 'Gagal menghapus akun' }, { status: 500 });
   }
 }

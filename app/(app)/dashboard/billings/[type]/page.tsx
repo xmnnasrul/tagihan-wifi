@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useParams, useSearchParams } from 'next/navigation';
 import { ArrowLeft, CalendarDays, ChevronRight, Loader2, MapPin } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -23,23 +24,22 @@ interface BillingListItem {
   installmentAmount: number;
 }
 
-interface BillingListPageProps {
-  params: { type: string };
-  searchParams: { month?: string; year?: string };
-}
-
 const months = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
 ];
 
-export default function BillingListPage({ params, searchParams }: BillingListPageProps) {
+export default function BillingListPage() {
+  const params = useParams<{ type: string }>();
+  const searchParams = useSearchParams();
   const type = params.type === 'paid' || params.type === 'unpaid' || params.type === 'belum-bayar'
     ? params.type
     : null;
   const currentMonth = new Date().toLocaleString('id-ID', { month: 'long' });
-  const month = searchParams.month && months.includes(searchParams.month) ? searchParams.month : currentMonth;
-  const year = searchParams.year && /^\d{4}$/.test(searchParams.year) ? searchParams.year : String(new Date().getFullYear());
+  const requestedMonth = searchParams.get('month');
+  const requestedYear = searchParams.get('year');
+  const month = requestedMonth && months.includes(requestedMonth) ? requestedMonth : currentMonth;
+  const year = requestedYear && /^\d{4}$/.test(requestedYear) ? requestedYear : String(new Date().getFullYear());
   const [billings, setBillings] = useState<BillingListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

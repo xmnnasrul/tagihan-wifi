@@ -34,7 +34,7 @@ export default function CurrentUserProvider({ children }: { children: React.Reac
       const data = await response.json();
       setCurrentUser(typeof data.user?.role === 'string' ? {
         username: typeof data.user.username === 'string' ? data.user.username : '',
-        role: getPrimaryRole(normalizeUserRoles(data.user.role, data.user.roles)),
+        role: getPrimaryRole(normalizeUserRoles(data.user.role, data.user.roles)) || '',
         roles: normalizeUserRoles(data.user.role, data.user.roles),
       } : null);
     } catch {

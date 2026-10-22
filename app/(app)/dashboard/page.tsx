@@ -16,12 +16,6 @@ import {
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import {
-  PolarAngleAxis,
-  RadialBar,
-  RadialBarChart,
-} from 'recharts';
-import { ChartContainer } from '@/components/ui/chart';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
 
 interface Stats {
@@ -55,10 +49,6 @@ const months = [
 ];
 
 const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-const progressChartConfig = {
-  progress: { label: 'Persentase Terkumpul', color: '#4ade80' },
-};
-
 export default function DashboardPage() {
   const currentUser = useCurrentUser();
   const [stats, setStats] = useState<Stats | null>(null);
@@ -81,7 +71,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!currentUser) return;
-    if (!currentUser.roles.includes('admin')) return;
+    if (!currentUser.roles.some((role) => role === 'admin' || role === 'superadmin')) return;
 
     let isCurrentRequest = true;
     async function ensureCurrentMonthBillings() {
@@ -166,6 +156,8 @@ export default function DashboardPage() {
   const collectedPercent = stats && stats.totalDue > 0
     ? Math.min(100, Math.round((stats.totalRevenue / stats.totalDue) * 100))
     : 0;
+  const progressRingCircumference = 2 * Math.PI * 43;
+  const progressRingLength = (collectedPercent / 100) * progressRingCircumference;
 
   const statCards = [
     {
@@ -342,32 +334,52 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-3">
               <div className="grid items-center gap-4 md:grid-cols-[minmax(0,1fr),220px]">
-                  <div className="relative mx-auto h-[280px] w-full max-w-[360px]">
-                    <ChartContainer config={progressChartConfig} className="h-full w-full aspect-auto" aria-label={`Progres pembayaran ${collectedPercent} persen`}>
-                      <RadialBarChart data={[{ name: 'Terkumpul', progress: collectedPercent }]} innerRadius="72%" outerRadius="96%" startAngle={90} endAngle={-270}>
-                        <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                        <RadialBar dataKey="progress" cornerRadius={12} background fill="var(--color-progress)" />
-                      </RadialBarChart>
-                    </ChartContainer>
-                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                <div className="mx-auto flex h-[280px] w-full max-w-[360px] items-center justify-center">
+                  <div
+                    role="img"
+                    aria-label={`Progres pembayaran ${collectedPercent} persen`}
+                    className="relative aspect-square h-full max-h-full max-w-full"
+                  >
+                    <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="43"
+                        fill="none"
+                        stroke="hsl(var(--muted))"
+                        strokeWidth="11"
+                      />
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="43"
+                        fill="none"
+                        stroke="#4ade80"
+                        strokeWidth="11"
+                        strokeLinecap={collectedPercent >= 100 ? 'butt' : 'round'}
+                        strokeDasharray={`${progressRingLength} ${progressRingCircumference}`}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                       <span className="text-3xl font-bold tabular-nums">{collectedPercent}%</span>
                       <span className="text-xs text-muted-foreground">sudah terkumpul</span>
                     </div>
                   </div>
-                  <dl className="grid gap-3 text-sm">
-                    <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
-                      <dt className="text-muted-foreground">Total tagihan</dt>
-                      <dd className="font-medium">{formatRupiah(stats.totalDue)}</dd>
-                    </div>
-                    <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
-                      <dt className="text-muted-foreground">Terkumpul</dt>
-                      <dd className="font-medium text-emerald-400">{formatRupiah(stats.totalRevenue)}</dd>
-                    </div>
-                    <div className="flex items-baseline justify-between gap-3">
-                      <dt className="text-muted-foreground">Belum dibayar</dt>
-                      <dd className="font-medium text-rose-400">{formatRupiah(stats.outstandingAmount)}</dd>
-                    </div>
-                  </dl>
+                </div>
+                <dl className="grid gap-3 text-sm">
+                  <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
+                    <dt className="text-muted-foreground">Total tagihan</dt>
+                    <dd className="font-medium">{formatRupiah(stats.totalDue)}</dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
+                    <dt className="text-muted-foreground">Terkumpul</dt>
+                    <dd className="font-medium text-emerald-400">{formatRupiah(stats.totalRevenue)}</dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-muted-foreground">Belum dibayar</dt>
+                    <dd className="font-medium text-rose-400">{formatRupiah(stats.outstandingAmount)}</dd>
+                  </div>
+                </dl>
               </div>
             </div>
           )}

@@ -1,6 +1,6 @@
 # WiFi Billing
 
-Aplikasi web untuk mengelola pelanggan internet WiFi, paket, tagihan bulanan, pembayaran, kunjungan collector, dan laporan operasional.
+Aplikasi web untuk mengelola pelanggan internet WiFi, paket, tagihan bulanan, pembayaran, kunjungan lapangan, dan laporan operasional.
 
 Panduan ini ditujukan untuk pemilik aplikasi atau operator yang belum terbiasa dengan coding. Beberapa tahap tetap memerlukan akun GitHub, MongoDB Atlas, dan akun layanan hosting.
 
@@ -23,23 +23,24 @@ Panduan ini ditujukan untuk pemilik aplikasi atau operator yang belum terbiasa d
 - **Paket internet:** mengelola nama paket, kecepatan, harga, dan deskripsi.
 - **Tagihan bulanan:** membuat tagihan untuk pelanggan aktif dan mencatat pembayaran penuh maupun cicilan.
 - **Alokasi tunggakan:** pembayaran dialokasikan ke tagihan tertua terlebih dahulu. Riwayat penerimaan uang dan alokasi ke tagihan disimpan terpisah.
-- **Operasional collector:** mencari pelanggan berdasarkan nama/alamat, menandai kunjungan, mencatat pembayaran, dan melihat rekap setoran harian.
+- **Operasional harian:** mencari pelanggan berdasarkan nama/alamat, menandai kunjungan, mencatat pembayaran, dan melihat rekap setoran harian.
 - **Laporan tunggakan:** melihat saldo tagihan per pelanggan dan periode.
 - **Arsip pelanggan:** mengarsipkan dan memulihkan pelanggan. Penghapusan permanen juga menghapus riwayat tagihannya dan tidak dapat dibatalkan.
-- **Ekspor:** mengunduh data tagihan sebagai CSV atau Excel.
+- **Ekspor:** mengunduh data tagihan sebagai CSV, Excel, atau TXT; pilih periode, status, dan kolom yang ingin disertakan. File TXT menampilkan data bernomor, dengan nama dan alamat dalam satu baris.
 - **Audit:** melihat catatan perubahan data dan akun.
-- **Pengelolaan akun:** admin dapat membuat akun dan mengatur role.
+- **Pengelolaan akun:** superadmin dapat membuat akun, mengatur role, dan mengelola status akun.
 - **Profil dan tema:** halaman profil mengelola username dan password sesuai role; tema dapat mengikuti jadwal waktu Jakarta atau dipilih manual.
 - **Header keamanan:** CSP berbasis nonce, proteksi framing dan MIME sniffing, kebijakan referrer/permissions, serta HSTS di production.
 - **Tes keamanan API:** kontrak tes memeriksa guard setiap handler, pengecualian endpoint publik, dan akses berdasarkan role.
 
-### Role Akun
+### Role Akun dan Pembagian Data
 
-- **Admin:** mengelola pelanggan, paket, tagihan, akun, dan audit.
-- **Collector:** menandai kunjungan dan mencatat pembayaran/setoran.
-- **User:** melihat data tanpa melakukan perubahan.
+- **Admin:** mengelola pelanggan, paket, tagihan, kunjungan, dan pembayaran milik akunnya sendiri.
+- **Superadmin:** dapat melihat dan mengelola data semua admin, termasuk pengelolaan akun.
 
-Akun dapat memiliki lebih dari satu role, misalnya Admin sekaligus Collector. Pendaftaran akun publik tidak tersedia; akun dibuat oleh admin.
+Akun tidak memiliki role `user` atau `collector`; tugas operasional kunjungan dan setoran menjadi bagian dari role Admin. Data pelanggan dan paket baru dipisahkan berdasarkan akun pembuat, sedangkan tagihan dan riwayatnya mengikuti pemilik pelanggan. Pembayaran mencatat username dan ID akun pencatatnya. Data yang sudah ada dipertahankan dan ditetapkan ke pemilik legacy yang dikonfigurasi untuk migrasi ini. Katalog paket juga terpisah per akun. Pendaftaran akun publik tidak tersedia; akun dibuat oleh superadmin.
+
+Role Superadmin tidak diberikan otomatis saat setup awal. Pengelolaan akun hanya dapat dibuka setelah akun dipromosikan menjadi Superadmin oleh operator.
 
 ### Aturan Tagihan
 
@@ -180,7 +181,6 @@ Di pengaturan project Vercel, buka **Settings → Environment Variables**. Tamba
 | `JWT_SECRET` | Secret random panjang untuk sesi login |
 | `SEED_SECRET` | Secret random lain, hanya untuk proses membuat akun awal production |
 | `INITIAL_ADMIN_PASSWORD` | Password kuat untuk akun admin pertama |
-
 Pilih environment yang sesuai, biasanya **Production** dan **Preview** bila diperlukan. Jangan beri awalan `NEXT_PUBLIC_` pada variable rahasia ini. Setelah mengubah variable, lakukan deployment ulang agar perubahan terbaca.
 
 ### 3. Deploy

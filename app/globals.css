@@ -1,6 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+@config "../tailwind.config.ts";
 
 @layer base {
   :root {
@@ -66,22 +66,10 @@
   * {
     @apply border-border;
   }
-  a {
-    @apply transition-colors duration-200;
-  }
   body {
     @apply bg-background text-foreground;
     overflow-x: hidden;
     font-feature-settings: "rlig" 1, "calt" 1;
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  body,
-  body * {
-    transition-property: color, background-color, border-color, outline-color, fill, stroke, box-shadow;
-    transition-duration: 250ms;
-    transition-timing-function: ease;
   }
 }
 
@@ -129,6 +117,7 @@
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
 }
@@ -139,4 +128,45 @@
 }
 .animate-slide-in-right {
   animation: slide-in-right 0.3s ease-out;
+}
+
+@keyframes profile-photo-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes profile-photo-disappear {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+.popup-appear[data-state="open"],
+.popup-appear[data-state="delayed-open"],
+.popup-appear[data-state="instant-open"] {
+  animation: profile-photo-appear 300ms ease-in-out both !important;
+}
+
+.popup-appear[data-state="closed"] {
+  --tw-exit-translate-x: 0 !important;
+  --tw-exit-translate-y: 0 !important;
+  animation: profile-photo-disappear 300ms ease-in-out both !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popup-appear[data-state="open"],
+  .popup-appear[data-state="closed"] {
+    animation: none;
+  }
 }

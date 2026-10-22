@@ -4,6 +4,7 @@ import Customer from '@/lib/models/Customer';
 import Billing from '@/lib/models/Billing';
 import { requireAuthenticatedUser } from '@/lib/session';
 import { getMonthlyBillingAmounts } from '@/lib/billing-amounts';
+import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 
 const months = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
     if (authError) return authError;
 
     await connectDB();
+    const ownerScope = await getDataOwnerScope();
 
     const { searchParams } = new URL(request.url);
     const now = new Date();
@@ -36,12 +38,42 @@ export async function GET(request: Request) {
       : currentYear;
     const selectedMonthIndex = months.indexOf(month);
     const selectedPeriodIsFuture = year > currentYear || (year === currentYear && selectedMonthIndex > currentMonthIndex);
-    const activeCustomerIds = await Customer.distinct('_id', { status: { $ne: 'inactive' } });
-    const currentBillings = await Billing.find({ year, month, customerId: { $in: activeCustomerIds } })
-      .select('customerId totalDue packagePrice carriedAmount paidAmount status installmentAmount')
-      .lean();
-    const archivedCustomers = await Customer.countDocuments({ status: 'inactive' });
-    const totalCustomers = activeCustomerIds.length;
+    const [totalCustomers, archivedCustomers, currentBillings] = await Promise.all([
+      Customer.countDocuments({ status: { $ne: 'inactive' }, ...getOwnerFilter(ownerScope) }),
+      Customer.countDocuments({ status: 'inactive', ...getOwnerFilter(ownerScope) }),
+      Billing.aggregate([
+        {
+          $match: {
+            year,
+            month,
+            ...(!ownerScope.isSuperadmin
+              ? { customerId: { $in: await Customer.distinct('_id', getOwnerFilter(ownerScope)) } }
+              : {}),
+          },
+        },
+        {
+          $lookup: {
+            from: Customer.collection.name,
+            localField: 'customerId',
+            foreignField: '_id',
+            as: 'customer',
+          },
+        },
+        { $unwind: '$customer' },
+        { $match: { 'customer.status': { $ne: 'inactive' } } },
+        {
+          $project: {
+            customerId: 1,
+            totalDue: 1,
+            packagePrice: 1,
+            carriedAmount: 1,
+            paidAmount: 1,
+            installmentAmount: 1,
+            status: 1,
+          },
+        },
+      ]),
+    ]);
     const totalBillings = currentBillings.length;
     const monthlyAmounts = currentBillings.map(getMonthlyBillingAmounts);
     const totalDue = monthlyAmounts.reduce((sum, amounts) => sum + amounts.due, 0);

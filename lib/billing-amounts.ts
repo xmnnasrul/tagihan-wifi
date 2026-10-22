@@ -4,7 +4,7 @@ type BillingAmounts = Pick<IBilling, 'packagePrice' | 'paidAmount' | 'installmen
   & Partial<Pick<IBilling, 'totalDue' | 'carriedAmount'>>;
 
 type BillingSettlementItem = BillingAmounts & {
-  paymentHistory?: Array<{ amount: number; addedAt?: Date | string; addedBy?: string; status?: string; method?: 'Cash' | 'TF'; note?: string; isSettlementAllocation?: boolean }>;
+  paymentHistory?: Array<{ amount: number; addedAt?: Date | string; addedBy?: string; addedById?: string; status?: string; method?: 'Cash' | 'TF'; note?: string; isSettlementAllocation?: boolean }>;
 };
 
 export function getBillingTotalDue(billing: BillingAmounts): number {
@@ -33,7 +33,7 @@ export function getMonthlyBillingAmounts(billing: BillingAmounts): { due: number
 export function applyPaymentToPreviousBillings<T extends BillingSettlementItem>(
   billings: T[],
   paymentAmount: number,
-  options: { addedBy?: string; note?: string; appliedAt?: Date; method?: 'Cash' | 'TF'; skipHistoryFor?: T } = {},
+  options: { addedBy?: string; addedById?: string; note?: string; appliedAt?: Date; method?: 'Cash' | 'TF'; skipHistoryFor?: T } = {},
 ): { remaining: number; billings: T[] } {
   const unsettled = [...billings];
   let remaining = Math.max(0, paymentAmount);
@@ -64,6 +64,7 @@ export function applyPaymentToPreviousBillings<T extends BillingSettlementItem>(
         amount: applied,
         addedAt: options.appliedAt ?? new Date(),
         addedBy: options.addedBy || 'Sistem',
+        addedById: options.addedById,
         status: isSettled ? settledStatus : 'Nyicil',
         method: options.method,
         note: options.note || 'Pelunasan tunggakan otomatis',

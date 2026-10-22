@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import CollectionVisit from '@/lib/models/CollectionVisit';
 import Customer from '@/lib/models/Customer';
-import { getCurrentUser, requireAuthenticatedUser, requireCollectorOrAdmin } from '@/lib/session';
+import { getCurrentUser, requireAdmin, requireAuthenticatedUser } from '@/lib/session';
+import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 
 const months = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -22,7 +23,13 @@ export async function GET(request: Request) {
     }
 
     await connectDB();
-    const visits = await CollectionVisit.find({ month, year }).lean();
+    const ownerScope = await getDataOwnerScope();
+    const customerIds = await Customer.distinct('_id', getOwnerFilter(ownerScope));
+    const visits = await CollectionVisit.find({
+      month,
+      year,
+      customerId: { $in: customerIds },
+    }).lean();
     return NextResponse.json(visits.map((visit) => ({
       customerId: visit.customerId.toString(),
       collectorUsername: visit.collectorUsername,
@@ -37,7 +44,7 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const authError = await requireCollectorOrAdmin();
+    const authError = await requireAdmin();
     if (authError) return authError;
 
     const body = await request.json();
@@ -51,7 +58,12 @@ export async function PUT(request: Request) {
     }
 
     await connectDB();
-    const customer = await Customer.findOne({ _id: customerId, status: { $ne: 'inactive' } }).select('_id').lean();
+    const ownerScope = await getDataOwnerScope();
+    const customer = await Customer.findOne({
+      _id: customerId,
+      status: { $ne: 'inactive' },
+      ...getOwnerFilter(ownerScope),
+    }).select('_id').lean();
     if (!customer) return NextResponse.json({ error: 'Pelanggan tidak ditemukan atau sudah diarsipkan' }, { status: 404 });
 
     const currentUser = await getCurrentUser();

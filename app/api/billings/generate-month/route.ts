@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Billing from '@/lib/models/Billing';
 import Customer from '@/lib/models/Customer';
-import Package from '@/lib/models/Package';
 import { getCurrentUser, requireAdmin } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
+import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 
 const months = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -24,9 +24,6 @@ export async function POST() {
     const authError = await requireAdmin();
     if (authError) return authError;
 
-    await connectDB();
-    await Package.findOne({}).select('_id').lean();
-
     const dateParts = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Asia/Jakarta',
       year: 'numeric',
@@ -44,65 +41,83 @@ export async function POST() {
       return NextResponse.json({ month, year, created: 0, skipped: true });
     }
 
-    const customers = await Customer.find({ status: { $ne: 'inactive' } }).populate('packageId').lean();
-    const customerIds = customers.map((customer) => customer._id);
-    if (customerIds.length === 0) {
+    await connectDB();
+    const ownerScope = await getDataOwnerScope();
+    const [customers, existingBillings] = await Promise.all([
+      Customer.find({ status: { $ne: 'inactive' }, ...getOwnerFilter(ownerScope) })
+        .select('name address packageId')
+        .populate('packageId', 'name price')
+        .lean(),
+      Billing.find({
+        month,
+        year,
+        customerId: { $in: await Customer.distinct('_id', getOwnerFilter(ownerScope)) },
+      }).select('customerId').lean(),
+    ]);
+    if (!customers.length) {
       return NextResponse.json({ month, year, created: 0 });
     }
 
-    const existingBillings = await Billing.find({ customerId: { $in: customerIds }, month, year })
-      .select('customerId')
-      .lean();
     const existingCustomerIds = new Set(existingBillings.map((billing) => billing.customerId.toString()));
     const currentUser = await getCurrentUser();
     let created = 0;
 
-    for (const customer of customers) {
-      const customerId = customer._id.toString();
-      const pkg = customer.packageId as unknown as PackageDetails | null;
-      if (existingCustomerIds.has(customerId) || !pkg?._id) continue;
+    const customersToBill = customers.filter((customer) => (
+      !existingCustomerIds.has(customer._id.toString()) && Boolean(customer.packageId)
+    ));
+    const batchSize = 20;
+    for (let offset = 0; offset < customersToBill.length; offset += batchSize) {
+      const batchResults = await Promise.allSettled(customersToBill.slice(offset, offset + batchSize).map(async (customer) => {
+        const customerId = customer._id.toString();
+        const pkg = customer.packageId as unknown as PackageDetails | null;
+        if (!pkg?._id) return false;
 
-      try {
-        const billing = await Billing.create({
-          customerId: customer._id,
-          customerName: customer.name,
-          address: customer.address || '',
-          packageName: pkg.name,
-          packagePrice: pkg.price,
-          carriedAmount: 0,
-          totalDue: pkg.price,
-          paidAmount: 0,
-          month,
-          year,
-          status: 'Belum Bayar',
-          installmentAmount: 0,
-          note: '',
-          paymentHistory: [],
-        });
+        try {
+          const billing = await Billing.create({
+            customerId: customer._id,
+            customerName: customer.name,
+            address: customer.address || '',
+            packageName: pkg.name,
+            packagePrice: pkg.price,
+            carriedAmount: 0,
+            totalDue: pkg.price,
+            paidAmount: 0,
+            month,
+            year,
+            status: 'Belum Bayar',
+            installmentAmount: 0,
+            note: '',
+            paymentHistory: [],
+          });
 
-        existingCustomerIds.add(customerId);
-        created += 1;
-        await writeAuditLog({
-          actorUsername: currentUser?.username || 'Admin',
-          action: 'billing.created',
-          entityType: 'billing',
-          entityId: billing._id.toString(),
-          entityLabel: `${customer.name} - ${month} ${year}`,
-          summary: `Tagihan ${month} ${year} dibuat otomatis dengan status belum bayar`,
-          changes: {
-            before: null,
-            after: {
-              status: billing.status,
-              totalDue: billing.totalDue,
-              paidAmount: billing.paidAmount,
-              month: billing.month,
-              year: billing.year,
+          existingCustomerIds.add(customerId);
+          await writeAuditLog({
+            actorUsername: currentUser?.username || 'Admin',
+            action: 'billing.created',
+            entityType: 'billing',
+            entityId: billing._id.toString(),
+            entityLabel: `${customer.name} - ${month} ${year}`,
+            summary: `Tagihan ${month} ${year} dibuat otomatis dengan status belum bayar`,
+            changes: {
+              before: null,
+              after: {
+                status: billing.status,
+                totalDue: billing.totalDue,
+                paidAmount: billing.paidAmount,
+                month: billing.month,
+                year: billing.year,
+              },
             },
-          },
-        });
-      } catch (error) {
-        if (typeof error === 'object' && error !== null && 'code' in error && error.code === 11000) continue;
-        throw error;
+          });
+          return true;
+        } catch (error) {
+          if (typeof error === 'object' && error !== null && 'code' in error && error.code === 11000) return false;
+          throw error;
+        }
+      }));
+      for (const result of batchResults) {
+        if (result.status === 'rejected') throw result.reason;
+        if (result.value) created += 1;
       }
     }
 

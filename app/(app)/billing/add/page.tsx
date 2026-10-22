@@ -21,7 +21,7 @@ interface Package {
 
 export default function AddCustomerPage() {
   const currentUser = useCurrentUser();
-  const canManageData = currentUser?.roles.includes('admin') ?? false;
+  const canManageData = currentUser?.roles.some((role) => role === 'admin' || role === 'superadmin') ?? false;
   const router = useRouter();
   const [packages, setPackages] = useState<Package[]>([]);
   const [name, setName] = useState('');
@@ -80,7 +80,7 @@ export default function AddCustomerPage() {
       <Card className="mx-auto max-w-xl border-border/60">
         <CardHeader>
           <CardTitle>Akses hanya baca</CardTitle>
-          <CardDescription>Akun role user dapat melihat dan mencari data, tetapi tidak dapat menambahkan pelanggan atau tagihan.</CardDescription>
+          <CardDescription>Halaman ini hanya tersedia untuk akun admin.</CardDescription>
         </CardHeader>
       </Card>
     );

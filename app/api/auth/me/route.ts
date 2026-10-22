@@ -15,16 +15,20 @@ export async function GET() {
 
   await connectDB();
   const account = await User.findOne({ username: payload.username, isActive: { $ne: false } })
-    .select('username role roles tokenVersion')
+    .select('username role roles tokenVersion profileImage originalProfileImage bio')
     .lean();
   if (!account) return NextResponse.json({ user: null }, { status: 401 });
 
   const roles = normalizeUserRoles(account.role, account.roles);
   return NextResponse.json({ user: {
+    id: account._id.toString(),
     username: account.username,
-    role: getPrimaryRole(roles),
+    role: getPrimaryRole(roles) || '',
     roles,
     tokenVersion: account.tokenVersion || 0,
+    profileImage: account.profileImage || '',
+    hasOriginalProfileImage: Boolean(account.originalProfileImage),
+    ...(roles.some((role) => role === 'admin' || role === 'superadmin') ? { bio: account.bio || '' } : {}),
   } });
 }
 
@@ -39,6 +43,39 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
+    if (Object.hasOwn(body, 'bio')) {
+      const bio = typeof body.bio === 'string' ? body.bio.trim() : null;
+      if (bio === null || bio.length > 160) {
+        return NextResponse.json({ error: 'Bio maksimal 160 karakter' }, { status: 400 });
+      }
+
+      await connectDB();
+      const account = await User.findOne({ username: currentUser.username, isActive: { $ne: false } });
+      if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 404 });
+      account.bio = bio;
+      await account.save();
+      return NextResponse.json({ message: 'Bio berhasil diperbarui', bio });
+    }
+
+    if (Object.hasOwn(body, 'profileImage')) {
+      const profileImage = body.profileImage;
+      const originalProfileImage = body.originalProfileImage;
+      if (typeof profileImage !== 'string' || profileImage.length > 700_000
+        || (profileImage && !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(profileImage))
+        || (profileImage && (typeof originalProfileImage !== 'string' || originalProfileImage.length > 3_500_000
+          || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(originalProfileImage)))) {
+        return NextResponse.json({ error: 'Foto crop atau foto penuh tidak valid atau melebihi batas ukuran' }, { status: 400 });
+      }
+
+      await connectDB();
+      const account = await User.findOne({ username: currentUser.username, isActive: { $ne: false } });
+      if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan atau tidak aktif' }, { status: 404 });
+      account.profileImage = profileImage;
+      account.originalProfileImage = profileImage ? originalProfileImage as string : '';
+      await account.save();
+      return NextResponse.json({ message: 'Foto profil berhasil diperbarui', profileImage, hasOriginalProfileImage: Boolean(account.originalProfileImage) });
+    }
+
     const username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
     if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
       return NextResponse.json({ error: 'Username harus 3-32 karakter dan hanya berisi huruf, angka, titik, garis bawah, atau tanda hubung' }, { status: 400 });
@@ -68,9 +105,10 @@ export async function PATCH(request: Request) {
     await account.save();
     const roles = normalizeUserRoles(account.role, account.roles);
     const role = getPrimaryRole(roles);
+    if (!role) return NextResponse.json({ error: 'Akun tidak memiliki role yang dapat mengakses aplikasi' }, { status: 403 });
     await writeAuditLog({
       actorUsername: previousUsername,
-      action: role === 'admin' ? 'admin.username_updated' : 'user.username_updated',
+      action: role === 'admin' || role === 'superadmin' ? 'admin.username_updated' : 'user.username_updated',
       entityType: 'admin',
       entityId: account._id.toString(),
       entityLabel: username,
@@ -83,6 +121,7 @@ export async function PATCH(request: Request) {
       username,
       role,
       roles,
+      userId: account._id.toString(),
       tokenVersion: account.tokenVersion || 0,
     }), {
       httpOnly: true,
@@ -92,7 +131,8 @@ export async function PATCH(request: Request) {
       path: '/',
     });
     return response;
-  } catch {
-    return NextResponse.json({ error: 'Gagal mengubah username' }, { status: 500 });
+  } catch (error) {
+    console.error('PATCH /api/auth/me failed:', error);
+    return NextResponse.json({ error: 'Gagal memperbarui profil' }, { status: 500 });
   }
 }

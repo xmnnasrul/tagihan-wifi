@@ -3,6 +3,8 @@ import { connectDB } from '@/lib/mongodb';
 import Billing from '@/lib/models/Billing';
 import { getBillingOutstandingAmount, getBillingPaidAmount, getBillingTotalDue } from '@/lib/billing-amounts';
 import { requireAuthenticatedUser } from '@/lib/session';
+import Customer from '@/lib/models/Customer';
+import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 
 const months = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -17,7 +19,11 @@ export async function GET() {
     if (authError) return authError;
 
     await connectDB();
-    const billings = await Billing.find({})
+    const ownerScope = await getDataOwnerScope();
+    const query = ownerScope.isSuperadmin
+      ? {}
+      : { customerId: { $in: await Customer.distinct('_id', getOwnerFilter(ownerScope)) } };
+    const billings = await Billing.find(query)
       .select('customerId customerName address month year status packagePrice totalDue carriedAmount paidAmount installmentAmount')
       .lean();
     const billingsByCustomer = new Map<string, typeof billings>();

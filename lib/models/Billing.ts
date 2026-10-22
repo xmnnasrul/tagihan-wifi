@@ -8,6 +8,7 @@ export interface IPaymentHistory {
   amount: number;
   addedAt: Date;
   addedBy: string;
+  addedById?: string;
   status: PaymentHistoryStatus;
   method?: PaymentMethod;
   note: string;
@@ -52,6 +53,7 @@ const BillingSchema = new Schema<IBilling>(
       amount: { type: Number, required: true },
       addedAt: { type: Date, default: Date.now },
       addedBy: { type: String, default: '' },
+      addedById: { type: String, default: '' },
       status: { type: String, enum: ['TF', 'Cash', 'Nyicil', 'Lunas'], required: true },
       method: { type: String, enum: ['Cash', 'TF'], default: undefined },
       note: { type: String, default: '' },
@@ -64,7 +66,12 @@ const BillingSchema = new Schema<IBilling>(
 BillingSchema.index({ customerId: 1, month: 1, year: 1 }, { unique: true });
 BillingSchema.index({ year: 1, month: 1 });
 BillingSchema.index({ customerId: 1, year: -1, createdAt: -1 });
+BillingSchema.index({ year: -1, createdAt: -1 });
+BillingSchema.index({ 'paymentHistory.addedAt': 1 });
 
-const Billing: Model<IBilling> = models.Billing || model<IBilling>('Billing', BillingSchema);
+const cachedBillingModel = models.Billing as Model<IBilling> | undefined;
+if (cachedBillingModel && !cachedBillingModel.schema.path('paymentHistory.addedById')) delete models.Billing;
+
+const Billing: Model<IBilling> = (models.Billing as Model<IBilling> | undefined) || model<IBilling>('Billing', BillingSchema);
 
 export default Billing;

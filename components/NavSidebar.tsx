@@ -13,7 +13,7 @@ import { getScheduledTheme, THEME_PREFERENCE_KEY } from '@/components/ThemeProvi
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/customers/all', label: 'Semua Pelanggan', icon: Users },
-  { href: '/collector', label: 'Setoran Collector', icon: WalletCards },
+  { href: '/collector', label: 'Setoran Harian', icon: WalletCards },
   { href: '/arrears', label: 'Laporan Tunggakan', icon: FileText },
   { href: '/billing/add', label: 'Tambah Tagihan', icon: FilePlus },
   { href: '/packages', label: 'Manajemen Paket', icon: Package },
@@ -33,8 +33,9 @@ export default function NavSidebar() {
   const currentUser = useCurrentUser();
   const username = currentUser?.username || '';
   const roles = currentUser?.roles || [];
-  const isAdmin = roles.includes('admin');
-  const canAccessCollector = isAdmin || roles.includes('collector');
+  const isAdmin = roles.includes('admin') || roles.includes('superadmin');
+  const isSuperadmin = roles.includes('superadmin');
+  const canAccessCollector = isAdmin;
   const isDarkTheme = themeReady && resolvedTheme === 'dark';
 
   useEffect(() => {
@@ -69,7 +70,7 @@ export default function NavSidebar() {
       </div>
 
       <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-1.5">
-        {navItems.filter((item) => (isAdmin || (item.href !== '/admins' && item.href !== '/audit' && item.href !== '/billing/add')) && (item.href !== '/collector' || canAccessCollector)).map((item) => {
+        {navItems.filter((item) => (isSuperadmin || item.href !== '/admins') && (isAdmin || (item.href !== '/audit' && item.href !== '/billing/add')) && (item.href !== '/collector' || canAccessCollector)).map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
           return (
@@ -78,7 +79,7 @@ export default function NavSidebar() {
               href={item.href}
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-none',
                 isActive
                   ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10'
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground'

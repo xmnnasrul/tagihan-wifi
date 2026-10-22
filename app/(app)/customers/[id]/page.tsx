@@ -95,7 +95,7 @@ const getBillingPeriod = (month: string, year: number) => year * 12 + months.ind
 
 export default function CustomerDetailPage() {
   const currentUser = useCurrentUser();
-  const canManageData = currentUser?.roles.includes('admin') ?? false;
+  const canManageData = currentUser?.roles.some((role) => role === 'admin' || role === 'superadmin') ?? false;
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();

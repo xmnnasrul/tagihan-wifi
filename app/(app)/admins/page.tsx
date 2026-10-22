@@ -17,13 +17,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { getScheduledTheme, THEME_PREFERENCE_KEY } from '@/components/ThemeProvider';
 import { USER_ROLES, UserRole } from '@/lib/roles';
 
-const roleLabels: Record<UserRole, string> = { user: 'User (hanya baca)', collector: 'Collector', admin: 'Admin' };
+const roleLabels: Record<UserRole, string> = { admin: 'Admin', superadmin: 'Superadmin' };
 
 function updateRoles(currentRoles: UserRole[], role: UserRole, checked: boolean): UserRole[] {
-  if (role === 'user') return checked ? ['user'] : currentRoles.some((item) => item !== 'user') ? currentRoles.filter((item) => item !== 'user') : ['user'];
-  const nextRoles = currentRoles.filter((item) => item !== 'user' && item !== role);
-  if (checked) nextRoles.push(role);
-  return nextRoles.length ? nextRoles : ['user'];
+  return checked ? [role] : currentRoles;
 }
 
 interface Admin {
@@ -40,12 +37,12 @@ export default function AdminsPage() {
   const { setTheme } = useTheme();
   const currentUser = useCurrentUser();
   const isCurrentUserLoading = useCurrentUserLoading();
-  const canManageAccounts = currentUser?.roles.includes('admin') ?? false;
+  const canManageAccounts = currentUser?.roles.includes('superadmin') ?? false;
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [currentUsername, setCurrentUsername] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [newAccountRoles, setNewAccountRoles] = useState<UserRole[]>(['user']);
+  const [newAccountRoles, setNewAccountRoles] = useState<UserRole[]>(['admin']);
   const [roleEditingAccount, setRoleEditingAccount] = useState<Admin | null>(null);
   const [roleDraft, setRoleDraft] = useState<UserRole[]>([]);
   const [savingRoles, setSavingRoles] = useState(false);
@@ -85,8 +82,8 @@ export default function AdminsPage() {
       if (!response.ok) throw new Error(data.error || 'Gagal membuat akun admin');
       setUsername('');
       setPassword('');
-      setNewAccountRoles(['user']);
-      toast.success('Akun pengguna berhasil dibuat');
+      setNewAccountRoles(['admin']);
+      toast.success('Akun berhasil dibuat');
       await fetchAdmins();
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Gagal membuat akun admin');
@@ -150,8 +147,8 @@ export default function AdminsPage() {
   };
 
   const handleDeleteUser = async (admin: Admin) => {
-    if (admin.roles.includes('admin')) {
-      toast.error('Akun dengan role admin tidak bisa dihapus');
+    if (admin.username === currentUsername) {
+      toast.error('Akun yang sedang digunakan tidak bisa dihapus');
       return;
     }
 
@@ -181,7 +178,7 @@ export default function AdminsPage() {
   }
 
   if (!canManageAccounts) {
-    return <div role="alert" className="rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground">Halaman pengelolaan akun hanya dapat diakses admin.</div>;
+    return <div role="alert" className="rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground">Halaman pengelolaan akun hanya dapat diakses superadmin.</div>;
   }
 
   return (
@@ -200,7 +197,7 @@ export default function AdminsPage() {
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Akun baru</p>
-            <h2 className="text-xl font-semibold">Tambah Pengguna</h2>
+            <h2 className="text-xl font-semibold">Tambah Akun</h2>
           </div>
         </div>
         <form onSubmit={handleCreate} className="grid gap-4 md:grid-cols-2">
@@ -233,7 +230,7 @@ export default function AdminsPage() {
           </div>
           <fieldset className="space-y-3 rounded-md border border-border p-3 md:col-span-2">
             <legend className="px-1 text-sm font-medium">Role akun</legend>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               {USER_ROLES.map((role) => (
                 <label key={role} htmlFor={`new-role-${role}`} className="flex cursor-pointer items-center gap-2 text-sm">
                   <Checkbox
@@ -245,12 +242,12 @@ export default function AdminsPage() {
                 </label>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">Pilih Admin dan Collector sekaligus bila akun perlu mengelola data sekaligus mencatat setoran.</p>
+            <p className="text-xs text-muted-foreground">Admin mengelola data sendiri. Superadmin dapat melihat seluruh data dan mengelola akun.</p>
           </fieldset>
           <div className="md:col-span-2 flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
             <Button type="submit" disabled={saving} className="w-full sm:w-auto">
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-              Buat akun pengguna
+              Buat akun
             </Button>
           </div>
         </form>
@@ -318,7 +315,7 @@ export default function AdminsPage() {
                           {admin.isActive ? <UserRoundX className="mr-2 h-4 w-4" /> : <Shield className="mr-2 h-4 w-4" />}
                           {admin.isActive ? 'Nonaktifkan' : 'Aktifkan'}
                         </Button>
-                        {!admin.roles.includes('admin') && (
+                        {admin.username !== currentUsername && (
                           <Button type="button" variant="destructive" size="sm" onClick={() => void handleDeleteUser(admin)}>
                             <Trash2 className="mr-2 h-4 w-4" /> Hapus
                           </Button>

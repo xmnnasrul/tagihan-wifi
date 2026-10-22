@@ -97,7 +97,7 @@ const actionLabels: Record<string, string> = {
 
 export default function AuditPage() {
   const currentUser = useCurrentUser();
-  const canViewAudit = currentUser?.roles.includes('admin') ?? false;
+  const canViewAudit = currentUser?.roles.some((role) => role === 'admin' || role === 'superadmin') ?? false;
   const [category, setCategory] = useState('all');
   const [dateFilter, setDateFilter] = useState('');
   const [items, setItems] = useState<AuditEntry[]>([]);

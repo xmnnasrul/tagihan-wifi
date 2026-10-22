@@ -1,5 +1,8 @@
 import jwt from 'jsonwebtoken';
 import type { UserRole } from '@/lib/roles';
+import { COOKIE_NAME } from './auth-constants';
+
+export { COOKIE_NAME };
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -9,9 +12,8 @@ function getJwtSecret(): string {
   }
   return 'wifi-billing-secret-change-in-development';
 }
-const COOKIE_NAME = 'auth_token';
-
 export interface TokenPayload {
+  userId?: string;
   username: string;
   role: string;
   roles?: UserRole[];
@@ -29,5 +31,3 @@ export function verifyToken(token: string): TokenPayload | null {
     return null;
   }
 }
-
-export { COOKIE_NAME };

@@ -26,7 +26,7 @@ Panduan ini ditujukan untuk pemilik aplikasi atau operator yang belum terbiasa d
 - **Operasional harian:** mencari pelanggan berdasarkan nama/alamat, menandai kunjungan, mencatat pembayaran, dan melihat rekap setoran harian.
 - **Laporan tunggakan:** melihat saldo tagihan per pelanggan dan periode.
 - **Arsip pelanggan:** mengarsipkan dan memulihkan pelanggan. Penghapusan permanen juga menghapus riwayat tagihannya dan tidak dapat dibatalkan.
-- **Ekspor:** mengunduh data tagihan sebagai CSV atau Excel.
+- **Ekspor:** mengunduh data tagihan sebagai CSV, Excel, atau TXT; pilih periode, status, dan kolom yang ingin disertakan. File TXT menampilkan data bernomor, dengan nama dan alamat dalam satu baris.
 - **Audit:** melihat catatan perubahan data dan akun.
 - **Pengelolaan akun:** superadmin dapat membuat akun, mengatur role, dan mengelola status akun.
 - **Profil dan tema:** halaman profil mengelola username dan password sesuai role; tema dapat mengikuti jadwal waktu Jakarta atau dipilih manual.

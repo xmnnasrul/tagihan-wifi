@@ -43,7 +43,7 @@ export async function GET(request: Request) {
       ? await query.populate('packageId').lean()
       : await query
         .select('name address packageId createdAt createdBy status archivedAt')
-        .populate('packageId', 'name speed')
+        .populate('packageId', 'name speed price')
         .sort({ name: 1 })
         .lean();
     return NextResponse.json(id ? customers[0] || null : customers);

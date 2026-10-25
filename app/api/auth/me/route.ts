@@ -15,7 +15,7 @@ export async function GET() {
 
   await connectDB();
   const account = await User.findOne({ username: payload.username, isActive: { $ne: false } })
-    .select('username role roles tokenVersion profileImage originalProfileImage bio')
+    .select('username role roles tokenVersion profileImage originalProfileImage')
     .lean();
   if (!account) return NextResponse.json({ user: null }, { status: 401 });
 
@@ -28,7 +28,6 @@ export async function GET() {
     tokenVersion: account.tokenVersion || 0,
     profileImage: account.profileImage || '',
     hasOriginalProfileImage: Boolean(account.originalProfileImage),
-    ...(roles.some((role) => role === 'admin' || role === 'superadmin') ? { bio: account.bio || '' } : {}),
   } });
 }
 
@@ -43,20 +42,6 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
-    if (Object.hasOwn(body, 'bio')) {
-      const bio = typeof body.bio === 'string' ? body.bio.trim() : null;
-      if (bio === null || bio.length > 160) {
-        return NextResponse.json({ error: 'Bio maksimal 160 karakter' }, { status: 400 });
-      }
-
-      await connectDB();
-      const account = await User.findOne({ username: currentUser.username, isActive: { $ne: false } });
-      if (!account) return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 404 });
-      account.bio = bio;
-      await account.save();
-      return NextResponse.json({ message: 'Bio berhasil diperbarui', bio });
-    }
-
     if (Object.hasOwn(body, 'profileImage')) {
       const profileImage = body.profileImage;
       const originalProfileImage = body.originalProfileImage;

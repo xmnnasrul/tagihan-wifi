@@ -79,14 +79,6 @@ export default function CustomersPage() {
     ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
     : '-';
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -117,12 +109,18 @@ export default function CustomersPage() {
       </div>
 
       <div className="space-y-2">
-        <p className="text-xs text-muted-foreground">
-          {debouncedSearch
-            ? `${filteredCustomers.length} hasil pencarian`
-            : `Menampilkan ${filteredCustomers.length} dari ${customers.length} pelanggan`}
-        </p>
-        {filteredCustomers.length === 0 ? (
+        {loading ? (
+          <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
+            <Loader2 className="h-4 w-4 animate-spin" /> Memuat pelanggan...
+          </div>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">
+              {debouncedSearch
+                ? `${filteredCustomers.length} hasil pencarian`
+                : `Menampilkan ${filteredCustomers.length} dari ${customers.length} pelanggan`}
+            </p>
+            {filteredCustomers.length === 0 ? (
           <Card className="border-border/60">
             <CardContent className="py-16 text-center">
               <Wifi className="mx-auto mb-3 h-12 w-12 text-muted-foreground/30" />
@@ -131,7 +129,7 @@ export default function CustomersPage() {
               </p>
             </CardContent>
           </Card>
-        ) : filteredCustomers.map((customer, index) => {
+          ) : filteredCustomers.map((customer, index) => {
           const statuses = billings[customer._id] || [];
           const hasPaid = statuses.some((billing) => billing.status === 'TF' || billing.status === 'Cash' || billing.status === 'Lunas');
           const hasInstallment = statuses.some((billing) => billing.status === 'Nyicil');
@@ -143,7 +141,7 @@ export default function CustomersPage() {
               className="group block animate-fade-in"
               style={{ animationDelay: `${Math.min(index, 9) * 35}ms` }}
             >
-              <Card className="cursor-pointer border-border/60 transition-all duration-200 hover:border-primary/40 hover:bg-accent/30">
+              <Card className="cursor-pointer border-border/60 transition-colors duration-150 hover:border-primary/40 hover:bg-accent/30">
                 <CardContent className="py-4">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 flex-1 items-start gap-4">
@@ -184,7 +182,9 @@ export default function CustomersPage() {
               </Card>
             </Link>
           );
-        })}
+            })}
+          </>
+        )}
       </div>
     </div>
   );

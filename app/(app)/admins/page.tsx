@@ -190,7 +190,7 @@ export default function AdminsPage() {
 
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
-      <section className="mx-auto w-full max-w-[700px] rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
+      <section className="mx-auto w-full max-w-[700px] rounded-lg border border-border bg-card p-4 sm:p-6">
         <div className="mb-5 flex items-center gap-3 rounded-md border border-border bg-muted/50 p-3.5">
           <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
             <UserPlus className="h-4 w-4" />

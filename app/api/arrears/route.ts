@@ -20,10 +20,11 @@ export async function GET() {
 
     await connectDB();
     const ownerScope = await getDataOwnerScope();
-    const query = ownerScope.isSuperadmin
-      ? {}
-      : { customerId: { $in: await Customer.distinct('_id', getOwnerFilter(ownerScope)) } };
-    const billings = await Billing.find(query)
+    const activeCustomerIds = await Customer.distinct('_id', {
+      status: { $ne: 'inactive' },
+      ...getOwnerFilter(ownerScope),
+    });
+    const billings = await Billing.find({ customerId: { $in: activeCustomerIds } })
       .select('customerId customerName address month year status packagePrice totalDue carriedAmount paidAmount installmentAmount')
       .lean();
     const billingsByCustomer = new Map<string, typeof billings>();

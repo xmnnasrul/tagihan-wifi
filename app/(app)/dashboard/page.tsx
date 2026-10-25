@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Users, Loader2, FileText, Wallet, AlertCircle, Archive, Clock3, MapPin, Search, CalendarDays, UserRound, ChevronRight } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Loader2, MapPin, Search, CalendarDays, UserRound, ChevronRight, ArrowUpRight, UserPlus, WalletCards } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
@@ -156,90 +156,63 @@ export default function DashboardPage() {
   const collectedPercent = stats && stats.totalDue > 0
     ? Math.min(100, Math.round((stats.totalRevenue / stats.totalDue) * 100))
     : 0;
-  const progressRingCircumference = 2 * Math.PI * 43;
-  const progressRingLength = (collectedPercent / 100) * progressRingCircumference;
-
   const statCards = [
     {
       title: 'Pelanggan Aktif',
       value: stats?.totalCustomers ?? 0,
       description: 'Pelanggan terdaftar',
-      icon: Users,
-      color: 'text-blue-400',
-      bg: 'bg-blue-500/10',
       href: '/customers/all',
     },
     {
       title: 'Pelanggan Arsip',
       value: stats?.archivedCustomers ?? 0,
       description: 'Pelanggan masuk arsip',
-      icon: Archive,
-      color: 'text-amber-400',
-      bg: 'bg-amber-500/10',
       href: '/archived',
     },
     {
       title: 'Total Tagihan',
       value: statsLoading ? 'Memuat...' : formatRupiah(stats?.totalDue ?? 0),
       description: `${statsLoading ? 'Mengambil' : stats?.totalBillings ?? 0} tagihan`,
-      icon: FileText,
-      color: 'text-cyan-400',
-      bg: 'bg-cyan-500/10',
     },
     {
       title: 'Uang Terkumpul',
       value: statsLoading ? 'Memuat...' : formatRupiah(stats?.totalRevenue ?? 0),
       description: `Pembayaran ${statsMonth} ${statsYear}`,
-      icon: Wallet,
-      color: 'text-emerald-400',
-      bg: 'bg-emerald-500/10',
       href: `/dashboard/billings/paid?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
     },
     {
       title: 'Sisa Belum Lunas',
       value: statsLoading ? 'Memuat...' : formatRupiah(stats?.outstandingAmount ?? 0),
       description: `${statsLoading ? 'Menghitung' : stats?.unpaidBillings ?? 0} tagihan`,
-      icon: AlertCircle,
-      color: 'text-amber-400',
-      bg: 'bg-amber-500/10',
       href: `/dashboard/billings/unpaid?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
     },
     {
       title: 'Belum Bayar',
       value: statsLoading ? 'Memuat...' : stats?.unpaidCustomers ?? 0,
       description: 'Pelanggan pada periode',
-      icon: Clock3,
-      color: 'text-rose-400',
-      bg: 'bg-rose-500/10',
       href: `/dashboard/billings/belum-bayar?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
     },
   ];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">Ringkasan dan kelola tagihan pelanggan WiFi</p>
-      </div>
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-7 sm:space-y-9">
+      <header className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
         <div>
-          <p className="text-sm font-medium">Periode Keuangan</p>
-          <p className="text-xs text-muted-foreground mt-1">Pilih bulan untuk memperbarui ringkasan tagihan.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Ikhtisar tagihan</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Kinerja pembayaran pelanggan WiFi</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="outline"
-            className="w-[150px] justify-between font-normal"
+            className="min-w-0 flex-1 justify-between font-normal sm:w-[142px] sm:flex-none"
             aria-label="Pilih bulan periode keuangan"
             onClick={() => setStatsMonthPickerOpen(true)}
           >
             {statsMonth ?? 'Memuat...'}
-            <span className="text-xs text-muted-foreground">Pilih</span>
           </Button>
           <Select value={statsYear ?? ''} onValueChange={setStatsYear}>
-            <SelectTrigger className="w-[110px]" aria-label="Tahun periode keuangan">
+            <SelectTrigger className="w-[94px]" aria-label="Tahun periode keuangan">
               <SelectValue placeholder="..." />
             </SelectTrigger>
             <SelectContent>
@@ -249,8 +222,11 @@ export default function DashboardPage() {
             </SelectContent>
           </Select>
           {statsLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Memuat statistik" />}
+          <Button asChild className="w-full gap-2 sm:w-auto">
+            <Link href="/billing/add"><UserPlus className="h-4 w-4" />Tambah pelanggan</Link>
+          </Button>
         </div>
-      </div>
+      </header>
 
       <Dialog open={statsMonthPickerOpen} onOpenChange={setStatsMonthPickerOpen}>
         <DialogContent className="rounded-2xl sm:max-w-sm">
@@ -282,121 +258,116 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Stats cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6" aria-busy={statsLoading}>
-        {statCards.map((stat, i) => {
-          const Icon = stat.icon;
-          const card = (
-            <Card className={cn(
-              'border-border/60 transition-colors',
-              stat.href && 'hover:border-border'
-            )}>
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground font-medium">{stat.title}</p>
-                    <p className="text-2xl font-bold mt-2 tracking-tight">{stat.value}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{stat.description}</p>
-                  </div>
-                  <div className={cn('flex h-10 w-10 items-center justify-center rounded-xl', stat.bg)}>
-                    <Icon className={cn('h-5 w-5', stat.color)} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-          return stat.href ? (
-            <Link
-              key={i}
-              href={stat.href}
-              className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              {card}
-            </Link>
-          ) : <div key={i}>{card}</div>;
-        })}
-      </div>
-
-      <Card className="border-border/60">
-        <CardContent className="space-y-4 pt-6">
-          <div>
-            <h2 className="text-lg font-semibold">Progres Pembayaran Tagihan</h2>
-            <p className="mt-1 text-xs text-muted-foreground">{statsMonth ?? '...'} {statsYear ?? ''} · Persentase tagihan yang sudah terkumpul</p>
-          </div>
-          {statsLoading ? (
-            <div className="flex h-[300px] items-center justify-center gap-2 text-sm text-muted-foreground" aria-live="polite">
-              <Loader2 className="h-4 w-4 animate-spin" /> Memuat grafik...
-            </div>
-          ) : !stats || stats.totalDue === 0 ? (
-            <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
-              Belum ada tagihan pada {statsMonth} {statsYear}.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="grid items-center gap-4 md:grid-cols-[minmax(0,1fr),220px]">
-                <div className="mx-auto flex h-[280px] w-full max-w-[360px] items-center justify-center">
-                  <div
-                    role="img"
-                    aria-label={`Progres pembayaran ${collectedPercent} persen`}
-                    className="relative aspect-square h-full max-h-full max-w-full"
-                  >
-                    <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="43"
-                        fill="none"
-                        stroke="hsl(var(--muted))"
-                        strokeWidth="11"
-                      />
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="43"
-                        fill="none"
-                        stroke="#4ade80"
-                        strokeWidth="11"
-                        strokeLinecap={collectedPercent >= 100 ? 'butt' : 'round'}
-                        strokeDasharray={`${progressRingLength} ${progressRingCircumference}`}
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                      <span className="text-3xl font-bold tabular-nums">{collectedPercent}%</span>
-                      <span className="text-xs text-muted-foreground">sudah terkumpul</span>
-                    </div>
-                  </div>
-                </div>
-                <dl className="grid gap-3 text-sm">
-                  <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
-                    <dt className="text-muted-foreground">Total tagihan</dt>
-                    <dd className="font-medium">{formatRupiah(stats.totalDue)}</dd>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
-                    <dt className="text-muted-foreground">Terkumpul</dt>
-                    <dd className="font-medium text-emerald-400">{formatRupiah(stats.totalRevenue)}</dd>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <dt className="text-muted-foreground">Belum dibayar</dt>
-                    <dd className="font-medium text-rose-400">{formatRupiah(stats.outstandingAmount)}</dd>
-                  </div>
-                </dl>
+      <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(260px,.85fr)]" aria-label="Ringkasan keuangan" aria-busy={statsLoading}>
+        <Card className="border-border/70">
+          <CardContent className="space-y-6 p-4 sm:p-6">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Uang terkumpul</p>
+                <p className="mt-2 text-3xl font-semibold leading-none tabular-nums sm:text-4xl">
+                  {statsLoading ? 'Memuat...' : formatRupiah(stats?.totalRevenue ?? 0)}
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">dari {formatRupiah(stats?.totalDue ?? 0)} tagihan periode ini</p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-semibold tabular-nums">{collectedPercent}%</p>
+                <p className="text-xs text-muted-foreground">terbayar</p>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <div
+              role="progressbar"
+              aria-label="Progres pembayaran tagihan"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={collectedPercent}
+              className="h-2 overflow-hidden rounded-full bg-muted"
+            >
+              <motion.div
+                className="h-full origin-left rounded-full bg-[hsl(var(--chart-1))]"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: collectedPercent / 100 }}
+                transition={{ duration: 0.6, ease: 'easeOut' }}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4 border-t border-border/70 pt-4 sm:grid-cols-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Total tagihan</p>
+                <p className="mt-1 text-sm font-medium tabular-nums">{formatRupiah(stats?.totalDue ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Sisa belum lunas</p>
+                <p className="mt-1 text-sm font-medium tabular-nums">{formatRupiah(stats?.outstandingAmount ?? 0)}</p>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <p className="text-xs text-muted-foreground">Belum bayar</p>
+                <p className="mt-1 text-sm font-medium tabular-nums">{stats?.unpaidCustomers ?? 0} pelanggan</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-      <section className="space-y-4" aria-label="Daftar pelanggan">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            value={customerSearch}
-            onChange={(event) => setCustomerSearch(event.target.value)}
-            placeholder="Cari nama atau alamat pelanggan..."
-            aria-label="Cari pelanggan berdasarkan nama atau alamat"
-            className="pl-9"
-          />
+        <section className="space-y-2" aria-labelledby="follow-up-heading">
+          <div className="flex items-baseline justify-between gap-3 px-1 pb-1">
+            <h2 id="follow-up-heading" className="text-base font-semibold">Tindak lanjut</h2>
+            <span className="text-xs text-muted-foreground">{statsLoading ? 'Memuat' : `${stats?.unpaidCustomers ?? 0} pelanggan belum bayar`}</span>
+          </div>
+          <Link href={`/dashboard/billings/unpaid?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`} className="group flex items-center justify-between gap-3 rounded-md border border-border/70 p-3.5 transition-colors hover:bg-muted/50">
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">Periksa tagihan tertunggak</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{stats?.unpaidBillings ?? 0} tagihan belum selesai</span>
+            </span>
+            <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+          </Link>
+          <Link href="/collector" className="group flex items-center justify-between gap-3 rounded-md border border-border/70 p-3.5 transition-colors hover:bg-muted/50">
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">Buka setoran harian</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">Catat kunjungan dan pembayaran</span>
+            </span>
+            <WalletCards className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </Link>
+        </section>
+      </section>
+
+      <section aria-labelledby="period-numbers-heading" aria-busy={statsLoading}>
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <h2 id="period-numbers-heading" className="text-base font-semibold">Angka periode</h2>
+          <span className="text-xs text-muted-foreground">{statsMonth ?? '...'} {statsYear ?? ''}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-5 rounded-md bg-muted/30 p-4 sm:grid-cols-3 sm:gap-y-6 lg:grid-cols-6">
+          {statCards.map((stat) => {
+            const value = (
+              <>
+                <span className="block text-xs text-muted-foreground">{stat.title}</span>
+                <span className="mt-1.5 block break-words text-sm font-semibold leading-tight tabular-nums sm:text-base">{stat.value}</span>
+                <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">{stat.description}</span>
+              </>
+            );
+            return stat.href ? (
+              <Link key={stat.title} href={stat.href} className="group min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <span className="group-hover:text-primary">{value}</span>
+              </Link>
+            ) : <div key={stat.title} className="min-w-0">{value}</div>;
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-4" aria-labelledby="recent-customers-heading">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 id="recent-customers-heading" className="text-base font-semibold">Pelanggan terbaru</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Akses cepat ke informasi dan status tagihan</p>
+          </div>
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              value={customerSearch}
+              onChange={(event) => setCustomerSearch(event.target.value)}
+              placeholder="Cari nama atau alamat..."
+              aria-label="Cari pelanggan berdasarkan nama atau alamat"
+              className="pl-9"
+            />
+          </div>
         </div>
 
         {customersError ? (
@@ -416,14 +387,14 @@ export default function DashboardPage() {
                 ? `${matchingCustomers.length} hasil pencarian, menampilkan ${visibleCustomers.length}`
                 : `${Math.min(customers.length, 10)} dari ${customers.length} pelanggan aktif`}
             </p>
-            <ul className="mx-auto w-[96%] space-y-2">
+            <ul className="space-y-2">
               {visibleCustomers.map((customer) => (
                 <li key={customer._id}>
                   <Link
                     href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}
                     className="group block animate-fade-in"
                   >
-                    <Card className="cursor-pointer border-border/60 transition-all duration-200 hover:border-primary/40 hover:bg-accent/30">
+                    <Card className="cursor-pointer border-border/60 transition-colors duration-150 hover:border-primary/40 hover:bg-accent/30">
                       <CardContent className="py-3">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex min-w-0 flex-1 items-start gap-4">

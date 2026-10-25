@@ -267,7 +267,7 @@ export default function AllCustomersPage() {
                 href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}
                 className="group block animate-fade-in rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
-                <Card className="cursor-pointer border-border/60 transition-all duration-200 hover:border-primary/40 hover:bg-accent/30">
+                <Card className="cursor-pointer border-border/60 transition-colors duration-150 hover:border-primary/40 hover:bg-accent/30">
                   <CardContent className="py-4">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex min-w-0 flex-1 items-start gap-4">

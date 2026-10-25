@@ -4,9 +4,12 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { getPrimaryRole, normalizeUserRoles, UserRole } from '@/lib/roles';
 
 interface CurrentUser {
+  id: string;
   username: string;
   role: string;
   roles: UserRole[];
+  profileImage: string;
+  hasOriginalProfileImage: boolean;
 }
 
 const CurrentUserContext = createContext<CurrentUser | null>(null);
@@ -33,9 +36,12 @@ export default function CurrentUserProvider({ children }: { children: React.Reac
       }
       const data = await response.json();
       setCurrentUser(typeof data.user?.role === 'string' ? {
+        id: typeof data.user.id === 'string' ? data.user.id : '',
         username: typeof data.user.username === 'string' ? data.user.username : '',
         role: getPrimaryRole(normalizeUserRoles(data.user.role, data.user.roles)) || '',
         roles: normalizeUserRoles(data.user.role, data.user.roles),
+        profileImage: typeof data.user.profileImage === 'string' ? data.user.profileImage : '',
+        hasOriginalProfileImage: Boolean(data.user.hasOriginalProfileImage),
       } : null);
     } catch {
       setCurrentUser(null);

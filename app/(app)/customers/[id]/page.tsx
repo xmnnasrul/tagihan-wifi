@@ -671,7 +671,7 @@ export default function CustomerDetailPage() {
                           <TableRow className="bg-muted/20 hover:bg-muted/20">
                             <TableCell colSpan={6} className="p-0">
                               <div className="animate-fade-in space-y-3 border-l-2 border-primary/40 px-4 py-4 sm:ml-6">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Detail pembayaran</p>
+                                <p className="text-xs font-semibold text-muted-foreground">Detail pembayaran</p>
                                 {paymentHistory.map((payment, paymentIndex) => (
                                   <div key={`${billing._id}-${payment._id || paymentIndex}`} className="flex flex-col gap-2 rounded-md border border-border/60 bg-background/50 p-3 text-sm sm:flex-row sm:items-start sm:justify-between">
                                     <div className="min-w-0">

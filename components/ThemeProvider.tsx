@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { MotionConfig } from 'framer-motion';
 import { ThemeProvider as NextThemesProvider } from 'next-themes';
 import { useTheme } from 'next-themes';
 
@@ -18,13 +19,22 @@ export function getScheduledTheme(): 'light' | 'dark' {
 
 function ThemeSchedule() {
   const { resolvedTheme, setTheme } = useTheme();
+  const transitionTimer = useRef<number | null>(null);
 
   useEffect(() => {
     const syncTheme = () => {
       const manualPreference = window.localStorage.getItem(THEME_PREFERENCE_KEY);
       const hasManualPreference = manualPreference === 'light' || manualPreference === 'dark';
       const targetTheme = hasManualPreference ? manualPreference : getScheduledTheme();
-      if (targetTheme !== resolvedTheme) setTheme(targetTheme);
+      if (targetTheme !== resolvedTheme) {
+        document.documentElement.classList.add('theme-transition');
+        setTheme(targetTheme);
+        if (transitionTimer.current) window.clearTimeout(transitionTimer.current);
+        transitionTimer.current = window.setTimeout(() => {
+          document.documentElement.classList.remove('theme-transition');
+          transitionTimer.current = null;
+        }, 280);
+      }
       if (!hasManualPreference) window.localStorage.removeItem(THEME_PREFERENCE_KEY);
     };
 
@@ -32,6 +42,11 @@ function ThemeSchedule() {
     const interval = window.setInterval(syncTheme, 60_000);
     return () => window.clearInterval(interval);
   }, [resolvedTheme, setTheme]);
+
+  useEffect(() => () => {
+    if (transitionTimer.current) window.clearTimeout(transitionTimer.current);
+    document.documentElement.classList.remove('theme-transition');
+  }, []);
 
   return null;
 }
@@ -48,8 +63,10 @@ export default function ThemeProvider({ children, nonce }: { children: React.Rea
       nonce={providerNonce}
       storageKey={THEME_PREFERENCE_KEY}
     >
-      <ThemeSchedule />
-      {children}
+      <MotionConfig reducedMotion="user">
+        <ThemeSchedule />
+        {children}
+      </MotionConfig>
     </NextThemesProvider>
   );
 }

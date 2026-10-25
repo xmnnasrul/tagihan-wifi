@@ -147,14 +147,6 @@ export default function PackagesPage() {
   const formatRupiah = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
   };
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -177,7 +169,11 @@ export default function PackagesPage() {
         </Alert>
       )}
 
-      {packages.length === 0 ? (
+      {loading ? (
+        <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
+          <Loader2 className="h-4 w-4 animate-spin" /> Memuat paket...
+        </div>
+      ) : packages.length === 0 ? (
         <Card className="border-border/60">
           <CardContent className="py-16 text-center">
             <PackageIcon className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
@@ -190,7 +186,7 @@ export default function PackagesPage() {
             <Card key={pkg._id} className="group overflow-hidden border-border/60 transition-colors hover:border-primary/40">
               <div className="flex items-center justify-between gap-3 bg-primary/10 px-4 py-3">
                 <span className="text-[10px] font-semibold tracking-[0.2em] text-primary uppercase">Paket Internet</span>
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-background text-primary shadow-sm">
+                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-background text-primary">
                   <PackageIcon className="h-4 w-4" />
                 </div>
               </div>

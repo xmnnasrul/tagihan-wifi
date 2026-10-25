@@ -86,14 +86,6 @@ export default function ArchivedCustomersPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -113,7 +105,11 @@ export default function ArchivedCustomersPage() {
         </div>
       )}
 
-      {customers.length === 0 ? (
+      {loading ? (
+        <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
+          <Loader2 className="h-4 w-4 animate-spin" /> Memuat arsip pelanggan...
+        </div>
+      ) : customers.length === 0 ? (
         <Card className="border-border/60">
           <CardContent className="py-16 text-center">
             <UserX className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />

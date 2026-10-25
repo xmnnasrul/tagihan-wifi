@@ -5,60 +5,70 @@
 @layer base {
   :root {
     color-scheme: light;
-    --background: 210 20% 98%;
-    --foreground: 222 47% 11%;
+    --background: 210 18% 96%;
+    --chrome: 204 24% 93%;
+    --foreground: 216 26% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 216 26% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 199 89% 38%;
+    --popover-foreground: 216 26% 12%;
+    --primary: 198 78% 34%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 94%;
-    --secondary-foreground: 222 47% 15%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 42%;
-    --accent: 210 40% 92%;
-    --accent-foreground: 222 47% 15%;
+    --secondary: 204 20% 92%;
+    --secondary-foreground: 216 23% 19%;
+    --muted: 204 18% 95%;
+    --muted-foreground: 214 12% 42%;
+    --accent: 204 20% 90%;
+    --accent-foreground: 216 23% 19%;
     --destructive: 0 72% 45%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214 32% 88%;
-    --input: 214 32% 84%;
-    --ring: 199 89% 38%;
-    --chart-1: 199 89% 38%;
-    --chart-2: 142 60% 35%;
-    --chart-3: 38 85% 42%;
-    --chart-4: 0 65% 48%;
-    --chart-5: 280 55% 48%;
-    --radius: 0.75rem;
+    --border: 210 16% 87%;
+    --input: 210 16% 82%;
+    --ring: 198 78% 34%;
+    --chart-1: 198 78% 34%;
+    --chart-2: 151 49% 34%;
+    --chart-3: 39 78% 42%;
+    --chart-4: 3 62% 46%;
+    --chart-5: 268 35% 48%;
+    --status-positive: 151 61% 29%;
+    --status-warning: 32 84% 34%;
+    --status-negative: 0 66% 43%;
+    --status-info: 198 83% 33%;
+    --radius: 0.5rem;
   }
 
   .dark {
     color-scheme: dark;
-    --background: 222 47% 5%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 7%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 7%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 199 89% 48%;
+    --background: 216 20% 8%;
+    --chrome: 216 17% 10%;
+    --foreground: 210 24% 95%;
+    --card: 216 17% 11%;
+    --card-foreground: 210 24% 95%;
+    --popover: 216 17% 11%;
+    --popover-foreground: 210 24% 95%;
+    --primary: 194 74% 58%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 217 33% 14%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 12%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 16%;
-    --accent-foreground: 210 40% 98%;
+    --secondary: 216 15% 16%;
+    --secondary-foreground: 210 24% 92%;
+    --muted: 216 15% 14%;
+    --muted-foreground: 211 12% 66%;
+    --accent: 216 15% 18%;
+    --accent-foreground: 210 24% 92%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 14%;
-    --input: 217 33% 16%;
-    --ring: 199 89% 48%;
-    --chart-1: 199 89% 48%;
-    --chart-2: 142 71% 45%;
-    --chart-3: 38 92% 50%;
-    --chart-4: 0 72% 51%;
-    --chart-5: 280 65% 60%;
-    --radius: 0.75rem;
+    --border: 216 14% 22%;
+    --input: 216 14% 24%;
+    --ring: 194 74% 58%;
+    --chart-1: 194 74% 58%;
+    --chart-2: 151 55% 52%;
+    --chart-3: 39 86% 58%;
+    --chart-4: 3 72% 60%;
+    --chart-5: 268 42% 68%;
+    --status-positive: 145 61% 56%;
+    --status-warning: 42 90% 62%;
+    --status-negative: 0 75% 67%;
+    --status-info: 194 77% 63%;
+    --radius: 0.5rem;
   }
 }
 
@@ -70,6 +80,14 @@
     @apply bg-background text-foreground;
     overflow-x: hidden;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  main h1 {
+    letter-spacing: 0;
+  }
+  html.theme-transition,
+  html.theme-transition body,
+  html.theme-transition body * {
+    transition-duration: 100ms !important;
   }
 }
 
@@ -91,6 +109,42 @@
 }
 
 @layer utilities {
+  .theme-transition,
+  .theme-transition *,
+  .theme-transition *::before,
+  .theme-transition *::after {
+    transition-property: background-color, color, border-color, fill, stroke;
+    transition-duration: 240ms;
+    transition-timing-function: ease;
+  }
+  .app-page {
+    min-width: 0;
+  }
+  .app-page h1 {
+    font-size: 1.375rem;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  .app-page input,
+  .app-page select,
+  .app-page textarea {
+    max-width: 100%;
+  }
+  .app-page .text-emerald-400,
+  .app-page .text-green-400 {
+    color: hsl(var(--status-positive));
+  }
+  .app-page .text-amber-400 {
+    color: hsl(var(--status-warning));
+  }
+  .app-page .text-red-400,
+  .app-page .text-rose-400 {
+    color: hsl(var(--status-negative));
+  }
+  .app-page .text-blue-400,
+  .app-page .text-cyan-400 {
+    color: hsl(var(--status-info));
+  }
   .date-input-calendar::-webkit-calendar-picker-indicator {
     opacity: 0;
   }

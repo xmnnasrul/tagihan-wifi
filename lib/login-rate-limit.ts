@@ -56,7 +56,7 @@ async function consumeRateLimitKey(key: string, limit: number, now: Date) {
       windowStartedAt: { $cond: [shouldReset, now, '$windowStartedAt'] },
       expiresAt: { $cond: [shouldReset, expiresAt, '$expiresAt'] },
     },
-  }], { upsert: true });
+  }], { upsert: true, updatePipeline: true });
 
   const record = await LoginRateLimit.findOne({ key }).select('count windowStartedAt').lean();
   if (!record) throw new Error('Login rate limit record was not created');

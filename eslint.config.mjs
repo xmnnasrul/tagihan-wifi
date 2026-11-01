@@ -13,6 +13,7 @@ export default defineConfig([
   globalIgnores([
     '.next/**',
     '.next-dev/**',
+    '.agents/skills/**',
     'out/**',
     'build/**',
     'next-env.d.ts',

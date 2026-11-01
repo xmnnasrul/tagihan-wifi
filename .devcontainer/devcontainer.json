@@ -4,7 +4,7 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "continue.continue",
+        "saoudrizwan.claude-dev",
         "esbenp.prettier-vscode",
         "github.github-vscode-theme",
         "github.vscode-pull-request-github"

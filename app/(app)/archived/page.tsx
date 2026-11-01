@@ -145,7 +145,7 @@ export default function ArchivedCustomersPage() {
                       </Badge>
                     )}
                     <Button variant="outline" asChild className="w-full justify-start sm:w-auto">
-                      <Link href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}>
+                      <Link href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}&archived=true`}>
                         <Eye className="h-4 w-4 mr-2" />
                         Lihat riwayat
                       </Link>

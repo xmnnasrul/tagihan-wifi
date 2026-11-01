@@ -101,6 +101,7 @@ export default function CustomerDetailPage() {
   const searchParams = useSearchParams();
   const customerId = (params?.id as string) || '';
   const customerName = searchParams.get('name') || '';
+  const isArchiveView = searchParams.get('archived') === 'true';
   const [customer, setCustomer] = useState<{ name: string; address: string; phone?: string; status?: 'active' | 'inactive'; packageId?: Package | string | null } | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
   const [billings, setBillings] = useState<Billing[]>([]);
@@ -156,7 +157,8 @@ export default function CustomerDetailPage() {
 
   const fetchBillings = useCallback(async () => {
     try {
-      const res = await fetch(`/api/billings?customerId=${encodeURIComponent(customerId)}`);
+      const archiveQuery = isArchiveView ? '&includeArchived=true' : '';
+      const res = await fetch(`/api/billings?customerId=${encodeURIComponent(customerId)}${archiveQuery}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Gagal mengambil riwayat tagihan');
       setBillings(Array.isArray(data) ? data.filter(Boolean) : []);
@@ -169,7 +171,7 @@ export default function CustomerDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [customerId]);
+  }, [customerId, isArchiveView]);
 
   useEffect(() => {
     if (!customerId) return;

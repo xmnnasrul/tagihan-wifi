@@ -66,29 +66,21 @@ export async function GET(request: Request) {
     const customerId = searchParams.get('customerId');
     const customerName = searchParams.get('customerName');
     const status = searchParams.get('status');
-    const activeOnly = searchParams.get('activeOnly') === 'true';
     const summaryOnly = searchParams.get('summary') === 'true';
 
     const query: Record<string, unknown> = {};
     if (month) query.month = month;
     if (year) query.year = Number(year);
-    if (customerId) query.customerId = customerId;
     if (customerName) query.customerName = { $regex: customerName, $options: 'i' };
     if (status && status !== 'all') query.status = status;
-    if (activeOnly) {
-      const activeCustomerIds = await Customer.distinct('_id', {
-        status: { $ne: 'inactive' },
-        ...getOwnerFilter(ownerScope),
-      });
-      query.customerId = { $in: activeCustomerIds };
-    }
-    if (!ownerScope.isSuperadmin) {
-      const ownedCustomerIds = await Customer.distinct('_id', getOwnerFilter(ownerScope));
-      query.$and = [
-        ...(Array.isArray(query.$and) ? query.$and as Record<string, unknown>[] : []),
-        { customerId: { $in: ownedCustomerIds } },
-      ];
-    }
+    const includeArchivedCustomer = searchParams.get('includeArchived') === 'true' && Boolean(customerId);
+    const visibleCustomerIds = await Customer.distinct('_id', {
+      ...getOwnerFilter(ownerScope),
+      ...(includeArchivedCustomer
+        ? { _id: customerId, status: 'inactive' }
+        : { status: { $ne: 'inactive' } }),
+    });
+    query.customerId = { $in: visibleCustomerIds };
 
     if (summaryOnly) {
       const summaries = await Billing.find(query).select('customerId status month year createdAt').lean();

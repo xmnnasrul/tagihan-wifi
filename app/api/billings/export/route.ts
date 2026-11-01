@@ -64,9 +64,12 @@ export async function GET(request: Request) {
       const escapedName = customerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query.customerName = { $regex: escapedName, $options: 'i' };
     }
-    if (!ownerScope.isSuperadmin) {
-      query.customerId = { $in: await Customer.distinct('_id', getOwnerFilter(ownerScope)) };
-    }
+    query.customerId = {
+      $in: await Customer.distinct('_id', {
+        status: { $ne: 'inactive' },
+        ...getOwnerFilter(ownerScope),
+      }),
+    };
 
     const billings = await Billing.find(query).sort({ customerName: 1 });
 

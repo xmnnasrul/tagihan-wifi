@@ -78,7 +78,10 @@ export async function GET(request: Request) {
       ...getOwnerFilter(ownerScope),
       ...(includeArchivedCustomer
         ? { _id: customerId, status: 'inactive' }
-        : { status: { $ne: 'inactive' } }),
+        : {
+            ...(customerId ? { _id: customerId } : {}),
+            status: { $ne: 'inactive' },
+          }),
     });
     query.customerId = { $in: visibleCustomerIds };
 

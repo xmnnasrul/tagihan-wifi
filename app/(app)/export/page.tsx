@@ -37,7 +37,7 @@ export default function ExportPage() {
     if (month !== 'all') params.set('month', month);
     if (year !== 'all') params.set('year', year);
     if (status !== 'all') params.set('status', status);
-    params.set('columns', columns.join(','));
+    if (format !== 'txt') params.set('columns', columns.join(','));
 
     setIsExporting(true);
     setExportError('');
@@ -79,7 +79,7 @@ export default function ExportPage() {
             <Download className="h-5 w-5 text-primary" />
             Pengaturan Ekspor
           </CardTitle>
-          <CardDescription>Pilih periode, status, kolom yang ingin disertakan, dan format file.</CardDescription>
+          <CardDescription>Pilih periode dan status tagihan. Kolom dapat diatur untuk CSV/Excel; TXT memakai format ringkasan tetap.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -118,28 +118,30 @@ export default function ExportPage() {
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium">Kolom yang diekspor</label>
+          {format !== 'txt' && (
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium">Kolom yang diekspor</label>
+              </div>
+              <div className="grid gap-3 rounded-md border border-border p-3 sm:grid-cols-2 lg:grid-cols-3">
+                {exportFields.map((field) => (
+                  <label key={field.value} htmlFor={`export-column-${field.value}`} className="flex cursor-pointer items-center gap-2 text-sm">
+                    <Checkbox
+                      id={`export-column-${field.value}`}
+                      checked={columns.includes(field.value)}
+                      onCheckedChange={(checked) => setColumns((current) => (
+                        checked
+                          ? [...current, field.value]
+                          : current.filter((column) => column !== field.value)
+                      ))}
+                    />
+                    {field.label}
+                  </label>
+                ))}
+              </div>
+              {columns.length === 0 && <p role="alert" className="text-sm text-destructive">Pilih minimal satu kolom.</p>}
             </div>
-            <div className="grid gap-3 rounded-md border border-border p-3 sm:grid-cols-2 lg:grid-cols-3">
-              {exportFields.map((field) => (
-                <label key={field.value} htmlFor={`export-column-${field.value}`} className="flex cursor-pointer items-center gap-2 text-sm">
-                  <Checkbox
-                    id={`export-column-${field.value}`}
-                    checked={columns.includes(field.value)}
-                    onCheckedChange={(checked) => setColumns((current) => (
-                      checked
-                        ? [...current, field.value]
-                        : current.filter((column) => column !== field.value)
-                    ))}
-                  />
-                  {field.label}
-                </label>
-              ))}
-            </div>
-            {columns.length === 0 && <p role="alert" className="text-sm text-destructive">Pilih minimal satu kolom.</p>}
-          </div>
+          )}
 
           <div className="space-y-2">
             <label className="text-sm font-medium">Format file</label>
@@ -162,7 +164,7 @@ export default function ExportPage() {
           {exportError && <p role="alert" className="text-sm text-destructive">{exportError}</p>}
 
           <div className="flex justify-end border-t border-border pt-5">
-            <Button type="button" className="gap-2" onClick={() => void handleExport()} disabled={!columns.length || isExporting}>
+            <Button type="button" className="gap-2" onClick={() => void handleExport()} disabled={(format !== 'txt' && !columns.length) || isExporting}>
               <Download className="h-4 w-4" />
               Unduh file
             </Button>

@@ -257,6 +257,13 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Pelanggan tidak ditemukan' }, { status: 404 });
     }
 
+    if ((previousCustomer.address || '') !== (customer.address || '')) {
+      await Billing.updateMany(
+        { customerId: customer._id },
+        { $set: { address: customer.address || '' } },
+      );
+    }
+
     const actor = await getCurrentUser();
     await writeAuditLog({
       actorUsername: actor?.username || 'Admin',

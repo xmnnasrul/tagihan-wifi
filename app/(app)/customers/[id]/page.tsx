@@ -259,11 +259,14 @@ export default function CustomerDetailPage() {
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
-      await fetch(`/api/billings?id=${deleteId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/billings?id=${deleteId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal menghapus tagihan');
+      toast.success(data.message || 'Tagihan berhasil dihapus');
       await fetchBillings();
-    } catch {
-    } finally {
       setDeleteId(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Gagal menghapus tagihan');
     }
   };
 
@@ -420,10 +423,10 @@ export default function CustomerDetailPage() {
             <div className="flex-1 min-w-0">
               <h1 className="text-2xl font-bold tracking-tight">{displayCustomerName}</h1>
               <div className="flex items-center gap-4 mt-2 flex-wrap">
-                {billings[0]?.address && (
+                {customer?.address && (
                   <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                     <MapPin className="h-3.5 w-3.5" />
-                    {billings[0].address}
+                    {customer.address}
                   </span>
                 )}
                 {currentPackage?.name && (

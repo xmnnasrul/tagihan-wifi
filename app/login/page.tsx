@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import ThemeToggle from '@/components/ThemeToggle';
+import { loginSchema } from '@/lib/login-validation';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,14 +19,21 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+
+    const parsed = loginSchema.safeParse({ username, password });
+    if (!parsed.success) {
+      setError('Username atau password tidak valid.');
+      return;
+    }
+
+    setLoading(true);
 
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(parsed.data),
       });
 
       const data = await res.json();
@@ -88,6 +96,7 @@ export default function LoginPage() {
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   className="h-11 pl-10"
+                  maxLength={32}
                   required
                   autoComplete="username"
                 />
@@ -105,6 +114,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   className="h-11 pl-10 pr-11"
+                  maxLength={72}
                   required
                   autoComplete="current-password"
                 />

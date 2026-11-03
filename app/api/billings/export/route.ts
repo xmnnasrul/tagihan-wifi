@@ -5,6 +5,8 @@ import ExcelJS from 'exceljs';
 import { requireAuthenticatedUser } from '@/lib/session';
 import Customer from '@/lib/models/Customer';
 import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
+import { formatTxtBillingExport } from '@/lib/billing-export';
+import { getBillingOutstandingAmount } from '@/lib/billing-amounts';
 
 const exportColumns = {
   customerName: {
@@ -40,7 +42,7 @@ export async function GET(request: Request) {
     const rawColumns = requestedColumns ? requestedColumns.split(',') : Object.keys(exportColumns);
     const validColumns = Object.keys(exportColumns) as ExportColumnKey[];
     const columns = rawColumns.filter((column): column is ExportColumnKey => validColumns.includes(column as ExportColumnKey));
-    if (!columns.length || columns.length !== rawColumns.length || new Set(columns).size !== columns.length) {
+    if (format !== 'txt' && (!columns.length || columns.length !== rawColumns.length || new Set(columns).size !== columns.length)) {
       return NextResponse.json({ error: 'Pilih minimal satu kolom ekspor yang valid' }, { status: 400 });
     }
 
@@ -55,8 +57,18 @@ export async function GET(request: Request) {
     if (status && !['Belum Bayar', 'Nyicil', 'Cash', 'TF', 'Lunas'].includes(status)) {
       return NextResponse.json({ error: 'Status pembayaran tidak valid' }, { status: 400 });
     }
-    if (month) query.month = month;
-    if (year) query.year = Number(year);
+    if (month && format === 'txt') {
+      const monthIndex = validMonths.indexOf(month);
+      const monthsThroughSelected = validMonths.slice(0, monthIndex + 1);
+      const cutoffYear = year ? Number(year) : new Date().getFullYear();
+      query.$or = [
+        { year: { $lt: cutoffYear } },
+        { year: cutoffYear, month: { $in: monthsThroughSelected } },
+      ];
+    } else {
+      if (month) query.month = month;
+      if (year) query.year = Number(year);
+    }
     if (status) {
       query.status = status;
     }
@@ -64,9 +76,12 @@ export async function GET(request: Request) {
       const escapedName = customerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query.customerName = { $regex: escapedName, $options: 'i' };
     }
-    if (!ownerScope.isSuperadmin) {
-      query.customerId = { $in: await Customer.distinct('_id', getOwnerFilter(ownerScope)) };
-    }
+    query.customerId = {
+      $in: await Customer.distinct('_id', {
+        status: { $ne: 'inactive' },
+        ...getOwnerFilter(ownerScope),
+      }),
+    };
 
     const billings = await Billing.find(query).sort({ customerName: 1 });
 
@@ -76,14 +91,10 @@ export async function GET(request: Request) {
       const text = String(value ?? '');
       return /^[\t\r ]*[=+\-@]/.test(text) ? `'${text}` : text;
     };
-    const safeTextCell = (value: string | number) => String(value ?? '').replace(/[\t\r\n]+/g, ' ');
     const filename = `tagihan${month && /^[\p{L}]+$/u.test(month) ? `_${month}` : ''}${year && /^\d{4}$/.test(year) ? `_${year}` : ''}`;
 
     if (format === 'txt') {
-      const txtLines = rows.map((row, index) =>
-        `${index + 1}. ${row.map(safeTextCell).filter(Boolean).join(' ')}`
-      );
-      const txt = txtLines.length ? txtLines.join('\n\n') : 'Tidak ada data yang sesuai dengan filter.';
+      const txt = formatTxtBillingExport(billings, getBillingOutstandingAmount);
 
       return new NextResponse(`\uFEFF${txt}`, {
         headers: {

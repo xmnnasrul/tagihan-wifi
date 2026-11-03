@@ -1,0 +1,14 @@
+{
+  "name": "Tagihan WiFi",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:5.2.5-24-bookworm",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "saoudrizwan.claude-dev",
+        "esbenp.prettier-vscode",
+        "github.github-vscode-theme",
+        "github.vscode-pull-request-github"
+      ]
+    }
+  }
+}

@@ -2,19 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { CalendarDays, ChevronDown, ChevronRight, Loader2, MapPin, Search, UserRound, Users } from 'lucide-react';
+import { CalendarDays, ChevronRight, Loader2, MapPin, Search, UserRound, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface Customer {
   _id: string;
@@ -37,22 +29,11 @@ interface BillingSummary {
 
 type StatusFilter = 'all' | 'belum-bayar' | 'lunas-cash' | 'lunas-tf' | 'nyicil';
 
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
-
-const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-
 export default function AllCustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [billings, setBillings] = useState<Record<string, Omit<BillingSummary, 'customerId'>[]>>({});
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [billingMonthFilter, setBillingMonthFilter] = useState('all');
-  const [billingYearFilter, setBillingYearFilter] = useState('all');
-  const [billingInputDateFilter, setBillingInputDateFilter] = useState('');
-  const [billingMonthPickerOpen, setBillingMonthPickerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -105,37 +86,21 @@ export default function AllCustomersPage() {
     const normalizedSearch = search.trim().toLocaleLowerCase('id-ID');
     const searchableText = `${customer.name} ${customer.address || ''} ${customer.packageId?.name || ''} ${customer.packageId?.speed || ''}`;
     const matchesSearch = searchableText.toLocaleLowerCase('id-ID').includes(normalizedSearch);
-    const matchingBillings = (billings[customer._id] || []).filter((billing) => {
-      const matchesMonth = billingMonthFilter === 'all' || billing.month === billingMonthFilter;
-      const matchesYear = billingYearFilter === 'all' || String(billing.year) === billingYearFilter;
-      const inputDate = new Date(billing.createdAt);
-      const localInputDate = Number.isNaN(inputDate.getTime())
-        ? ''
-        : `${inputDate.getFullYear()}-${String(inputDate.getMonth() + 1).padStart(2, '0')}-${String(inputDate.getDate()).padStart(2, '0')}`;
-      const matchesInputDate = !billingInputDateFilter || localInputDate === billingInputDateFilter;
-      return matchesMonth && matchesYear && matchesInputDate;
-    });
+    const matchingBillings = billings[customer._id] || [];
     const hasPaidCash = matchingBillings.some((billing) => billing.status === 'Cash');
     const hasPaidTf = matchingBillings.some((billing) => billing.status === 'TF');
     const hasInstallment = matchingBillings.some((billing) => billing.status === 'Nyicil');
     const hasUnpaid = matchingBillings.some((billing) => billing.status === 'Belum Bayar');
-    const hasSelectedBilling = (billingMonthFilter === 'all' && billingYearFilter === 'all' && !billingInputDateFilter)
-      || matchingBillings.length > 0;
     const matchesStatus = statusFilter === 'all'
       || (statusFilter === 'belum-bayar' && hasUnpaid)
       || (statusFilter === 'lunas-cash' && hasPaidCash)
       || (statusFilter === 'lunas-tf' && hasPaidTf)
       || (statusFilter === 'nyicil' && hasInstallment);
 
-    return matchesSearch && matchesStatus && hasSelectedBilling;
-  }), [customers, billings, search, statusFilter, billingMonthFilter, billingYearFilter, billingInputDateFilter]);
+    return matchesSearch && matchesStatus;
+  }), [customers, billings, search, statusFilter]);
 
-  const billingYears = Array.from(new Set(Object.values(billings).flat().map((billing) => billing.year)))
-    .sort((a, b) => b - a);
-  const hasActiveFilters = statusFilter !== 'all'
-    || billingMonthFilter !== 'all'
-    || billingYearFilter !== 'all'
-    || Boolean(billingInputDateFilter);
+  const hasActiveFilters = statusFilter !== 'all';
 
   const formatDateTime = (value?: string | null) => value
     ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -155,35 +120,8 @@ export default function AllCustomersPage() {
             className="pl-9"
           />
         </div>
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="text-sm font-medium">Filter Tagihan</p>
-            <p className="mt-1 text-xs text-muted-foreground">Pilih periode, status, atau tanggal input.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:min-w-[380px]">
-            <div className="min-w-0 space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Bulan</span>
-              <Button
-                type="button"
-                variant="outline"
-                className="min-w-0 w-full justify-between px-2 font-normal sm:px-3"
-                aria-label="Pilih bulan tagihan"
-                onClick={() => setBillingMonthPickerOpen(true)}
-              >
-                <span className="truncate">{billingMonthFilter === 'all' ? 'Semua Bulan' : billingMonthFilter}</span>
-                <ChevronDown className="ml-1 h-4 w-4 shrink-0 text-muted-foreground" />
-              </Button>
-            </div>
-            <div className="min-w-0 space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Tahun</span>
-              <Select value={billingYearFilter} onValueChange={setBillingYearFilter}>
-                <SelectTrigger className="w-full" aria-label="Tahun tagihan"><SelectValue placeholder="Tahun" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua</SelectItem>
-                  {billingYears.map((year) => <SelectItem key={year} value={String(year)}>{year}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+        <div className="flex justify-end">
+          <div className="w-full min-w-0 space-y-1.5 sm:w-48">
             <div className="min-w-0 space-y-1.5">
               <span className="text-xs font-medium text-muted-foreground">Status</span>
               <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
@@ -197,48 +135,9 @@ export default function AllCustomersPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="min-w-0 space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Tanggal input</span>
-              <div className="relative">
-                <Input
-                  type="date"
-                  aria-label="Tanggal input tagihan"
-                  value={billingInputDateFilter}
-                  data-empty={billingInputDateFilter === ""}
-                  onChange={(event) => setBillingInputDateFilter(event.target.value)}
-                  className="date-input-calendar min-w-0 w-full px-2 pr-9 sm:px-3"
-                />
-                <CalendarDays aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              </div>
-            </div>
           </div>
         </div>
       </div>
-
-      <Dialog open={billingMonthPickerOpen} onOpenChange={setBillingMonthPickerOpen}>
-        <DialogContent className="rounded-2xl sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Filter Bulan Tagihan</DialogTitle>
-            <DialogDescription>Tampilkan pelanggan dengan tagihan pada bulan tertentu.</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-3 gap-3">
-            <Button type="button" variant={billingMonthFilter === 'all' ? 'default' : 'outline'} onClick={() => {
-              setBillingMonthFilter('all');
-              setBillingMonthPickerOpen(false);
-            }}>
-              Semua
-            </Button>
-            {months.map((month, index) => (
-              <Button key={month} type="button" variant={billingMonthFilter === month ? 'default' : 'outline'} onClick={() => {
-                setBillingMonthFilter(month);
-                setBillingMonthPickerOpen(false);
-              }}>
-                {monthShortNames[index]}
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {error && (
         <div role="alert" className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">

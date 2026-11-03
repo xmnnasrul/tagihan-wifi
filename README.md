@@ -9,6 +9,7 @@ Aplikasi administrasi pelanggan WiFi untuk mengelola paket, tagihan, pembayaran,
 - Tagihan bulanan otomatis untuk pelanggan aktif, mulai tanggal 15 waktu Jakarta.
 - Pembayaran penuh dan cicilan; pembayaran tunggakan dialokasikan ke tagihan tertua.
 - Pencatatan kunjungan dan rekap setoran harian.
+- Catatan operasional per admin dengan checklist selesai dan penghapusan catatan.
 - Laporan tunggakan yang hanya mencakup pelanggan aktif. Pelanggan arsip beserta riwayatnya tidak masuk laporan ini.
 - Arsip dan pemulihan pelanggan. Penghapusan permanen turut menghapus riwayat tagihan.
 - Ekspor data tagihan ke CSV, XLSX, atau TXT.

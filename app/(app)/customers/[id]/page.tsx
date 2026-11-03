@@ -101,6 +101,7 @@ export default function CustomerDetailPage() {
   const searchParams = useSearchParams();
   const customerId = (params?.id as string) || '';
   const customerName = searchParams.get('name') || '';
+  const isArchiveView = searchParams.get('archived') === 'true';
   const [customer, setCustomer] = useState<{ name: string; address: string; phone?: string; status?: 'active' | 'inactive'; packageId?: Package | string | null } | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
   const [billings, setBillings] = useState<Billing[]>([]);
@@ -156,7 +157,8 @@ export default function CustomerDetailPage() {
 
   const fetchBillings = useCallback(async () => {
     try {
-      const res = await fetch(`/api/billings?customerId=${encodeURIComponent(customerId)}`);
+      const archiveQuery = isArchiveView ? '&includeArchived=true' : '';
+      const res = await fetch(`/api/billings?customerId=${encodeURIComponent(customerId)}${archiveQuery}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Gagal mengambil riwayat tagihan');
       setBillings(Array.isArray(data) ? data.filter(Boolean) : []);
@@ -169,7 +171,7 @@ export default function CustomerDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [customerId]);
+  }, [customerId, isArchiveView]);
 
   useEffect(() => {
     if (!customerId) return;
@@ -257,11 +259,14 @@ export default function CustomerDetailPage() {
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
-      await fetch(`/api/billings?id=${deleteId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/billings?id=${deleteId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal menghapus tagihan');
+      toast.success(data.message || 'Tagihan berhasil dihapus');
       await fetchBillings();
-    } catch {
-    } finally {
       setDeleteId(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Gagal menghapus tagihan');
     }
   };
 
@@ -418,10 +423,10 @@ export default function CustomerDetailPage() {
             <div className="flex-1 min-w-0">
               <h1 className="text-2xl font-bold tracking-tight">{displayCustomerName}</h1>
               <div className="flex items-center gap-4 mt-2 flex-wrap">
-                {billings[0]?.address && (
+                {customer?.address && (
                   <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                     <MapPin className="h-3.5 w-3.5" />
-                    {billings[0].address}
+                    {customer.address}
                   </span>
                 )}
                 {currentPackage?.name && (

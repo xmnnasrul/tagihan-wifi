@@ -12,10 +12,18 @@ Aplikasi administrasi pelanggan WiFi untuk mengelola paket, tagihan, pembayaran,
 - Catatan operasional per admin dengan checklist selesai dan penghapusan catatan.
 - Laporan tunggakan yang hanya mencakup pelanggan aktif. Pelanggan arsip beserta riwayatnya tidak masuk laporan ini.
 - Arsip dan pemulihan pelanggan. Penghapusan permanen turut menghapus riwayat tagihan.
+- Asisten AI untuk pelanggan, tagihan/pembayaran, laporan, arsip, dan penagihan; riwayat chat bersifat privat per akun dan otomatis kedaluwarsa setelah lima hari.
 - Ekspor data tagihan ke CSV, XLSX, atau TXT.
 - Audit aktivitas, profil akun, pengelolaan admin, tema terang/gelap, dan tampilan responsif.
 
-Chat admin tidak tersedia.
+### Chat AI
+
+- Rexxa membantu obrolan umum serta pertanyaan tentang pelanggan, tagihan/pembayaran, laporan, arsip, dan penagihan.
+- Admin hanya dapat memakai Chat AI setelah aksesnya diaktifkan superadmin. Pengaturan Base URL, API Key, dan model hanya dapat diubah superadmin.
+- Konfigurasi AI disimpan di `localStorage` browser. Aplikasi memerlukan penyedia API kompatibel OpenAI yang mendukung `GET /models` dan `POST /chat/completions`.
+- Untuk pertanyaan tentang data website, server mengambil konteks relevan dari MongoDB dengan pembatasan kepemilikan akun. Konteks tersebut dikirim bersama pertanyaan ke penyedia AI; AI tidak terhubung langsung ke database.
+- API Key dikirim langsung dari browser ke penyedia AI, dan konteks pelanggan yang relevan—termasuk alamat untuk hasil pencarian pelanggan tertentu—dapat diteruskan ke penyedia tersebut. Periksa kebijakan privasi penyedia sebelum menggunakannya.
+- Riwayat chat disimpan di MongoDB, privat per akun, dan kedaluwarsa setelah lima hari. Riwayat ditampilkan kembali, tetapi tidak dikirim sebagai konteks percakapan sebelumnya ke model.
 
 ## Role
 
@@ -67,7 +75,7 @@ npm test
 npm run build
 ```
 
-Tes mencakup akses API berbasis role, pembagian kepemilikan data, keamanan header, alokasi pembayaran, dan pengecualian pelanggan arsip dari laporan tunggakan.
+Tes mencakup akses API berbasis role, pembagian kepemilikan data, keamanan header, konteks dan riwayat Chat AI, alokasi pembayaran, dan pengecualian pelanggan arsip dari laporan tunggakan.
 
 ## Keamanan
 

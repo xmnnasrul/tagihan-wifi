@@ -18,9 +18,9 @@ const navGroups = [
     { href: '/customers/all', label: 'Pelanggan', icon: Users },
     { href: '/collector', label: 'Setoran Harian', icon: WalletCards },
     { href: '/arrears', label: 'Tunggakan', icon: FileText },
-    { href: '/chat', label: 'Asisten tagihan', icon: MessageCircle },
+    { href: '/chat', label: 'Chat AI', icon: MessageCircle },
     { href: '/notes', label: 'Catatan', icon: StickyNote },
-    { href: '/billing/add', label: 'Tambah Tagihan', icon: FilePlus },
+    { href: '/billing/add', label: 'Tambah Pelanggan', icon: FilePlus },
   ] },
   { label: 'Data', items: [
     { href: '/packages', label: 'Paket Internet', icon: Package },

@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Billing from './models/Billing';
 import Customer, { LEGACY_DATA_OWNER_ID } from './models/Customer';
 import Package from './models/Package';
+import ChatMessage from './models/ChatMessage';
 
 const MONGODB_URI = process.env.MONGODB_URI || '';
 
@@ -21,6 +22,7 @@ declare global {
 const cached: MongooseCache = global.mongoose || { conn: null, promise: null };
 let billingIndexesPromise: Promise<void> | null = null;
 let ownershipMigrationPromise: Promise<void> | null = null;
+let chatHistoryIndexesPromise: Promise<void> | null = null;
 
 if (!global.mongoose) {
   global.mongoose = cached;
@@ -107,6 +109,21 @@ async function ensureDataOwnership() {
   await ownershipMigrationPromise;
 }
 
+async function ensureChatHistoryIndexes() {
+  if (!chatHistoryIndexesPromise) {
+    const indexPromise = Promise.all([
+      ChatMessage.collection.createIndex({ ownerId: 1, createdAt: -1 }),
+      ChatMessage.collection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+    ]).then(() => undefined);
+    chatHistoryIndexesPromise = indexPromise;
+    void indexPromise.catch(() => {
+      if (chatHistoryIndexesPromise === indexPromise) chatHistoryIndexesPromise = null;
+    });
+  }
+
+  await chatHistoryIndexesPromise;
+}
+
 export async function connectDB() {
   if (!cached.conn) {
     if (!cached.promise) {
@@ -127,5 +144,6 @@ export async function connectDB() {
 
   await ensureBillingIndexes();
   await ensureDataOwnership();
+  await ensureChatHistoryIndexes();
   return cached.conn;
 }

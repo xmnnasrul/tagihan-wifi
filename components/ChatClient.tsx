@@ -1,7 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Bot, CircleAlert, Loader2, Send, ShieldCheck, UserRound } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -13,35 +12,35 @@ import {
   AI_CONFIG_STORAGE_KEY,
   buildChatRequestBody,
   ChatAIConfig,
-  ChatArrearsCustomer,
   DEFAULT_CHAT_AI_CONFIG,
   getChatAPIErrorMessage,
   getChatCompletionEndpoint,
+  getChatContextTopics,
   getChatModelsEndpoint,
   getChatModelIDs,
   getChatResponseContent,
   normalizeChatAIConfig,
   normalizeChatBaseURL,
   normalizeChatModel,
-  parseChatArrearsCustomers,
 } from '@/lib/chat-answer';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
-const suggestions = [
-  'Siapa yang belum bayar?',
-  'Berapa total tunggakan?',
-  'Tampilkan tunggakan Siti',
-];
+function isMessage(value: unknown): value is Message {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  return 'role' in value
+    && (value.role === 'user' || value.role === 'assistant')
+    && 'content' in value
+    && typeof value.content === 'string';
+}
 
 export default function ChatClient({ canManageSettings }: { canManageSettings: boolean }) {
-  const [customers, setCustomers] = useState<ChatArrearsCustomer[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState('');
   const [input, setInput] = useState('');
-  const [loadingArrears, setLoadingArrears] = useState(true);
   const [sending, setSending] = useState(false);
   const [sendStage, setSendStage] = useState<'context' | 'answer'>('context');
-  const [arrearsError, setArrearsError] = useState('');
   const [chatError, setChatError] = useState('');
   const [config, setConfig] = useState<ChatAIConfig | null>(null);
   const [configLoaded, setConfigLoaded] = useState(false);
@@ -56,38 +55,35 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
   const [settingsOpen, setSettingsOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const refreshArrears = useCallback(async () => {
-    const response = await fetch('/api/chat/context', { cache: 'no-store' });
-    const data: unknown = await response.json();
-    const records = parseChatArrearsCustomers(data);
-    if (!response.ok || !records) {
-      const errorMessage = typeof data === 'object' && data !== null
-        && 'error' in data && typeof data.error === 'string'
-        ? data.error
-        : 'Data tunggakan gagal dimuat.';
-      throw new Error(errorMessage);
-    }
-
-    setCustomers(records);
-    setArrearsError('');
-    return records;
-  }, []);
-
   useEffect(() => {
     let active = true;
-    void refreshArrears()
-      .catch((error: unknown) => {
-        if (active) {
-          setArrearsError(error instanceof TypeError
-            ? 'Laporan tunggakan tidak dapat dimuat. Periksa koneksi lalu coba lagi.'
-            : error instanceof Error ? error.message : 'Data tunggakan gagal dimuat.');
+    void fetch('/api/chat/history', { cache: 'no-store' })
+      .then(async (response) => {
+        const data: unknown = await response.json();
+        if (!response.ok) {
+          throw new Error(typeof data === 'object' && data !== null
+            && 'error' in data && typeof data.error === 'string'
+            ? data.error
+            : 'Riwayat chat gagal dimuat.');
         }
+        if (
+          typeof data !== 'object' || data === null || !('messages' in data)
+          || !Array.isArray(data.messages) || !data.messages.every(isMessage)
+        ) {
+          throw new Error('Format riwayat chat tidak valid.');
+        }
+        if (active) setMessages(data.messages);
+      })
+      .catch((error: unknown) => {
+        if (active) setHistoryError(error instanceof TypeError
+          ? 'Riwayat chat tidak dapat dimuat. Periksa koneksi lalu coba lagi.'
+          : error instanceof Error ? error.message : 'Riwayat chat gagal dimuat.');
       })
       .finally(() => {
-        if (active) setLoadingArrears(false);
+        if (active) setHistoryLoading(false);
       });
     return () => { active = false; };
-  }, [refreshArrears]);
+  }, []);
 
   useEffect(() => {
     try {
@@ -121,6 +117,10 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
     event.preventDefault();
     setSettingsError('');
     setSettingsSaved(false);
+    if (!canManageSettings) {
+      setSettingsError('Hanya superadmin yang dapat mengubah pengaturan AI.');
+      return;
+    }
 
     const normalizedBaseURL = normalizeChatBaseURL(baseURL);
     if (!normalizedBaseURL) {
@@ -130,6 +130,10 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
     const normalizedModel = normalizeChatModel(model);
     if (!normalizedModel) {
       setSettingsError('Nama model wajib diisi dan maksimal 120 karakter.');
+      return;
+    }
+    if (!availableModels.includes(normalizedModel)) {
+      setSettingsError('Pilih model AI dari daftar yang tersedia terlebih dahulu.');
       return;
     }
     const nextConfig = normalizeChatAIConfig({
@@ -155,7 +159,21 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
     }
   }
 
+  async function saveHistory(messagesToSave: Message[]) {
+    const response = await fetch('/api/chat/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: messagesToSave }),
+    });
+    if (!response.ok) throw new Error('Riwayat chat gagal disimpan.');
+  }
+
   async function loadModels(overrides?: ChatAIConfig) {
+    if (!canManageSettings) {
+      setSettingsError('Hanya superadmin yang dapat mengubah pengaturan AI.');
+      return;
+    }
+
     const apiKey = overrides?.apiKey || apiKeyInput.trim() || config?.apiKey;
     const normalizedBaseURL = normalizeChatBaseURL(overrides?.baseURL || baseURL);
     setModelsError('');
@@ -207,6 +225,11 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
   }
 
   function clearSettings() {
+    if (!canManageSettings) {
+      setSettingsError('Hanya superadmin yang dapat mengubah pengaturan AI.');
+      return;
+    }
+
     try {
       window.localStorage.removeItem(AI_CONFIG_STORAGE_KEY);
       setConfig(null);
@@ -224,17 +247,44 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
 
   async function submitQuestion(question: string) {
     const trimmed = question.trim();
-    if (!trimmed || loadingArrears || sending || !configLoaded || !config) return;
+    if (!trimmed || sending || historyLoading || !configLoaded || !config) return;
 
     setInput('');
     setChatError('');
     setSending(true);
     setSendStage('context');
-    setMessages((current) => [...current, { role: 'user', content: trimmed }]);
+    const userMessage: Message = { role: 'user', content: trimmed };
+    setMessages((current) => [...current, userMessage]);
     let requestingProvider = false;
+    let userHistorySaved = false;
 
     try {
-      const latestCustomers = await refreshArrears();
+      try {
+        await saveHistory([userMessage]);
+        userHistorySaved = true;
+        setHistoryError('');
+      } catch {
+        setHistoryError('Pesan terkirim, tetapi riwayat chat tidak dapat disimpan.');
+      }
+
+      const topics = getChatContextTopics(trimmed);
+      let context: unknown = null;
+      if (topics.length > 0) {
+        const contextResponse = await fetch(`/api/chat/context?question=${encodeURIComponent(trimmed)}`, {
+          cache: 'no-store',
+        });
+        const contextData: unknown = await contextResponse.json();
+        if (!contextResponse.ok) {
+          const errorMessage = typeof contextData === 'object' && contextData !== null
+            && 'error' in contextData && typeof contextData.error === 'string'
+            ? contextData.error
+            : 'Data website gagal dimuat.';
+          throw new Error(errorMessage);
+        }
+        context = typeof contextData === 'object' && contextData !== null && 'data' in contextData
+          ? contextData.data
+          : null;
+      }
       setSendStage('answer');
 
       requestingProvider = true;
@@ -244,7 +294,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
           'Content-Type': 'application/json',
           Authorization: `Bearer ${config.apiKey}`,
         },
-        body: JSON.stringify(buildChatRequestBody(config.model, trimmed, latestCustomers)),
+        body: JSON.stringify(buildChatRequestBody(config.model, trimmed, context)),
       });
       let responseData: unknown;
       try {
@@ -256,12 +306,23 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
 
       const answer = getChatResponseContent(responseData);
       if (!answer) throw new Error('Penyedia AI mengirim jawaban kosong atau tidak dikenal.');
-      setMessages((current) => [...current, { role: 'assistant', content: answer }]);
+      const assistantMessage: Message = { role: 'assistant', content: answer };
+      setMessages((current) => [...current, assistantMessage]);
+      if (userHistorySaved) {
+        try {
+          await saveHistory([assistantMessage]);
+          setHistoryError('');
+        } catch {
+          setHistoryError('Jawaban diterima, tetapi riwayat chat tidak dapat disimpan.');
+        }
+      } else {
+        setHistoryError('Jawaban diterima, tetapi riwayat chat tidak dapat disimpan.');
+      }
     } catch (error) {
       if (error instanceof TypeError) {
         setChatError(requestingProvider
           ? 'Tidak dapat terhubung ke penyedia AI. Periksa koneksi, Base URL, dan dukungan CORS dari penyedia.'
-          : 'Laporan tunggakan tidak dapat dimuat. Periksa koneksi lalu coba lagi.');
+          : 'Data website tidak dapat dimuat. Periksa koneksi lalu coba lagi.');
       } else {
         setChatError(error instanceof Error ? error.message : 'Chat AI gagal memproses pertanyaan.');
       }
@@ -275,20 +336,14 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
     void submitQuestion(input);
   }
 
-  const canSend = Boolean(config) && configLoaded && !loadingArrears && !sending && Boolean(input.trim());
+  const canSend = Boolean(config) && configLoaded && !historyLoading && !sending && Boolean(input.trim());
 
   return (
     <main className="app-page mx-auto flex min-h-[calc(100dvh-8rem)] max-w-5xl flex-col gap-4 pb-4 lg:min-h-[calc(100dvh-6rem)]">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1>Asisten tagihan</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Tanyakan sisa tagihan berdasarkan catatan terbaru pelanggan.
-          </p>
+          <h1>Rexxa</h1>
         </div>
-        <Link href="/arrears" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
-          Buka laporan tunggakan
-        </Link>
       </header>
 
       {canManageSettings && (
@@ -309,7 +364,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
             <div id="chat-ai-settings" className="border-t border-border px-4 py-4">
               <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
                 Kunci API disimpan hanya di localStorage browser ini dan dikirim langsung ke penyedia AI.
-                Kunci tidak dikirim ke server aplikasi. Catatan tunggakan yang diperlukan untuk menjawab juga dikirim ke penyedia tersebut.
+                Kunci tidak dikirim ke server aplikasi. Data website yang diperlukan untuk menjawab juga dikirim ke penyedia tersebut.
               </p>
               <form onSubmit={saveSettings} className="grid gap-4 md:grid-cols-2">
                 <div className="grid gap-2">
@@ -328,45 +383,23 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                     required
                   />
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="chat-ai-model">Model AI</Label>
-                  {availableModels.length > 0 && (
-                    <select
-                      aria-label="Pilih model yang tersedia"
-                      value={availableModels.includes(model) ? model : ''}
-                      onChange={(event) => {
-                        if (event.target.value) {
-                          setModel(event.target.value);
-                          setSettingsSaved(false);
-                        }
-                      }}
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <option value="">Pilih dari {availableModels.length} model Vikey</option>
-                      {availableModels.map((modelID) => <option key={modelID} value={modelID}>{modelID}</option>)}
-                    </select>
-                  )}
-                  <Input
-                    id="chat-ai-model"
-                    value={model}
-                    onChange={(event) => {
-                      setModel(event.target.value);
-                      setSettingsSaved(false);
-                    }}
-                    maxLength={120}
-                    required
-                    aria-describedby="chat-ai-model-hint"
-                  />
-                  <p id="chat-ai-model-hint" className="text-xs text-muted-foreground">
-                    Pilih dari daftar Vikey atau masukkan ID model secara manual.
-                  </p>
-                </div>
                 <div className="grid gap-2 md:col-span-2">
                   <Label htmlFor="chat-ai-api-key">API Key</Label>
                   <Input
                     id="chat-ai-api-key"
                     type="password"
                     value={apiKeyInput}
+                    onBlur={(event) => {
+                      const nextTarget = event.relatedTarget;
+                      if (
+                        apiKeyInput.trim()
+                        && !(nextTarget instanceof HTMLButtonElement)
+                        && !loadingModels
+                        && availableModels.length === 0
+                      ) {
+                        void loadModels();
+                      }
+                    }}
                     onChange={(event) => {
                       setApiKeyInput(event.target.value);
                       setAvailableModels([]);
@@ -379,13 +412,48 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                     aria-describedby="chat-ai-key-hint"
                   />
                   <p id="chat-ai-key-hint" className="text-xs text-muted-foreground">
-                    Konfigurasi ini berlaku untuk browser dan profil pengguna yang sama.
+                    Daftar model dimuat saat Anda meninggalkan kolom ini, tanpa perlu menyimpan dulu. Konfigurasi berlaku untuk browser dan profil pengguna yang sama.
+                  </p>
+                </div>
+                <div className="grid gap-2 md:col-span-2">
+                  <Label htmlFor="chat-ai-model">Model AI</Label>
+                  <select
+                    id="chat-ai-model"
+                    value={availableModels.includes(model) ? model : ''}
+                    onFocus={() => {
+                      if (!apiKeyInput.trim() && config?.apiKey && !loadingModels && availableModels.length === 0) {
+                        void loadModels();
+                      }
+                    }}
+                    onChange={(event) => {
+                      setModel(event.target.value);
+                      setSettingsSaved(false);
+                    }}
+                    required
+                    aria-describedby="chat-ai-model-hint"
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="" disabled>
+                      {loadingModels
+                        ? 'Memuat daftar model…'
+                        : availableModels.length > 0
+                          ? 'Pilih model AI'
+                          : apiKeyInput.trim() || config?.apiKey
+                            ? 'Pilih model AI'
+                            : 'Isi API Key dulu'}
+                    </option>
+                    {availableModels.map((modelID) => <option key={modelID} value={modelID}>{modelID}</option>)}
+                  </select>
+                  <p id="chat-ai-model-hint" className="text-xs text-muted-foreground">
+                    Pilih salah satu model dari daftar.
                   </p>
                   <div className="flex flex-wrap items-center gap-3">
-                    <Button type="button" variant="outline" onClick={() => void loadModels()} disabled={loadingModels}>
-                      {loadingModels && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      {loadingModels ? 'Memuat model…' : 'Tampilkan model Vikey'}
-                    </Button>
+                    {loadingModels && (
+                      <span className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        Memuat model…
+                      </span>
+                    )}
                     {availableModels.length > 0 && (
                       <span className="text-sm text-muted-foreground" role="status">
                         {availableModels.length} model tersedia
@@ -418,10 +486,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         <div className="flex min-h-14 items-center gap-3 border-b border-border px-4 py-3">
           <Bot className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">Catatan tunggakan</p>
-            <p className="text-xs text-muted-foreground" aria-live="polite">
-              {loadingArrears ? 'Memuat data…' : arrearsError ? 'Data belum tersedia' : `${customers.length} pelanggan dengan sisa tagihan`}
-            </p>
+            <p className="text-sm font-semibold">Rexxa</p>
           </div>
           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
             <ShieldCheck className="h-4 w-4" aria-hidden="true" />
@@ -430,54 +495,10 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         </div>
 
         <section className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-6" aria-label="Percakapan" aria-live="polite">
-          {messages.length === 0 && !loadingArrears && !arrearsError && (
+          {messages.length === 0 && !historyLoading && (
             <div className="mx-auto my-auto flex w-full max-w-xl flex-col items-center py-8 text-center">
               <h2 className="text-lg font-semibold">Apa yang ingin Anda ketahui?</h2>
-              <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                Jawaban AI memakai catatan tunggakan sebagai konteks. Periksa kembali sebelum mengambil tindakan.
-              </p>
-              {!loadingArrears && !arrearsError && config && (
-                <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {suggestions.map((suggestion) => (
-                    <button
-                      type="button"
-                      key={suggestion}
-                      onClick={() => void submitQuestion(suggestion)}
-                      disabled={sending}
-                      className="min-h-10 rounded-md border border-border bg-background px-3 py-2 text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
-          )}
-
-          {loadingArrears && messages.length === 0 && (
-            <div className="mx-auto my-auto flex items-center gap-2 text-sm text-muted-foreground" role="status">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Memuat laporan tunggakan…
-            </div>
-          )}
-
-          {arrearsError && (
-            <Alert variant="destructive">
-              <CircleAlert className="h-4 w-4" aria-hidden="true" />
-              <AlertDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span>{arrearsError}</span>
-                <button type="button" className="underline underline-offset-4" onClick={() => {
-                  setLoadingArrears(true);
-                  void refreshArrears()
-                    .catch((error: unknown) => setArrearsError(error instanceof TypeError
-                      ? 'Laporan tunggakan tidak dapat dimuat. Periksa koneksi lalu coba lagi.'
-                      : error instanceof Error ? error.message : 'Data tunggakan gagal dimuat.'))
-                    .finally(() => setLoadingArrears(false));
-                }}>
-                  Muat ulang
-                </button>
-              </AlertDescription>
-            </Alert>
           )}
 
           {messages.map((message, index) => (
@@ -489,6 +510,20 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
               {message.role === 'user' && <UserRound className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
             </div>
           ))}
+          {historyLoading && messages.length === 0 && (
+            <div className="mx-auto my-auto flex items-center gap-2 text-sm text-muted-foreground" role="status">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Memuat riwayat chat…
+            </div>
+          )}
+
+          {historyError && (
+            <Alert variant="destructive" role="alert">
+              <CircleAlert className="h-4 w-4" aria-hidden="true" />
+              <AlertDescription>{historyError}</AlertDescription>
+            </Alert>
+          )}
+
           {sending && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -515,22 +550,22 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                   void submitQuestion(input);
                 }
               }}
-              aria-label="Tulis pertanyaan tentang tunggakan"
-              placeholder="Tulis pertanyaan tentang tunggakan…"
+              aria-label="Tulis pertanyaan untuk asisten AI"
+              placeholder="Tulis pertanyaan untuk asisten AI…"
               rows={1}
               maxLength={500}
-              disabled={loadingArrears || sending || !configLoaded || !config}
+              disabled={sending || historyLoading || !configLoaded || !config}
               className="max-h-32 min-h-10 resize-y border-0 px-2 py-2 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
             />
             <Button type="submit" size="icon" aria-label="Kirim pertanyaan" disabled={!canSend}>
               <Send className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
-          <p className="mt-2 px-1 text-xs text-muted-foreground">
-            {configLoaded && !config
-              ? 'Pengaturan AI belum tersedia di browser ini. Hubungi superadmin.'
-              : 'Jawaban AI menggunakan catatan tunggakan sebagai konteks, tetapi tetap perlu diperiksa. Jangan masukkan informasi sensitif.'}
-          </p>
+          {configLoaded && !config && (
+            <p className="mt-2 px-1 text-xs text-muted-foreground">
+              Pengaturan AI belum tersedia di browser ini. Hubungi superadmin.
+            </p>
+          )}
         </form>
       </Card>
     </main>

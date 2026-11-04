@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCurrentUser, useCurrentUserLoading } from '@/components/CurrentUserProvider';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { getScheduledTheme, THEME_PREFERENCE_KEY } from '@/components/ThemeProvider';
 import { USER_ROLES, UserRole } from '@/lib/roles';
@@ -29,6 +30,7 @@ interface Admin {
   role: string;
   roles: UserRole[];
   isActive: boolean;
+  chatAccessEnabled: boolean;
   createdAt: string;
 }
 
@@ -46,6 +48,7 @@ export default function AdminsPage() {
   const [roleEditingAccount, setRoleEditingAccount] = useState<Admin | null>(null);
   const [roleDraft, setRoleDraft] = useState<UserRole[]>([]);
   const [savingRoles, setSavingRoles] = useState(false);
+  const [savingChatAccessId, setSavingChatAccessId] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -143,6 +146,25 @@ export default function AdminsPage() {
       await fetchAdmins();
     } catch (toggleError) {
       toast.error(toggleError instanceof Error ? toggleError.message : 'Gagal mengubah status admin');
+    }
+  };
+
+  const handleChatAccessToggle = async (admin: Admin, enabled: boolean) => {
+    setSavingChatAccessId(admin._id);
+    try {
+      const response = await fetch('/api/admins', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: admin._id, chatAccessEnabled: enabled }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Gagal mengubah akses Chat AI');
+      toast.success(data.message || 'Akses Chat AI diperbarui');
+      await fetchAdmins();
+    } catch (accessError) {
+      toast.error(accessError instanceof Error ? accessError.message : 'Gagal mengubah akses Chat AI');
+    } finally {
+      setSavingChatAccessId('');
     }
   };
 
@@ -266,12 +288,13 @@ export default function AdminsPage() {
           <p className="py-6 text-sm text-muted-foreground">Tidak ada akun admin.</p>
         ) : (
           <div className="overflow-x-auto rounded-md border border-border">
-            <Table className="min-w-[760px]">
+            <Table className="min-w-[920px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Akun</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Akses Chat AI</TableHead>
                   <TableHead>Dibuat</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
@@ -291,6 +314,23 @@ export default function AdminsPage() {
                       <Badge variant={admin.isActive ? 'default' : 'secondary'}>
                         {admin.isActive ? 'Aktif' : 'Nonaktif'}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {admin.roles.includes('admin') ? (
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={admin.chatAccessEnabled}
+                            onCheckedChange={(enabled) => void handleChatAccessToggle(admin, enabled)}
+                            disabled={savingChatAccessId === admin._id || !admin.isActive}
+                            aria-label={`Akses Chat AI untuk ${admin.username}`}
+                          />
+                          <span className="text-sm text-muted-foreground">
+                            {admin.chatAccessEnabled ? 'Diizinkan' : 'Tidak diizinkan'}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground" aria-label="Tidak berlaku">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
                       {new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(admin.createdAt))}

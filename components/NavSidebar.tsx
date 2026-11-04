@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, History, Shield, Users, UserCircle2, FileText, WalletCards, MoreHorizontal, ArrowUpRight, StickyNote } from 'lucide-react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, History, Shield, Users, UserCircle2, FileText, WalletCards, MoreHorizontal, ArrowUpRight, StickyNote, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ThemeToggle from '@/components/ThemeToggle';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,7 @@ const navGroups = [
     { href: '/customers/all', label: 'Pelanggan', icon: Users },
     { href: '/collector', label: 'Setoran Harian', icon: WalletCards },
     { href: '/arrears', label: 'Tunggakan', icon: FileText },
+    { href: '/chat', label: 'Asisten tagihan', icon: MessageCircle },
     { href: '/notes', label: 'Catatan', icon: StickyNote },
     { href: '/billing/add', label: 'Tambah Tagihan', icon: FilePlus },
   ] },

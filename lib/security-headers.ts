@@ -5,7 +5,7 @@ export function createSecurityHeaders(nonce: string, isProduction: boolean): Rec
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    `connect-src 'self'${isProduction ? '' : ' ws: wss:'}`,
+    `connect-src 'self' https://api.vikey.ai${isProduction ? '' : ' ws: wss:'}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

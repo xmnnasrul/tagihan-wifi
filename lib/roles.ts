@@ -25,6 +25,10 @@ export function hasAnyRole(roles: readonly UserRole[], allowedRoles: readonly Us
   return allowedRoles.some((allowedRole) => roles.includes(allowedRole));
 }
 
+export function canAccessAIChat(roles: readonly UserRole[], chatAccessEnabled: boolean): boolean {
+  return roles.includes('superadmin') || (roles.includes('admin') && chatAccessEnabled);
+}
+
 export function canAccessApi(
   isAuthenticated: boolean,
   roles: readonly UserRole[],

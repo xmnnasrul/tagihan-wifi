@@ -17,7 +17,7 @@ export async function GET() {
     await connectDB();
     const currentUser = await getCurrentUser();
     const accounts = await User.find({})
-      .select('username role roles isActive createdAt')
+      .select('username role roles isActive chatAccessEnabled createdAt')
       .sort({ username: 1 })
       .lean();
 
@@ -28,6 +28,7 @@ export async function GET() {
         role: getPrimaryRole(normalizeUserRoles(account.role, account.roles)) || '',
         roles: normalizeUserRoles(account.role, account.roles),
         isActive: account.isActive !== false,
+        chatAccessEnabled: account.chatAccessEnabled === true,
       })),
     });
   } catch {
@@ -104,7 +105,14 @@ export async function PATCH(request: Request) {
 
     await connectDB();
     const body = await request.json();
-    const { id, isActive, password, roles: requestedRoles, username: requestedUsername } = body;
+    const {
+      id,
+      isActive,
+      password,
+      roles: requestedRoles,
+      username: requestedUsername,
+      chatAccessEnabled: requestedChatAccessEnabled,
+    } = body;
     if (typeof id !== 'string') {
       return NextResponse.json({ error: 'ID admin wajib diisi' }, { status: 400 });
     }
@@ -160,6 +168,38 @@ export async function PATCH(request: Request) {
         message: 'Role akun diperbarui.',
         roles: nextRoles,
         requiresLogin: actor?.username === admin.username,
+      });
+    }
+
+    if (requestedChatAccessEnabled !== undefined) {
+      if (typeof requestedChatAccessEnabled !== 'boolean') {
+        return NextResponse.json({ error: 'Status akses Chat AI tidak valid' }, { status: 400 });
+      }
+
+      const targetRoles = normalizeUserRoles(admin.role, admin.roles);
+      if (!targetRoles.includes('admin')) {
+        return NextResponse.json({ error: 'Akses Chat AI hanya dapat diatur untuk akun admin' }, { status: 400 });
+      }
+
+      const previousAccess = admin.chatAccessEnabled === true;
+      admin.chatAccessEnabled = requestedChatAccessEnabled;
+      await admin.save();
+      await writeAuditLog({
+        actorUsername: actor?.username || 'Admin',
+        action: 'admin.chat_access_updated',
+        entityType: 'admin',
+        entityId: admin._id.toString(),
+        entityLabel: admin.username,
+        summary: `Akses Chat AI untuk ${admin.username} ${requestedChatAccessEnabled ? 'diaktifkan' : 'dicabut'}`,
+        changes: {
+          before: { chatAccessEnabled: previousAccess },
+          after: { chatAccessEnabled: admin.chatAccessEnabled },
+        },
+      });
+
+      return NextResponse.json({
+        message: `Akses Chat AI ${requestedChatAccessEnabled ? 'diaktifkan' : 'dicabut'}`,
+        chatAccessEnabled: admin.chatAccessEnabled,
       });
     }
 

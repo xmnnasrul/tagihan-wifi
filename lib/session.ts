@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { verifyToken, COOKIE_NAME, TokenPayload } from './auth';
 import { connectDB } from './mongodb';
 import User from './models/User';
-import { canAccessApi, getPrimaryRole, normalizeUserRoles, UserRole } from './roles';
+import { canAccessAIChat, canAccessApi, getPrimaryRole, normalizeUserRoles, UserRole } from './roles';
 
 export async function getCurrentUser(): Promise<TokenPayload | null> {
   const cookieStore = await cookies();
@@ -64,4 +64,23 @@ export async function requireAdmin(): Promise<NextResponse | null> {
 
 export async function requireSuperadmin(): Promise<NextResponse | null> {
   return requireAnyRole(['superadmin']);
+}
+
+export async function getAIChatPageAccess(): Promise<{ allowed: boolean; canManageSettings: boolean }> {
+  const user = await getCurrentUser();
+  if (!user) return { allowed: false, canManageSettings: false };
+
+  await connectDB();
+  const account = await User.findOne({
+    username: user.username,
+    isActive: { $ne: false },
+  }).select('role roles chatAccessEnabled').lean();
+  if (!account) return { allowed: false, canManageSettings: false };
+
+  const roles = normalizeUserRoles(account.role, account.roles);
+  const canManageSettings = roles.includes('superadmin');
+  return {
+    allowed: canAccessAIChat(roles, account.chatAccessEnabled === true),
+    canManageSettings,
+  };
 }

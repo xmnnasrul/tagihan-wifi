@@ -93,3 +93,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Gagal menyimpan riwayat chat' }, { status: 500 });
   }
 }
+
+export async function DELETE() {
+  const authError = await requireAuthenticatedUser();
+  if (authError) return authError;
+
+  try {
+    const access = await getAIChatPageAccess();
+    if (!access.allowed) return NextResponse.json({ error: 'Akses Chat AI ditolak' }, { status: 403 });
+
+    await connectDB();
+    const { ownerId } = await getDataOwnerScope();
+    const result = await ChatMessage.deleteMany({ ownerId });
+
+    return NextResponse.json({ deletedCount: result.deletedCount }, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  } catch (error) {
+    console.error('DELETE /api/chat/history failed:', error);
+    return NextResponse.json({ error: 'Gagal menghapus riwayat chat' }, { status: 500 });
+  }
+}

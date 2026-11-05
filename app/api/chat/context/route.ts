@@ -14,16 +14,16 @@ import {
   getMonthlyBillingAmounts,
 } from '@/lib/billing-amounts';
 import {
+  CHAT_MONTHS,
   getChatContextTopics,
   getChatCustomerAddressQualifierTerms,
+  getChatNewCustomerPeriod,
   matchesChatCustomerNameQuery,
   matchesChatCustomerAddressQuery,
+  requestsChatCustomerAddress,
+  selectChatCustomerMatchIds,
+  type ChatNewCustomerPeriod,
 } from '@/lib/chat-answer';
-
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
 
 function getJakartaPeriod() {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -32,14 +32,54 @@ function getJakartaPeriod() {
     month: 'numeric',
   }).formatToParts(new Date());
   return {
-    month: months[Number(parts.find((part) => part.type === 'month')?.value) - 1],
+    month: CHAT_MONTHS[Number(parts.find((part) => part.type === 'month')?.value) - 1],
     year: Number(parts.find((part) => part.type === 'year')?.value),
   };
 }
 
+function getJakartaDayRange(dayOffset: number) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).formatToParts(new Date());
+  const year = Number(parts.find((part) => part.type === 'year')?.value);
+  const month = Number(parts.find((part) => part.type === 'month')?.value);
+  const day = Number(parts.find((part) => part.type === 'day')?.value);
+  const jakartaOffsetMs = 7 * 60 * 60 * 1000;
+  const localStart = Date.UTC(year, month - 1, day + dayOffset);
+  return {
+    $gte: new Date(localStart - jakartaOffsetMs),
+    $lt: new Date(localStart + 24 * 60 * 60 * 1000 - jakartaOffsetMs),
+  };
+}
+
+function getJakartaMonthRange(year: number, month: typeof CHAT_MONTHS[number]) {
+  const monthIndex = CHAT_MONTHS.indexOf(month);
+  const jakartaOffsetMs = 7 * 60 * 60 * 1000;
+  return {
+    $gte: new Date(Date.UTC(year, monthIndex, 1) - jakartaOffsetMs),
+    $lt: new Date(Date.UTC(year, monthIndex + 1, 1) - jakartaOffsetMs),
+  };
+}
+
+function getNewCustomerMonthSelection(period: ChatNewCustomerPeriod) {
+  const current = getJakartaPeriod();
+  if (period === 'current') return { ...current, label: 'bulan ini' };
+  if (period === 'previous') {
+    const previous = new Date(Date.UTC(current.year, CHAT_MONTHS.indexOf(current.month) - 1, 1));
+    const month = CHAT_MONTHS[previous.getUTCMonth()];
+    const year = previous.getUTCFullYear();
+    return { month, year, label: 'bulan lalu' };
+  }
+  const year = period.year ?? current.year;
+  return { month: period.month, year, label: `${period.month} ${year}` };
+}
+
 function getRequestedPeriod(question: string) {
   const current = getJakartaPeriod();
-  const month = months.find((candidate) => question.toLocaleLowerCase().includes(candidate.toLocaleLowerCase()));
+  const month = CHAT_MONTHS.find((candidate) => question.toLocaleLowerCase().includes(candidate.toLocaleLowerCase()));
   const year = question.match(/\b20\d{2}\b/)?.[0];
   return { month: month || current.month, year: year ? Number(year) : current.year };
 }
@@ -82,27 +122,43 @@ export async function GET(request: Request) {
     const ownerScope = await getDataOwnerScope();
     const ownerFilter = getOwnerFilter(ownerScope);
     const includeArchived = topics.includes('archive');
+    const normalizedQuestion = ` ${normalizeText(question)} `;
+    const newCustomersPeriod = getChatNewCustomerPeriod(question);
+    const newCustomerSelection = newCustomersPeriod ? getNewCustomerMonthSelection(newCustomersPeriod) : null;
+    const asksNewCustomers = newCustomersPeriod !== null;
+    const asksAddress = requestsChatCustomerAddress(question);
+    const asksYesterdayVisit = topics.includes('collection')
+      && /\b(?:kemarin|hari sebelumnya)\b/u.test(normalizedQuestion);
     const statusFilter = includeArchived
       ? { status: 'inactive' as const }
       : { status: { $ne: 'inactive' as const } };
+    const createdAtFilter = newCustomerSelection
+      ? { createdAt: getJakartaMonthRange(newCustomerSelection.year, newCustomerSelection.month) }
+      : {};
     const allCustomers = await Customer.find({
       ...ownerFilter,
       ...statusFilter,
+      ...createdAtFilter,
     }).select('_id name').lean();
-    const normalizedQuestion = ` ${normalizeText(question)} `;
     const customersMatchingName = allCustomers.filter((customer) =>
       matchesChatCustomerNameQuery(question, customer.name));
     const nameMatchingIds = customersMatchingName.map((customer) => customer._id);
-    const hasAddressQualifier = customersMatchingName.some((customer) =>
-      getChatCustomerAddressQualifierTerms(question, customer.name).length > 0);
+    const hasAddressQualifier = customersMatchingName.length > 0
+      ? customersMatchingName.some((customer) =>
+        getChatCustomerAddressQualifierTerms(question, customer.name).length > 0)
+      : getChatCustomerAddressQualifierTerms(question, '').length > 0;
+    const addressSearchCandidates = customersMatchingName.length > 0
+      ? customersMatchingName
+      : hasAddressQualifier ? allCustomers : [];
     const addressMatchedIds = new Set<string>();
-    if (hasAddressQualifier && nameMatchingIds.length > 0) {
+    if (hasAddressQualifier && addressSearchCandidates.length > 0) {
+      const addressCandidateIds = addressSearchCandidates.map((customer) => customer._id);
       const candidatesWithAddress = await Customer.find({
         ...ownerFilter,
         ...statusFilter,
-        _id: { $in: nameMatchingIds },
+        _id: { $in: addressCandidateIds },
       }).select('_id address').lean();
-      const nameById = new Map(customersMatchingName.map((customer) => [customer._id.toString(), customer.name]));
+      const nameById = new Map(addressSearchCandidates.map((customer) => [customer._id.toString(), customer.name]));
       candidatesWithAddress.forEach((customer) => {
         const customerName = nameById.get(customer._id.toString());
         if (customerName && matchesChatCustomerAddressQuery(question, customerName, customer.address || '')) {
@@ -110,33 +166,43 @@ export async function GET(request: Request) {
         }
       });
     }
-    const matchingIds = addressMatchedIds.size > 0
-      ? customersMatchingName
-        .filter((customer) => addressMatchedIds.has(customer._id.toString()))
-        .map((customer) => customer._id)
-      : nameMatchingIds;
+    const addressMatchingIds = addressSearchCandidates
+      .filter((customer) => addressMatchedIds.has(customer._id.toString()))
+      .map((customer) => customer._id);
+    const matchingIds = selectChatCustomerMatchIds(nameMatchingIds, addressMatchingIds, hasAddressQualifier);
     const hasCustomerMatch = matchingIds.length > 0;
-    const asksBroadData = /\b(?:daftar|semua|seluruh|siapa|berapa|jumlah|total|laporan|statistik|ringkasan|rekap|bulan|periode|tahun)\b/u
+    const asksBroadData = /\b(?:daftar|semua|seluruh|siapa|berapa|jumlah|total|laporan|statistik|ringkasan|rekap|bulan|periode|tahun|data)\b/u
       .test(normalizedQuestion);
     const customerFilter = {
       ...ownerFilter,
       ...statusFilter,
-      ...((hasCustomerMatch || !asksBroadData) ? { _id: { $in: matchingIds } } : {}),
+      ...createdAtFilter,
+      ...((hasCustomerMatch || hasAddressQualifier || !asksBroadData) ? { _id: { $in: matchingIds } } : {}),
     };
     const data: Record<string, unknown> = {};
+    const addressByCustomerId = new Map<string, string>();
+    let customerNotFound = hasAddressQualifier && !hasCustomerMatch && !asksNewCustomers;
+    let unpaidBillingNotFound = false;
+    let newCustomersNotFound = false;
+    let visitedYesterdayNotFound = false;
 
-    if (topics.includes('customers') || topics.includes('archive')) {
-      const showAddress = hasCustomerMatch || /\b(?:alamat|kontak)\b/u.test(normalizedQuestion);
+    if ((topics.includes('customers') || topics.includes('archive')) && !asksYesterdayVisit) {
+      const showAddress = asksAddress;
       const showPhone = /\b(?:nomor|telepon|kontak)\b/u.test(normalizedQuestion);
-      const requestsCustomerList = /\b(?:daftar|semua|seluruh|siapa|tampilkan|cari|carikan|cariin|nyari|alamat|nomor|telepon|kontak)\b/u
+      const requestsCustomerList = /\b(?:daftar|semua|seluruh|siapa|tampilkan|cari|carikan|cariin|carikn|nyari|cek|periksa|lihat|liatin|lihatin|alamat|nomor|telepon|kontak)\b/u
         .test(normalizedQuestion);
       if (requestsCustomerList || hasCustomerMatch) {
         const customers = await Customer.find(customerFilter)
-          .select('name status archivedAt packageId address phone')
+          .select('name status archivedAt packageId address phone createdAt')
           .populate('packageId', 'name speed price')
           .sort({ name: 1 })
           .limit(101)
           .lean();
+        customers.forEach((customer) => {
+          if (asksAddress && typeof customer.address === 'string' && customer.address.trim()) {
+            addressByCustomerId.set(customer._id.toString(), customer.address.trim());
+          }
+        });
         data[topics.includes('archive') ? 'archivedCustomers' : 'customers'] = customers.slice(0, 100).map((customer) => {
           const packageValue = customer.packageId;
           const packageInfo = typeof packageValue === 'object' && packageValue !== null && 'name' in packageValue
@@ -152,11 +218,21 @@ export async function GET(request: Request) {
             ...(addressMatchedIds.has(customer._id.toString()) && { matchedByAddress: true }),
             ...(topics.includes('archive') && { archivedAt: customer.archivedAt }),
             package: packageInfo,
+            ...(asksNewCustomers && { createdAt: customer.createdAt }),
             ...(showAddress && { address: customer.address }),
             ...(showPhone && { phone: customer.phone }),
           };
         });
+        if (asksNewCustomers) {
+          data.newCustomersOnly = true;
+          data.newCustomersPeriod = newCustomersPeriod;
+          data.newCustomersPeriodLabel = newCustomerSelection?.label;
+        }
         if (customers.length > 100) data.customerListTruncated = true;
+        if (requestsCustomerList && customers.length === 0) {
+          if (asksNewCustomers) newCustomersNotFound = true;
+          else customerNotFound = true;
+        }
       } else if (asksBroadData) {
         data.customerCount = allCustomers.length;
       } else {
@@ -164,18 +240,20 @@ export async function GET(request: Request) {
       }
     }
 
-    const customerIds = hasCustomerMatch
+    const customerIds = hasCustomerMatch || hasAddressQualifier
       ? matchingIds
       : asksBroadData
         ? allCustomers.map((customer) => customer._id)
         : [];
 
+    const asksUnpaid = /\b(?:belum\s+(?:bayar|membayar|dibayar|lunas|transfer)|nunggak|tunggakan|utang)\b/u
+      .test(normalizedQuestion);
     const asksForBillingDetails = /\b(?:daftar|semua|seluruh|siapa|detail|rincian|riwayat|transaksi)\b/u
       .test(normalizedQuestion);
     if (topics.includes('billing') && (asksForBillingDetails || hasCustomerMatch || !topics.includes('reports'))) {
       const period = getRequestedPeriod(question);
       const periodRequested = /\b(?:bulan|periode|tahun)\b/u.test(normalizedQuestion)
-        || months.some((month) => normalizedQuestion.includes(normalizeText(month)))
+        || CHAT_MONTHS.some((month) => normalizedQuestion.includes(normalizeText(month)))
         || /\b20\d{2}\b/.test(question);
       const paymentDetails = /\b(?:riwayat|detail|rincian|transaksi|metode|cash|transfer|tunai)\b/u.test(normalizedQuestion);
       const billingQuery: Record<string, unknown> = { customerId: { $in: customerIds } };
@@ -188,8 +266,12 @@ export async function GET(request: Request) {
         .sort({ year: -1, createdAt: -1 })
         .limit(201)
         .lean();
-      data.billings = billings.slice(0, 200).map((billing) => ({
+      const billingData = billings.slice(0, 200).map((billing) => ({
         customerName: billing.customerName,
+        ...(addressMatchedIds.has(billing.customerId.toString()) && { matchedByAddress: true }),
+        ...(asksAddress && addressByCustomerId.has(billing.customerId.toString())
+          ? { address: addressByCustomerId.get(billing.customerId.toString()) }
+          : {}),
         month: billing.month,
         year: billing.year,
         status: billing.status,
@@ -204,6 +286,12 @@ export async function GET(request: Request) {
           })),
         }),
       }));
+      data.unpaidOnly = asksUnpaid;
+      const selectedBillings = asksUnpaid
+        ? billingData.filter((billing) => billing.outstandingAmount > 0)
+        : billingData;
+      data.billings = selectedBillings;
+      unpaidBillingNotFound = asksUnpaid && customerIds.length > 0 && selectedBillings.length === 0;
       if (billings.length > 200) data.billingHistoryTruncated = true;
     }
 
@@ -212,7 +300,7 @@ export async function GET(request: Request) {
       const activeCustomerIds = await Customer.distinct('_id', {
         ...ownerFilter,
         status: { $ne: 'inactive' },
-        ...((hasCustomerMatch || !asksBroadData) ? { _id: { $in: matchingIds } } : {}),
+        ...((hasCustomerMatch || hasAddressQualifier || !asksBroadData) ? { _id: { $in: matchingIds } } : {}),
       });
       const currentBillings = await Billing.find({
         customerId: { $in: activeCustomerIds },
@@ -234,44 +322,85 @@ export async function GET(request: Request) {
     }
 
     if (topics.includes('collection')) {
-      const period = getRequestedPeriod(question);
-      const activeCustomerIds = await Customer.distinct('_id', {
-        ...ownerFilter,
-        status: { $ne: 'inactive' },
-        ...((hasCustomerMatch || !asksBroadData) ? { _id: { $in: matchingIds } } : {}),
-      });
-      const [currentBillings, visits] = await Promise.all([
-        Billing.find({
-          customerId: { $in: activeCustomerIds },
+      if (asksYesterdayVisit) {
+        const visits = await CollectionVisit.find({
+          customerId: { $in: customerIds },
+          visitedAt: getJakartaDayRange(-1),
+        })
+          .select('customerId collectorUsername visitedAt')
+          .sort({ visitedAt: 1 })
+          .lean();
+        const visitedCustomerIds = visits.map((visit) => visit.customerId);
+        const visitedCustomers = await Customer.find({
+          ...ownerFilter,
+          ...statusFilter,
+          _id: { $in: visitedCustomerIds },
+        }).select('_id name address').lean();
+        const customersById = new Map(visitedCustomers.map((customer) => [customer._id.toString(), customer]));
+        const visitData = visits.flatMap((visit) => {
+          const customer = customersById.get(visit.customerId.toString());
+          if (!customer) return [];
+          return [{
+            customerName: customer.name,
+            ...(typeof customer.address === 'string' && customer.address.trim()
+              ? { address: customer.address.trim() }
+              : {}),
+            collector: visit.collectorUsername,
+            visitedAt: visit.visitedAt,
+          }];
+        });
+        data.collection = { visitedYesterday: true, visits: visitData };
+        visitedYesterdayNotFound = visitData.length === 0;
+      } else {
+        const period = getRequestedPeriod(question);
+        const activeCustomerIds = await Customer.distinct('_id', {
+          ...ownerFilter,
+          status: { $ne: 'inactive' },
+          ...((hasCustomerMatch || hasAddressQualifier || !asksBroadData) ? { _id: { $in: matchingIds } } : {}),
+        });
+        const [currentBillings, visits] = await Promise.all([
+          Billing.find({
+            customerId: { $in: activeCustomerIds },
+            month: period.month,
+            year: period.year,
+          }).select('customerId customerName packagePrice paidAmount installmentAmount status').lean(),
+          CollectionVisit.find({
+            customerId: { $in: activeCustomerIds },
+            month: period.month,
+            year: period.year,
+          }).select('customerId collectorUsername visitedAt').lean(),
+        ]);
+        const visitedByCustomer = new Map(visits.map((visit) => [visit.customerId.toString(), visit]));
+        data.collection = {
           month: period.month,
           year: period.year,
-        }).select('customerId customerName packagePrice paidAmount installmentAmount status').lean(),
-        CollectionVisit.find({
-          customerId: { $in: activeCustomerIds },
-          month: period.month,
-          year: period.year,
-        }).select('customerId collectorUsername visitedAt').lean(),
-      ]);
-      const visitedByCustomer = new Map(visits.map((visit) => [visit.customerId.toString(), visit]));
-      data.collection = {
-        month: period.month,
-        year: period.year,
-        customers: currentBillings
-          .filter((billing) => getBillingOutstandingAmount(billing) > 0)
-          .map((billing) => {
-            const visit = visitedByCustomer.get(billing.customerId.toString());
-            return {
-              customerName: billing.customerName,
-              outstandingAmount: getBillingOutstandingAmount(billing),
-              visited: Boolean(visit?.visitedAt),
-              collector: visit?.collectorUsername || null,
-              visitedAt: visit?.visitedAt || null,
-            };
-          }),
-      };
+          customers: currentBillings
+            .filter((billing) => getBillingOutstandingAmount(billing) > 0)
+            .map((billing) => {
+              const visit = visitedByCustomer.get(billing.customerId.toString());
+              return {
+                customerName: billing.customerName,
+                outstandingAmount: getBillingOutstandingAmount(billing),
+                visited: Boolean(visit?.visitedAt),
+                collector: visit?.collectorUsername || null,
+                visitedAt: visit?.visitedAt || null,
+              };
+            }),
+        };
+      }
     }
 
-    return NextResponse.json({ topics, data }, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json({
+      topics,
+      data,
+      ...(newCustomersNotFound && {
+        notFound: 'new-customers',
+        ...(newCustomerSelection && { notFoundPeriod: newCustomerSelection.label }),
+      }),
+      ...(customerNotFound && { notFound: 'customer' }),
+      ...(visitedYesterdayNotFound && { notFound: 'visits-yesterday' }),
+      ...(!customerNotFound && unpaidBillingNotFound && { notFound: 'unpaid-billing' }),
+    }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('GET /api/chat/context failed:', error);
     return NextResponse.json({ error: 'Gagal mengambil konteks website untuk Chat AI' }, { status: 500 });

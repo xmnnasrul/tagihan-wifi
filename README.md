@@ -18,7 +18,7 @@ Aplikasi administrasi pelanggan WiFi untuk mengelola paket, tagihan, pembayaran,
 
 ### Chat AI
 
-- Rexxa membantu obrolan umum serta pertanyaan tentang pelanggan, tagihan/pembayaran, laporan, arsip, dan penagihan.
+- Rexxaa membantu obrolan umum serta pertanyaan tentang pelanggan, tagihan/pembayaran, laporan, arsip, dan penagihan.
 - Admin hanya dapat memakai Chat AI setelah aksesnya diaktifkan superadmin. Pengaturan Base URL, API Key, dan model hanya dapat diubah superadmin.
 - Konfigurasi AI disimpan di `localStorage` browser. Aplikasi memerlukan penyedia API kompatibel OpenAI yang mendukung `GET /models` dan `POST /chat/completions`.
 - Untuk pertanyaan tentang data website, server mengambil konteks relevan dari MongoDB dengan pembatasan kepemilikan akun. Konteks tersebut dikirim bersama pertanyaan ke penyedia AI; AI tidak terhubung langsung ke database.

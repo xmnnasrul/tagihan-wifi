@@ -1,11 +1,21 @@
 {
   "name": "Tagihan WiFi",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:5.2.5-24-bookworm",
+  "postCreateCommand": "npm ci",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Next.js development server",
+      "onAutoForward": "notify"
+    }
+  },
   "customizations": {
     "vscode": {
       "extensions": [
         "saoudrizwan.claude-dev",
         "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss",
         "github.github-vscode-theme",
         "github.vscode-pull-request-github"
       ]

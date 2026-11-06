@@ -20,10 +20,11 @@ Aplikasi administrasi pelanggan WiFi untuk mengelola paket, tagihan, pembayaran,
 
 - Rexxaa membantu obrolan umum serta pertanyaan tentang pelanggan, tagihan/pembayaran, laporan, arsip, dan penagihan.
 - Admin hanya dapat memakai Chat AI setelah aksesnya diaktifkan superadmin. Pengaturan Base URL, API Key, dan model hanya dapat diubah superadmin.
-- Konfigurasi AI disimpan di `localStorage` browser. Aplikasi memerlukan penyedia API kompatibel OpenAI yang mendukung `GET /models` dan `POST /chat/completions`.
+- Pengaturan penyedia AI disimpan di MongoDB. API Key dienkripsi dengan AES-256-GCM di server dan tidak dikirim ke browser. Permintaan model dan chat diteruskan melalui server; hanya superadmin yang dapat mengubah pengaturan.
+- Pengaturan provider dilakukan dari dialog **Pengaturan koneksi AI** pada halaman Chat AI. Untuk Cloudflare Workers AI, masukkan Account ID, API Token dengan izin Workers AI Read serta AI Gateway Read/Edit, dan ID model seperti `@cf/meta/llama-3.1-8b-instruct`.
 - Untuk pertanyaan tentang data website, server mengambil konteks relevan dari MongoDB dengan pembatasan kepemilikan akun. Konteks tersebut dikirim bersama pertanyaan ke penyedia AI; AI tidak terhubung langsung ke database.
-- API Key dikirim langsung dari browser ke penyedia AI, dan konteks pelanggan yang relevan—termasuk alamat untuk hasil pencarian pelanggan tertentu—dapat diteruskan ke penyedia tersebut. Periksa kebijakan privasi penyedia sebelum menggunakannya.
-- Riwayat chat disimpan di MongoDB, privat per akun, dan kedaluwarsa setelah lima hari. Riwayat ditampilkan kembali, tetapi tidak dikirim sebagai konteks percakapan sebelumnya ke model.
+- Konteks pelanggan yang relevan—termasuk alamat untuk hasil pencarian pelanggan tertentu—dapat diteruskan ke penyedia AI. Periksa kebijakan privasi penyedia sebelum menggunakannya.
+- Riwayat chat disimpan di MongoDB, privat per akun, dan kedaluwarsa setelah lima hari. Hingga delapan pesan sebelumnya dapat dikirim ke penyedia AI sebagai konteks percakapan.
 
 ## Role
 
@@ -37,7 +38,7 @@ Semua halaman aplikasi memerlukan autentikasi. Halaman Pengelolaan Admin hanya t
 Persyaratan: Node.js 20 atau lebih baru, npm, dan MongoDB yang dapat diakses.
 
 1. Salin `.env.example` menjadi `.env.local`.
-2. Isi `MONGODB_URI` dengan URI database dan `JWT_SECRET` dengan nilai acak yang panjang. Jangan commit `.env.local`.
+2. Isi `MONGODB_URI`, `JWT_SECRET`, dan `CHAT_AI_ENCRYPTION_KEY`. Buat kunci enkripsi dengan `openssl rand -base64 32`. Jangan commit `.env.local`.
 3. Instal dependency dan jalankan aplikasi:
 
 ```bash
@@ -57,7 +58,7 @@ Akun development awal menggunakan username `admin` dan password `admin123`. Gant
 
 ## Production
 
-Atur `MONGODB_URI` dan `JWT_SECRET` sebagai environment variables rahasia pada platform hosting. Untuk seed awal production, atur juga `SEED_SECRET` dan `INITIAL_ADMIN_PASSWORD`, lalu panggil endpoint berikut satu kali:
+Atur `MONGODB_URI`, `JWT_SECRET`, dan `CHAT_AI_ENCRYPTION_KEY` sebagai environment variables rahasia pada platform hosting. Gunakan nilai `CHAT_AI_ENCRYPTION_KEY` yang sama pada setiap deployment. Jika kunci hilang atau berubah, API Key yang telah tersimpan tidak dapat didekripsi dan perlu dimasukkan ulang oleh superadmin. Untuk seed awal production, atur juga `SEED_SECRET` dan `INITIAL_ADMIN_PASSWORD`, lalu panggil endpoint berikut satu kali:
 
 ```bash
 curl -X POST https://DOMAIN-ANDA/api/seed \

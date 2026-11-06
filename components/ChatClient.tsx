@@ -25,27 +25,23 @@ import {
   CHAT_AI_PROVIDERS,
   ChatAIConfig,
   ChatAIProvider,
+  ChatAISettings,
   DEFAULT_CHAT_AI_CONFIG,
-  getChatAPIErrorMessage,
-  getChatCompletionEndpoint,
   getCloudflareAccountIDFromBaseURL,
   getCloudflareWorkersAIBaseURL,
   getChatNewCustomerFollowUpQuestion,
   getChatBillingFollowUpQuestion,
   getChatProviderBaseURL,
-  getChatRequestHeaders,
   isCloudflareWorkersAIModel,
   getChatCustomerDataReply,
   getChatUnpaidBillingReply,
   getChatVisitedCustomerReply,
   getChatContextTopics,
   getChatNoDataReply,
-  getChatModelsEndpoint,
-  getChatModelIDs,
   getChatResponseContent,
-  getChatStreamingEndpoint,
   isChatStreamingRejectionStatus,
   readChatCompletionStream,
+  isChatAIProvider,
   normalizeChatAIConfig,
   normalizeChatBaseURL,
   normalizeCloudflareAccountID,
@@ -54,6 +50,7 @@ import {
 } from '@/lib/chat-answer';
 
 type Message = { role: 'user' | 'assistant'; content: string };
+type ChatAIModelConfig = Pick<ChatAISettings, 'provider' | 'baseURL' | 'model'> & { apiKey?: string };
 
 function RexxaaMark({ className }: { className: string }) {
   return (
@@ -74,6 +71,15 @@ function isMessage(value: unknown): value is Message {
     && typeof value.content === 'string';
 }
 
+function isChatAISettings(value: unknown): value is ChatAISettings {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  return 'provider' in value
+    && isChatAIProvider(value.provider)
+    && 'baseURL' in value && typeof value.baseURL === 'string'
+    && 'model' in value && typeof value.model === 'string'
+    && 'hasApiKey' in value && typeof value.hasApiKey === 'boolean';
+}
+
 async function readResponseData(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text.trim()) return null;
@@ -88,6 +94,13 @@ function parseMarkdownTableRow(line: string): string[] | null {
   const trimmed = line.trim().replace(/^\|/u, '').replace(/\|$/u, '');
   if (!trimmed.includes('|')) return null;
   return trimmed.split('|').map((cell) => cell.trim().replace(/\\\|/gu, '|'));
+}
+
+function getResponseError(value: unknown, fallback: string): string {
+  return typeof value === 'object' && value !== null
+    && 'error' in value && typeof value.error === 'string'
+    ? value.error
+    : fallback;
 }
 
 function renderChatMessage(content: string): ReactNode {
@@ -195,7 +208,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
   const [sending, setSending] = useState(false);
   const [sendStage, setSendStage] = useState<'context' | 'answer'>('context');
   const [chatError, setChatError] = useState('');
-  const [config, setConfig] = useState<ChatAIConfig | null>(null);
+  const [config, setConfig] = useState<ChatAISettings | null>(null);
   const [configLoaded, setConfigLoaded] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<ChatAIProvider>(DEFAULT_CHAT_AI_CONFIG.provider);
   const [baseURL, setBaseURL] = useState(DEFAULT_CHAT_AI_CONFIG.baseURL);
@@ -245,28 +258,75 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
   }, []);
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY);
-      if (stored) {
-        const restoredConfig = normalizeChatAIConfig(JSON.parse(stored) as unknown);
-        if (!restoredConfig) {
-          setSettingsError('Konfigurasi tersimpan tidak valid. Periksa kembali lalu simpan ulang.');
-        } else {
-          setConfig(restoredConfig);
-          setSelectedProvider(restoredConfig.provider);
-          setBaseURL(restoredConfig.baseURL);
-          if (restoredConfig.provider === 'cloudflare') {
-            setCloudflareAccountID(getCloudflareAccountIDFromBaseURL(restoredConfig.baseURL) || '');
-          }
-          setModel(restoredConfig.model);
-        }
+    let active = true;
+    async function loadSettings() {
+      let legacyConfig: ChatAIConfig | null = null;
+      let resolvedConfig: ChatAISettings | null = null;
+      try {
+        const stored = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY);
+        if (stored) legacyConfig = normalizeChatAIConfig(JSON.parse(stored) as unknown);
+        window.localStorage.removeItem(AI_CONFIG_STORAGE_KEY);
+      } catch {
+        setSettingsError('Konfigurasi AI lama tidak dapat dibaca atau dihapus dari browser.');
       }
-    } catch {
-      setSettingsError('Konfigurasi AI tidak dapat dibaca dari penyimpanan browser.');
-    } finally {
-      setConfigLoaded(true);
+
+      try {
+        const response = await fetch('/api/chat/settings', { cache: 'no-store' });
+        const data: unknown = await response.json();
+        if (!response.ok) throw new Error(getResponseError(data, 'Pengaturan AI gagal dimuat.'));
+        const serverConfig = typeof data === 'object' && data !== null && 'config' in data
+          && isChatAISettings(data.config) ? data.config : null;
+        if (serverConfig) {
+          resolvedConfig = serverConfig;
+        } else if (legacyConfig && canManageSettings) {
+          const migrationResponse = await fetch('/api/chat/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(legacyConfig),
+          });
+          const migrationData: unknown = await migrationResponse.json();
+          if (!migrationResponse.ok) {
+            throw new Error(getResponseError(migrationData, 'Konfigurasi AI lama gagal dipindahkan ke server.'));
+          }
+          const migratedConfig = typeof migrationData === 'object' && migrationData !== null
+            && 'config' in migrationData ? migrationData.config : null;
+          if (!isChatAISettings(migratedConfig)) throw new Error('Respons pengaturan AI dari server tidak valid.');
+          resolvedConfig = migratedConfig;
+        } else if (legacyConfig && !canManageSettings) {
+          if (active) setSettingsError('Konfigurasi AI lama telah dihapus dari browser. Minta superadmin menyimpan konfigurasi AI di server.');
+        }
+
+        if (active && resolvedConfig) {
+          setConfig(resolvedConfig);
+          setSelectedProvider(resolvedConfig.provider);
+          setBaseURL(resolvedConfig.baseURL);
+          if (resolvedConfig.provider === 'cloudflare') {
+            setCloudflareAccountID(getCloudflareAccountIDFromBaseURL(resolvedConfig.baseURL) || '');
+          }
+          setModel(resolvedConfig.model);
+        }
+      } catch (error) {
+        if (active) {
+          if (legacyConfig && canManageSettings) {
+            setSelectedProvider(legacyConfig.provider);
+            setBaseURL(legacyConfig.baseURL);
+            if (legacyConfig.provider === 'cloudflare') {
+              setCloudflareAccountID(getCloudflareAccountIDFromBaseURL(legacyConfig.baseURL) || '');
+            }
+            setModel(legacyConfig.model);
+            setApiKeyInput(legacyConfig.apiKey);
+            setSettingsOpen(true);
+          }
+          setSettingsError(error instanceof Error ? error.message : 'Pengaturan AI gagal dimuat.');
+        }
+      } finally {
+        if (active) setConfigLoaded(true);
+      }
     }
-  }, []);
+
+    void loadSettings();
+    return () => { active = false; };
+  }, [canManageSettings]);
 
   useEffect(() => {
     if (canManageSettings && configLoaded && !config) setSettingsOpen(true);
@@ -318,7 +378,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
     setSettingsSaved(false);
   }
 
-  function saveSettings(event: FormEvent<HTMLFormElement>) {
+  async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSettingsError('');
     setSettingsSaved(false);
@@ -351,31 +411,48 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
       setSettingsError('Pilih model AI dari daftar yang tersedia terlebih dahulu.');
       return;
     }
-    const nextConfig = normalizeChatAIConfig({
-      provider: selectedProvider,
-      baseURL: normalizedBaseURL,
-      model: normalizedModel,
-      apiKey: apiKeyInput.trim() || (config?.provider === selectedProvider ? config.apiKey : ''),
-    });
-    if (!nextConfig) {
+    if (!apiKeyInput.trim() && !(config?.provider === selectedProvider && config.hasApiKey)) {
       setSettingsError('Masukkan API Key yang valid untuk menyimpan konfigurasi.');
       return;
     }
 
     try {
-      window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(nextConfig));
-      setConfig(nextConfig);
-      setSelectedProvider(nextConfig.provider);
-      setBaseURL(nextConfig.baseURL);
-      if (nextConfig.provider === 'cloudflare') {
-        setCloudflareAccountID(getCloudflareAccountIDFromBaseURL(nextConfig.baseURL) || '');
+      const response = await fetch('/api/chat/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: selectedProvider,
+          baseURL: normalizedBaseURL,
+          model: normalizedModel,
+          ...(apiKeyInput.trim() ? { apiKey: apiKeyInput.trim() } : {}),
+        }),
+      });
+      const data: unknown = await readResponseData(response);
+      if (!response.ok) throw new Error(getResponseError(data, 'Konfigurasi AI gagal disimpan.'));
+      const savedConfig = typeof data === 'object' && data !== null && 'config' in data ? data.config : null;
+      if (!isChatAISettings(savedConfig)) throw new Error('Respons pengaturan AI dari server tidak valid.');
+
+      setConfig(savedConfig);
+      setSelectedProvider(savedConfig.provider);
+      setBaseURL(savedConfig.baseURL);
+      if (savedConfig.provider === 'cloudflare') {
+        setCloudflareAccountID(getCloudflareAccountIDFromBaseURL(savedConfig.baseURL) || '');
       }
-      setModel(nextConfig.model);
+      setModel(savedConfig.model);
       setApiKeyInput('');
       setSettingsSaved(true);
-      if (nextConfig.provider !== 'cloudflare') void loadModels(nextConfig);
-    } catch {
-      setSettingsError('Konfigurasi tidak dapat disimpan di penyimpanan browser.');
+      if (savedConfig.provider !== 'cloudflare') {
+        void loadModels({
+          provider: savedConfig.provider,
+          baseURL: savedConfig.baseURL,
+          model: savedConfig.model,
+          ...(apiKeyInput.trim() ? { apiKey: apiKeyInput.trim() } : {}),
+        });
+      }
+    } catch (error) {
+      setSettingsError(error instanceof TypeError
+        ? 'Pengaturan AI tidak dapat disimpan ke server.'
+        : error instanceof Error ? error.message : 'Pengaturan AI gagal disimpan.');
     }
   }
 
@@ -436,27 +513,27 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
     }
   }
 
-  async function loadModels(overrides?: ChatAIConfig) {
+  async function loadModels(overrides?: ChatAIModelConfig) {
     if (!canManageSettings) {
       setSettingsError('Hanya superadmin yang dapat mengubah pengaturan AI.');
       return;
     }
 
     const provider = overrides?.provider || selectedProvider;
-    const apiKey = overrides?.apiKey
-      || apiKeyInput.trim()
-      || (config?.provider === provider ? config.apiKey : '');
+    const apiKey = overrides?.apiKey || apiKeyInput.trim();
     const providerBaseURL = overrides?.baseURL || baseURL;
     const normalizedBaseURL = provider === 'custom'
       ? normalizeChatBaseURL(providerBaseURL)
-      : getChatProviderBaseURL(provider);
+      : provider === 'cloudflare'
+        ? normalizeCloudflareWorkersAIBaseURL(providerBaseURL)
+        : getChatProviderBaseURL(provider);
     setModelsError('');
 
     if (!normalizedBaseURL) {
       setModelsError('Base URL harus berupa alamat HTTPS yang valid (HTTP hanya di localhost).');
       return;
     }
-    if (!apiKey) {
+    if (!apiKey && !(config?.provider === provider && config.hasApiKey && config.baseURL === normalizedBaseURL)) {
       setModelsError('Masukkan API Key terlebih dahulu.');
       return;
     }
@@ -464,15 +541,24 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
     setLoadingModels(true);
     setAvailableModels([]);
     try {
-      const response = await fetch(getChatModelsEndpoint(normalizedBaseURL, provider), {
-        headers: getChatRequestHeaders(provider, apiKey),
+      const response = await fetch('/api/chat/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          baseURL: normalizedBaseURL,
+          ...(apiKey ? { apiKey } : {}),
+        }),
       });
       const responseData = await readResponseData(response);
       if (!response.ok) {
-        throw new Error(getChatAPIErrorMessage(response.status, responseData, apiKey, provider));
+        throw new Error(getResponseError(responseData, 'Daftar model gagal dimuat.'));
       }
 
-      const modelIDs = getChatModelIDs(responseData, provider);
+      const modelIDs = typeof responseData === 'object' && responseData !== null
+        && 'models' in responseData && Array.isArray(responseData.models)
+        ? responseData.models.filter((modelID): modelID is string => typeof modelID === 'string')
+        : [];
       if (modelIDs.length === 0) {
         setModelsError(provider === 'codex'
           ? 'Tidak ada model Codex yang tersedia untuk API Key ini.'
@@ -482,29 +568,25 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
       const selectedModel = modelIDs.includes(overrides?.model || model) ? overrides?.model || model : modelIDs[0];
       setAvailableModels(modelIDs);
       setModel(selectedModel);
-      if (overrides) {
-        const selectedConfig = { ...overrides, model: selectedModel };
-        window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(selectedConfig));
-        setConfig(selectedConfig);
-        setSettingsSaved(true);
-      }
     } catch (error) {
       setModelsError(error instanceof TypeError
-        ? 'Tidak dapat terhubung ke penyedia AI. Periksa koneksi dan Base URL.'
+        ? 'Tidak dapat terhubung ke server aplikasi.'
         : error instanceof Error ? error.message : 'Daftar model gagal dimuat.');
     } finally {
       setLoadingModels(false);
     }
   }
 
-  function clearSettings() {
+  async function clearSettings() {
     if (!canManageSettings) {
       setSettingsError('Hanya superadmin yang dapat mengubah pengaturan AI.');
       return;
     }
 
     try {
-      window.localStorage.removeItem(AI_CONFIG_STORAGE_KEY);
+      const response = await fetch('/api/chat/settings', { method: 'DELETE' });
+      const data: unknown = await readResponseData(response);
+      if (!response.ok) throw new Error(getResponseError(data, 'Pengaturan AI gagal dihapus.'));
       setConfig(null);
       setSelectedProvider(DEFAULT_CHAT_AI_CONFIG.provider);
       setApiKeyInput('');
@@ -515,8 +597,10 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
       setModelsError('');
       setSettingsError('');
       setSettingsSaved(false);
-    } catch {
-      setSettingsError('Konfigurasi tidak dapat dihapus dari penyimpanan browser.');
+    } catch (error) {
+      setSettingsError(error instanceof TypeError
+        ? 'Pengaturan AI tidak dapat dihapus dari server.'
+        : error instanceof Error ? error.message : 'Pengaturan AI gagal dihapus.');
     }
   }
 
@@ -594,29 +678,15 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         activeConfig.provider,
         messages,
       );
-      const isCloudflare = activeConfig.provider === 'cloudflare';
       async function sendCompletion(streaming: boolean) {
         const requestBody = {
           ...baseRequestBody,
           ...(streaming && activeConfig.provider !== 'gemini' ? { stream: true } : {}),
         };
-        return fetch(isCloudflare
-          ? '/api/chat/cloudflare'
-          : streaming
-            ? getChatStreamingEndpoint(activeConfig.baseURL, activeConfig.provider, activeConfig.model)
-            : getChatCompletionEndpoint(activeConfig.baseURL, activeConfig.provider, activeConfig.model), {
+        return fetch('/api/chat/completion', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(!isCloudflare && getChatRequestHeaders(activeConfig.provider, activeConfig.apiKey)),
-          },
-          body: JSON.stringify(isCloudflare
-            ? {
-                accountID: getCloudflareAccountIDFromBaseURL(activeConfig.baseURL),
-                apiKey: activeConfig.apiKey,
-                requestBody,
-              }
-            : requestBody),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ streaming, requestBody }),
         });
       }
 
@@ -624,23 +694,13 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
       if (!response.ok) {
         const responseData = await readResponseData(response);
         if (!isChatStreamingRejectionStatus(response.status)) {
-          throw new Error(getChatAPIErrorMessage(
-            response.status,
-            responseData,
-            activeConfig.apiKey,
-            activeConfig.provider,
-          ));
+          throw new Error(getResponseError(responseData, 'Penyedia AI menolak permintaan.'));
         }
 
         response = await sendCompletion(false);
         if (!response.ok) {
           const fallbackError = await readResponseData(response);
-          throw new Error(getChatAPIErrorMessage(
-            response.status,
-            fallbackError,
-            activeConfig.apiKey,
-            activeConfig.provider,
-          ));
+          throw new Error(getResponseError(fallbackError, 'Penyedia AI menolak permintaan.'));
         }
       }
 
@@ -648,7 +708,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
       let streamedMessageVisible = false;
       if (response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
         let streamedAnswer = '';
-        answer = await readChatCompletionStream(response, activeConfig.provider, activeConfig.apiKey, (delta) => {
+        answer = await readChatCompletionStream(response, activeConfig.provider, '', (delta) => {
           streamedAnswer += delta;
           const updateVisibleStream = streamedMessageVisible;
           streamedMessageVisible = true;
@@ -669,9 +729,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
     } catch (error) {
       if (error instanceof TypeError) {
         setChatError(requestingProvider
-          ? activeConfig.provider === 'cloudflare'
-            ? 'Tidak dapat terhubung ke server aplikasi untuk meneruskan permintaan Cloudflare.'
-            : 'Tidak dapat terhubung ke penyedia AI. Periksa koneksi, Base URL, dan dukungan CORS dari penyedia.'
+          ? 'Tidak dapat terhubung ke server aplikasi untuk meneruskan permintaan AI.'
           : 'Data website tidak dapat dimuat. Periksa koneksi lalu coba lagi.');
       } else {
         setChatError(error instanceof Error ? error.message : 'Chat AI gagal memproses pertanyaan.');
@@ -702,11 +760,6 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                 Atur penyedia, API key, dan model untuk chat ini.
               </DialogDescription>
             </DialogHeader>
-              <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
-                {selectedProvider === 'cloudflare'
-                  ? 'Token Cloudflare disimpan di localStorage browser ini dan diteruskan sementara melalui server aplikasi ke Cloudflare; token tidak disimpan di server. Data website yang diperlukan dan hingga 8 pesan percakapan sebelumnya dikirim ke Cloudflare untuk menjawab.'
-                  : 'Kunci API disimpan hanya di localStorage browser ini dan dikirim langsung ke penyedia AI. Kunci tidak dikirim ke server aplikasi. Data website yang diperlukan dan hingga 8 pesan percakapan sebelumnya dikirim ke penyedia tersebut untuk menjawab.'}
-              </p>
               <form onSubmit={saveSettings} className="grid gap-4 md:grid-cols-2">
                 <div className="grid gap-2 md:col-span-2">
                   <p className="text-sm font-medium leading-none">Penyedia AI</p>
@@ -774,7 +827,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                   />
                   {selectedProvider === 'custom' && (
                     <p className="text-xs text-muted-foreground">
-                      Custom API HTTPS dapat terhubung ke domain apa pun, tetapi server API harus mendukung CORS dari situs ini.
+                      Custom API harus memakai HTTPS.
                     </p>
                   )}
                 </div>
@@ -805,21 +858,14 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                       setSettingsSaved(false);
                     }}
                     autoComplete="new-password"
-                    placeholder={config?.provider === selectedProvider
-                      ? 'Tersimpan; kosongkan untuk mempertahankan kunci saat ini'
-                      : selectedProvider === 'codex'
-                        ? 'Masukkan API Key OpenAI'
-                        : 'Masukkan API Key'}
                     maxLength={500}
-                    aria-describedby="chat-ai-key-hint"
+                    aria-describedby={selectedProvider === 'cloudflare' ? 'chat-ai-key-hint' : undefined}
                   />
-                  <p id="chat-ai-key-hint" className="text-xs text-muted-foreground">
-                    {selectedProvider === 'cloudflare'
-                      ? 'Gunakan token dengan izin Workers AI Read serta AI Gateway Read/Edit.'
-                      : 'Daftar model dimuat saat Anda meninggalkan kolom ini, tanpa perlu menyimpan dulu.'}
-                    {selectedProvider === 'codex' && ' Codex memakai API Key OpenAI; daftar hanya menampilkan model Codex yang tersedia.'}
-                    {' '}Konfigurasi berlaku untuk browser dan profil pengguna yang sama.
-                  </p>
+                  {selectedProvider === 'cloudflare' && (
+                    <p id="chat-ai-key-hint" className="text-xs text-muted-foreground">
+                      Gunakan token dengan izin Workers AI Read serta AI Gateway Read/Edit.
+                    </p>
+                  )}
                 </div>
                 <div className="grid gap-2 md:col-span-2">
                   <Label htmlFor="chat-ai-model">Model AI</Label>
@@ -844,7 +890,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                       onFocus={() => {
                         if (
                           !apiKeyInput.trim() && config?.provider === selectedProvider
-                          && config.apiKey && !loadingModels && availableModels.length === 0
+                          && config.hasApiKey && !loadingModels && availableModels.length === 0
                         ) {
                           void loadModels();
                         }
@@ -854,7 +900,6 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                         setSettingsSaved(false);
                       }}
                       required
-                      aria-describedby="chat-ai-model-hint"
                       className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <option value="" disabled>
@@ -862,18 +907,18 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                           ? 'Memuat daftar model…'
                           : availableModels.length > 0
                             ? 'Pilih model AI'
-                            : apiKeyInput.trim() || config?.apiKey
+                            : apiKeyInput.trim() || config?.hasApiKey
                               ? 'Pilih model AI'
                               : 'Isi API Key dulu'}
                       </option>
                       {availableModels.map((modelID) => <option key={modelID} value={modelID}>{modelID}</option>)}
                     </select>
                   )}
-                  <p id="chat-ai-model-hint" className="text-xs text-muted-foreground">
-                    {selectedProvider === 'cloudflare'
-                      ? 'Masukkan ID model dari katalog Workers AI, contohnya @cf/meta/llama-3.1-8b-instruct.'
-                      : 'Pilih salah satu model dari daftar.'}
-                  </p>
+                  {selectedProvider === 'cloudflare' && (
+                    <p id="chat-ai-model-hint" className="text-xs text-muted-foreground">
+                      Masukkan ID model dari katalog Workers AI, contohnya @cf/meta/llama-3.1-8b-instruct.
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center gap-3">
                     {loadingModels && (
                       <span className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
@@ -895,13 +940,20 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                 {settingsSaved && (
                   <p className="text-sm text-muted-foreground md:col-span-2" role="status">Pengaturan AI tersimpan.</p>
                 )}
-                <div className="flex flex-col-reverse gap-2 md:col-span-2 sm:flex-row sm:justify-end">
+                <div className="flex items-center justify-end gap-2 md:col-span-2">
                   {config && (
-                    <Button type="button" variant="outline" onClick={clearSettings}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mr-auto px-2 text-xs sm:px-4 sm:text-sm"
+                      onClick={clearSettings}
+                    >
                       Hapus konfigurasi
                     </Button>
                   )}
-                  <Button type="submit">Simpan pengaturan</Button>
+                  <Button type="submit" className="px-2 text-xs sm:px-4 sm:text-sm">
+                    Simpan pengaturan
+                  </Button>
                 </div>
               </form>
           </DialogContent>

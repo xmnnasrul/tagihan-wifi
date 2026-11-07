@@ -39,7 +39,15 @@ export default function NotesPage() {
   const addNote = async (event: FormEvent) => {
     event.preventDefault();
     const value = text.trim();
-    if (!value || saving) return;
+    if (!value) {
+      toast.error('Catatan tidak boleh kosong.');
+      return;
+    }
+    if (value.length > 500) {
+      toast.error('Catatan maksimal 500 karakter.');
+      return;
+    }
+    if (saving) return;
     setSaving(true);
     try {
       const response = await fetch('/api/notes', {
@@ -109,9 +117,10 @@ export default function NotesPage() {
               maxLength={500}
               rows={3}
               required
+              aria-describedby="note-text-counter"
             />
             <div className="flex items-center justify-between gap-3">
-              <span className="text-xs text-muted-foreground">{text.length}/500</span>
+              <span id="note-text-counter" className="text-xs text-muted-foreground">{text.length}/500 karakter</span>
               <Button type="submit" disabled={!text.trim() || saving}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                 Tambah catatan

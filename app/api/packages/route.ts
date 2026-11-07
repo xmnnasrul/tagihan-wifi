@@ -4,6 +4,7 @@ import Package from '@/lib/models/Package';
 import { getCurrentUser, requireAdmin, requireAuthenticatedUser } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
 import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
+import { isPositiveAmount } from '@/lib/form-validation';
 
 export async function GET() {
   try {
@@ -27,9 +28,13 @@ export async function POST(request: Request) {
     await connectDB();
     const body = await request.json();
     const ownerScope = await getDataOwnerScope();
-    const { name, price, speed, description } = body;
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const speed = typeof body.speed === 'string' ? body.speed.trim() : '';
+    const { price, description } = body;
+    const normalizedDescription = typeof description === 'string' ? description.trim() : '';
 
-    if (!name || !price || !speed) {
+    if (name.length < 2 || name.length > 100 || !speed || speed.length > 40
+      || normalizedDescription.length > 300 || !isPositiveAmount(price)) {
       return NextResponse.json({ error: 'Nama, harga, dan kecepatan wajib diisi' }, { status: 400 });
     }
 
@@ -42,7 +47,7 @@ export async function POST(request: Request) {
       name,
       price: Number(price),
       speed,
-      description: description || '',
+      description: normalizedDescription,
       ownerId: ownerScope.ownerId,
     });
     const actor = await getCurrentUser();
@@ -72,10 +77,18 @@ export async function PUT(request: Request) {
     await connectDB();
     const body = await request.json();
     const ownerScope = await getDataOwnerScope();
-    const { id, name, price, speed, description } = body;
+    const { id, price, description } = body;
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const speed = typeof body.speed === 'string' ? body.speed.trim() : '';
+    const normalizedDescription = typeof description === 'string' ? description.trim() : '';
+    const normalizedPrice = Number(price);
 
     if (!id) {
       return NextResponse.json({ error: 'ID paket wajib diisi' }, { status: 400 });
+    }
+    if (name.length < 2 || name.length > 100 || !speed || speed.length > 40
+      || normalizedDescription.length > 300 || !isPositiveAmount(normalizedPrice)) {
+      return NextResponse.json({ error: 'Nama, harga, dan kecepatan wajib diisi dengan benar' }, { status: 400 });
     }
 
     const previousPackage = await Package.findOne({ _id: id, ...getOwnerFilter(ownerScope) }).lean();
@@ -84,7 +97,7 @@ export async function PUT(request: Request) {
     }
     const pkg = await Package.findOneAndUpdate(
       { _id: id, ...getOwnerFilter(ownerScope) },
-      { name, price: Number(price), speed, description: description || '' },
+      { name, price: normalizedPrice, speed, description: normalizedDescription },
       { returnDocument: 'after' }
     );
 

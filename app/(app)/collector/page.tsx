@@ -320,6 +320,10 @@ export default function CollectorPage() {
       toast.error('Nominal pembayaran harus lebih dari 0');
       return;
     }
+    if (paymentSummary !== null && amount > paymentSummary) {
+      toast.error(`Nominal tidak boleh melebihi sisa tagihan ${formatRupiah(paymentSummary)}.`);
+      return;
+    }
 
     paymentSubmissionRef.current = true;
     setSavingPayment(true);
@@ -743,7 +747,7 @@ export default function CollectorPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="collector-payment-note">Catatan</Label>
-              <Textarea id="collector-payment-note" className="resize-none" value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} placeholder="Catatan pembayaran (opsional)" rows={2} />
+              <Textarea id="collector-payment-note" className="resize-none" value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} placeholder="Catatan pembayaran (opsional)" maxLength={500} rows={2} />
             </div>
             {savingVisitIds.length > 0 && <p className="text-xs text-muted-foreground">Menunggu status kunjungan tersimpan...</p>}
             <DialogFooter className="flex-row justify-end gap-2 sm:space-x-0">

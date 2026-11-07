@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
+import { isValidOptionalPhoneNumber } from '@/lib/form-validation';
 
 interface Package {
   _id: string;
@@ -46,6 +47,10 @@ export default function AddCustomerPage() {
     event.preventDefault();
     if (!name.trim() || !address.trim() || !packageId) {
       toast.error('Nama, alamat, dan paket wajib diisi');
+      return;
+    }
+    if (!isValidOptionalPhoneNumber(phone)) {
+      toast.error('Nomor HP harus berisi 8-15 angka; format +, spasi, titik, kurung, atau tanda hubung diperbolehkan.');
       return;
     }
 
@@ -112,17 +117,18 @@ export default function AddCustomerPage() {
             <div className="grid gap-5 md:grid-cols-2">
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="customer-name" className="text-sm font-medium">Nama Pelanggan <span className="text-destructive">*</span></Label>
-                <Input id="customer-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Masukkan nama pelanggan" className="h-11 focus-visible:ring-primary/30" required />
+                <Input id="customer-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Masukkan nama pelanggan" className="h-11 focus-visible:ring-primary/30" required minLength={2} />
               </div>
 
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="customer-address" className="text-sm font-medium">Alamat <span className="text-destructive">*</span></Label>
-                <Input id="customer-address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Masukkan alamat pelanggan" className="h-11 focus-visible:ring-primary/30" required />
+                <Input id="customer-address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Masukkan alamat pelanggan" className="h-11 focus-visible:ring-primary/30" required minLength={3} />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="customer-phone" className="text-sm font-medium">HP</Label>
-                <Input id="customer-phone" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Masukkan nomor HP" autoComplete="tel" className="h-11 focus-visible:ring-primary/30" />
+                <Input id="customer-phone" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Contoh: 081234567890" autoComplete="tel" maxLength={24} aria-describedby="customer-phone-hint" className="h-11 focus-visible:ring-primary/30" />
+                <p id="customer-phone-hint" className="text-xs text-muted-foreground">Opsional. Jika diisi, gunakan 8-15 angka.</p>
               </div>
 
               <div className="space-y-2">

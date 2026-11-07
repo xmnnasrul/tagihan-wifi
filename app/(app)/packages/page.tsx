@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
+import { isPositiveAmount } from '@/lib/form-validation';
 
 interface Package {
   _id: string;
@@ -91,8 +92,13 @@ export default function PackagesPage() {
     setSaving(true);
     setError('');
 
-    if (!name || !price || !speed) {
+    if (!name.trim() || !price.trim() || !speed.trim()) {
       setError('Nama, harga, dan kecepatan wajib diisi');
+      setSaving(false);
+      return;
+    }
+    if (!isPositiveAmount(price)) {
+      setError('Harga paket harus berupa angka lebih dari 0');
       setSaving(false);
       return;
     }
@@ -101,8 +107,8 @@ export default function PackagesPage() {
       const url = '/api/packages';
       const method = editingPkg ? 'PUT' : 'POST';
       const body = editingPkg
-        ? { id: editingPkg._id, name, price: Number(price), speed, description }
-        : { name, price: Number(price), speed, description };
+        ? { id: editingPkg._id, name: name.trim(), price: Number(price), speed: speed.trim(), description: description.trim() }
+        : { name: name.trim(), price: Number(price), speed: speed.trim(), description: description.trim() };
 
       const res = await fetch(url, {
         method,
@@ -248,6 +254,8 @@ export default function PackagesPage() {
                 placeholder="Contoh: Paket 20 Mbps"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                minLength={2}
+                maxLength={100}
                 required
               />
             </div>
@@ -259,6 +267,8 @@ export default function PackagesPage() {
                   type="number"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
+                  min="1"
+                  step="1"
                   required
                 />
               </div>
@@ -268,6 +278,7 @@ export default function PackagesPage() {
                   id="pkg-speed"
                   value={speed}
                   onChange={(e) => setSpeed(e.target.value)}
+                  maxLength={40}
                   required
                 />
               </div>
@@ -278,6 +289,7 @@ export default function PackagesPage() {
                 id="pkg-desc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                maxLength={300}
               />
             </div>
             <DialogFooter>

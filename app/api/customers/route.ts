@@ -6,6 +6,7 @@ import Billing from '@/lib/models/Billing';
 import { getCurrentUser, requireAdmin, requireAuthenticatedUser } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
 import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
+import { isValidOptionalPhoneNumber } from '@/lib/form-validation';
 
 export async function GET(request: Request) {
   try {
@@ -69,6 +70,9 @@ export async function POST(request: Request) {
 
     if (!normalizedName || !normalizedAddress || typeof packageId !== 'string' || !packageId) {
       return NextResponse.json({ error: 'Nama, alamat, dan paket wajib diisi' }, { status: 400 });
+    }
+    if (!isValidOptionalPhoneNumber(normalizedPhone)) {
+      return NextResponse.json({ error: 'Nomor HP harus berisi 8-15 angka' }, { status: 400 });
     }
     const selectedPackage = await Package.findOne({
       _id: packageId,
@@ -225,9 +229,13 @@ export async function PUT(request: Request) {
     const ownerScope = await getDataOwnerScope();
     const body = await request.json();
     const { id, address, phone, packageId } = body;
+    const normalizedPhone = typeof phone === 'string' ? phone.trim() : '';
 
     if (!id) {
       return NextResponse.json({ error: 'ID pelanggan wajib diisi' }, { status: 400 });
+    }
+    if (!isValidOptionalPhoneNumber(normalizedPhone)) {
+      return NextResponse.json({ error: 'Nomor HP harus berisi 8-15 angka' }, { status: 400 });
     }
 
     const previousCustomer = await Customer.findOne({ _id: id, ...getOwnerFilter(ownerScope) });
@@ -247,7 +255,7 @@ export async function PUT(request: Request) {
       { _id: id, ...getOwnerFilter(ownerScope) },
       {
         address: address || '',
-        phone: typeof phone === 'string' ? phone.trim() : previousCustomer.phone || '',
+        phone: normalizedPhone || (typeof phone === 'string' ? '' : previousCustomer.phone || ''),
         packageId: packageId || null,
       },
       { returnDocument: 'after', runValidators: true }

@@ -196,11 +196,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-7 sm:space-y-9">
-      <header className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Ikhtisar tagihan</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Kinerja pembayaran pelanggan WiFi</p>
-        </div>
+      <header className="flex justify-end">
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"

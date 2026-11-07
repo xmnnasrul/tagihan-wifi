@@ -6,12 +6,15 @@ import {
   getChatCompletionEndpoint,
   getChatRequestHeaders,
   getChatStreamingEndpoint,
+  addChatKnowledgeToRequestBody,
   isChatAIProvider,
   type ChatAIProvider,
 } from '@/lib/chat-answer';
 import ChatAISettings from '@/lib/models/ChatAISettings';
+import ChatKnowledge from '@/lib/models/ChatKnowledge';
 import { connectDB } from '@/lib/mongodb';
 import { getAIChatPageAccess, requireAuthenticatedUser } from '@/lib/session';
+import { getDataOwnerScope } from '@/lib/data-ownership';
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
 const MAX_REQUEST_LENGTH = 100_000;
@@ -64,6 +67,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Konfigurasi atau isi permintaan AI tidak valid.' }, { status: 400, headers: NO_STORE });
     }
 
+    const { ownerId } = await getDataOwnerScope();
+    const savedKnowledge = await ChatKnowledge.find({ ownerId })
+      .select('content')
+      .sort({ updatedAt: -1 })
+      .limit(50)
+      .lean();
+    const requestBody = addChatKnowledgeToRequestBody(
+      provider,
+      candidate.requestBody,
+      savedKnowledge.map(({ content }) => content),
+    );
+
     let apiKey: string;
     try {
       apiKey = decryptChatAIKey(settings);
@@ -81,9 +96,9 @@ export async function POST(request: Request) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...getChatRequestHeaders(provider, apiKey),
+          ...getChatRequestHeaders(provider, apiKey, settings.model),
         },
-        body: JSON.stringify(candidate.requestBody),
+        body: JSON.stringify(requestBody),
         cache: 'no-store',
         redirect: 'error',
       });

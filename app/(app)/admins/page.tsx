@@ -103,6 +103,10 @@ export default function AdminsPage() {
   const handleSaveRoles = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!roleEditingAccount) return;
+    if (roleDraft.length !== 1) {
+      setError('Pilih tepat satu role untuk akun ini.');
+      return;
+    }
     setSavingRoles(true);
     try {
       const response = await fetch('/api/admins', {
@@ -233,6 +237,7 @@ export default function AdminsPage() {
               minLength={3}
               maxLength={32}
               pattern="[a-zA-Z0-9._-]+"
+              title="Gunakan 3-32 karakter: huruf, angka, titik, garis bawah, atau tanda hubung."
               className="h-11 focus-visible:ring-primary/30"
               required
             />
@@ -246,6 +251,7 @@ export default function AdminsPage() {
               onChange={(event) => setPassword(event.target.value)}
               autoComplete="new-password"
               minLength={10}
+              maxLength={72}
               className="h-11 focus-visible:ring-primary/30"
               required
             />

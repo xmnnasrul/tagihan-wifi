@@ -1,8 +1,10 @@
 import mongoose from 'mongoose';
 import Billing from './models/Billing';
+import BillingGeneration from './models/BillingGeneration';
 import Customer, { LEGACY_DATA_OWNER_ID } from './models/Customer';
 import Package from './models/Package';
 import ChatMessage from './models/ChatMessage';
+import ChatKnowledge from './models/ChatKnowledge';
 
 const MONGODB_URI = process.env.MONGODB_URI || '';
 
@@ -21,8 +23,10 @@ declare global {
 
 const cached: MongooseCache = global.mongoose || { conn: null, promise: null };
 let billingIndexesPromise: Promise<void> | null = null;
+let billingGenerationIndexesPromise: Promise<void> | null = null;
 let ownershipMigrationPromise: Promise<void> | null = null;
 let chatHistoryIndexesPromise: Promise<void> | null = null;
+let chatKnowledgeIndexesPromise: Promise<void> | null = null;
 
 if (!global.mongoose) {
   global.mongoose = cached;
@@ -56,6 +60,21 @@ async function ensureBillingIndexes() {
   }
 
   await billingIndexesPromise;
+}
+
+async function ensureBillingGenerationIndexes() {
+  if (!billingGenerationIndexesPromise) {
+    const indexPromise = BillingGeneration.collection.createIndex(
+      { ownerId: 1, year: 1, month: 1 },
+      { unique: true },
+    ).then(() => undefined);
+    billingGenerationIndexesPromise = indexPromise;
+    void indexPromise.catch(() => {
+      if (billingGenerationIndexesPromise === indexPromise) billingGenerationIndexesPromise = null;
+    });
+  }
+
+  await billingGenerationIndexesPromise;
 }
 
 async function ensureDataOwnership() {
@@ -124,6 +143,18 @@ async function ensureChatHistoryIndexes() {
   await chatHistoryIndexesPromise;
 }
 
+async function ensureChatKnowledgeIndexes() {
+  if (!chatKnowledgeIndexesPromise) {
+    const indexPromise = ChatKnowledge.collection.createIndex({ ownerId: 1, updatedAt: -1 }).then(() => undefined);
+    chatKnowledgeIndexesPromise = indexPromise;
+    void indexPromise.catch(() => {
+      if (chatKnowledgeIndexesPromise === indexPromise) chatKnowledgeIndexesPromise = null;
+    });
+  }
+
+  await chatKnowledgeIndexesPromise;
+}
+
 export async function connectDB() {
   if (!cached.conn) {
     if (!cached.promise) {
@@ -143,7 +174,9 @@ export async function connectDB() {
   }
 
   await ensureBillingIndexes();
+  await ensureBillingGenerationIndexes();
   await ensureDataOwnership();
   await ensureChatHistoryIndexes();
+  await ensureChatKnowledgeIndexes();
   return cached.conn;
 }

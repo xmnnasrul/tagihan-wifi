@@ -96,7 +96,10 @@ export default function LoginPage() {
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   className="h-11 pl-10"
+                  minLength={3}
                   maxLength={32}
+                  pattern="[a-zA-Z0-9._-]+"
+                  title="Gunakan 3-32 karakter: huruf, angka, titik, garis bawah, atau tanda hubung."
                   required
                   autoComplete="username"
                 />
@@ -114,6 +117,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   className="h-11 pl-10 pr-11"
+                  minLength={1}
                   maxLength={72}
                   required
                   autoComplete="current-password"

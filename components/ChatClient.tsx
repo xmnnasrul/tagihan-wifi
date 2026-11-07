@@ -1,7 +1,9 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, CircleAlert, Loader2, Send, Settings, Trash2, UserRound } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, CircleAlert, Loader2, Send, Settings, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -14,31 +16,49 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
   AI_CONFIG_STORAGE_KEY,
   buildChatRequestBody,
+  appendChatTablePageMetadata,
   CHAT_AI_PROVIDERS,
   ChatAIConfig,
   ChatAIProvider,
   ChatAISettings,
+  ChatPendingLearning,
+  ChatTablePageMetadata,
   DEFAULT_CHAT_AI_CONFIG,
   getCloudflareAccountIDFromBaseURL,
   getCloudflareWorkersAIBaseURL,
   getChatNewCustomerFollowUpQuestion,
   getChatBillingFollowUpQuestion,
+  getChatContextFollowUpQuestion,
   getChatProviderBaseURL,
-  isCloudflareWorkersAIModel,
+  getChatGreetingReply,
+  isCloudflareAIModel,
+  getChatBillingHistoryReply,
   getChatCustomerDataReply,
+  getChatPackageDataReply,
+  getChatNotesReply,
   getChatUnpaidBillingReply,
   getChatVisitedCustomerReply,
   getChatContextTopics,
+  getChatTablePageMetadata,
+  getChatLearningAction,
+  getPendingChatLearning,
   getChatNoDataReply,
   getChatResponseContent,
+  getVisibleChatAnswer,
+  isChatTablePageMetadata,
   isChatStreamingRejectionStatus,
   readChatCompletionStream,
   isChatAIProvider,
@@ -52,13 +72,22 @@ import {
 type Message = { role: 'user' | 'assistant'; content: string };
 type ChatAIModelConfig = Pick<ChatAISettings, 'provider' | 'baseURL' | 'model'> & { apiKey?: string };
 
-function RexxaaMark({ className }: { className: string }) {
+const ChatSignal = dynamic(() => import('@/components/ChatSignal'), {
+  ssr: false,
+  loading: () => (
+    <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-border text-sm font-semibold text-primary">
+      A
+    </span>
+  ),
+});
+
+function AlfiiMark({ className }: { className: string }) {
   return (
     <span
       className={`${className} inline-flex items-center justify-center font-bold leading-none text-primary`}
       aria-hidden="true"
     >
-      R
+      A
     </span>
   );
 }
@@ -103,17 +132,47 @@ function getResponseError(value: unknown, fallback: string): string {
     : fallback;
 }
 
-function renderChatMessage(content: string): ReactNode {
-  const lines = content.split('\n');
+function getStructuredChatReply(value: unknown): string | null {
+  return getChatNoDataReply(value)
+    || getChatBillingHistoryReply(value)
+    || getChatUnpaidBillingReply(value)
+    || getChatVisitedCustomerReply(value)
+    || getChatPackageDataReply(value)
+    || getChatNotesReply(value)
+    || getChatCustomerDataReply(value);
+}
+
+function attachChatTablePagination(
+  content: string,
+  metadata: ChatTablePageMetadata | null,
+): string {
+  if (
+    !metadata || (metadata.page === 1 && !metadata.hasNext)
+    || !/\n\|[^\n]+\|\n\|[-:| ]+\|/u.test(content)
+  ) return content;
+  return appendChatTablePageMetadata(content, metadata);
+}
+
+function renderChatMessage(
+  content: string,
+  onPageChange?: (page: number) => void,
+  pageLoading = false,
+): ReactNode {
+  const pagination = getChatTablePageMetadata(content);
+  const lines = getVisibleChatAnswer(content).split('\n');
   const blocks: ReactNode[] = [];
   let textLines: string[] = [];
   let blockIndex = 0;
+  let paginationRendered = false;
 
   function flushText() {
     if (textLines.length === 0) return;
     const text = textLines.join('\n').trim();
     if (text) {
-      blocks.push(<p key={`text-${blockIndex++}`} className="whitespace-pre-wrap">{text}</p>);
+      const key = `text-${blockIndex++}`;
+      blocks.push(/^(?:Riwayat Tagihan|Detail pembayaran)$/u.test(text)
+        ? <h4 key={key} className="pt-2 text-sm font-semibold text-foreground">{text}</h4>
+        : <p key={key} className="whitespace-pre-wrap">{text}</p>);
     }
     textLines = [];
   }
@@ -139,28 +198,32 @@ function renderChatMessage(content: string): ReactNode {
       index += 1;
     }
     index -= 1;
-    const isFirstBlock = blocks.length === 0;
-    const isLastBlock = !lines.slice(index + 1).some((line) => line.trim());
-    const headerPadding = `${isFirstBlock ? 'pt-0' : 'pt-2'} ${
-      isLastBlock && rows.length === 0 ? 'pb-0' : 'pb-2'
-    }`;
+    const isBillingHistorySummary = headers[0] === 'Bulan' && headers.includes('Dibayar');
+    const isBillingPaymentDetails = headers.includes('Periode')
+      && headers.includes('Pembayaran') && headers.includes('Nominal');
+    const isBillingHistoryTable = isBillingHistorySummary || isBillingPaymentDetails;
+    const minWidthClass = isBillingHistorySummary
+      ? 'min-w-[34rem]'
+      : isBillingPaymentDetails ? 'min-w-[50rem]' : 'min-w-max';
 
     blocks.push(
       <div
         key={`table-${blockIndex++}`}
-        className="max-w-full overflow-x-auto"
+        className="max-w-full overflow-x-auto rounded-md border border-border"
         role="region"
         aria-label="Tabel jawaban yang dapat digulir"
         tabIndex={0}
       >
-        <table className="min-w-max w-full border-collapse text-left text-sm">
-          <thead>
+        <table className={`w-full border-collapse text-left text-sm ${minWidthClass}`}>
+          <thead className="bg-muted/80">
             <tr>
               {headers.map((header, columnIndex) => (
                 <th
                   key={`${header}-${columnIndex}`}
                   scope="col"
-                  className={`border-b border-border/70 px-3 ${headerPadding} font-medium text-muted-foreground first:pl-0 last:pr-0 ${
+                  className={`border-b border-r border-border px-3 py-2.5 font-medium text-muted-foreground first:pl-3 last:border-r-0 last:pr-3 ${
+                    isBillingHistoryTable && columnIndex === 0 ? 'sticky left-0 z-20 bg-muted' : ''
+                  } ${
                     /(?:tagihan|jumlah|total|harga|saldo|nominal|bayar|setoran)/iu.test(header)
                       ? 'text-right tabular-nums'
                       : 'text-left'
@@ -177,16 +240,36 @@ function renderChatMessage(content: string): ReactNode {
                 {row.map((cell, columnIndex) => (
                   <td
                     key={`${columnIndex}-${cell}`}
-                    className={`border-b border-border/40 px-3 ${
-                      isLastBlock && rowIndex === rows.length - 1 ? 'pb-0 pt-2' : 'py-2'
-                    } align-top whitespace-nowrap first:pl-0 last:pr-0 ${
-                      /(?:tagihan|jumlah|total|harga|saldo|nominal|bayar|setoran)/iu.test(headers[columnIndex])
-                        ? 'text-right tabular-nums'
-                        : 'text-left'
-                    }`}
-                  >
-                    {cell}
-                  </td>
+                    className={`border-b border-r border-border px-3 py-2.5 align-middle first:pl-3 last:pr-3 ${
+                      isBillingHistoryTable && columnIndex === 0 ? 'sticky left-0 z-10 bg-background font-medium' : ''
+                    } ${
+                      isBillingHistoryTable && /catatan/i.test(headers[columnIndex])
+                        ? 'max-w-48 whitespace-normal break-words'
+                        : isBillingPaymentDetails && headers[columnIndex] === 'Tanggal dan petugas'
+                          ? 'max-w-52 whitespace-normal'
+                          : 'whitespace-nowrap'
+                    } ${
+                        /(?:tagihan|jumlah|total|harga|saldo|nominal|bayar|setoran)/iu.test(headers[columnIndex])
+                          ? 'text-right tabular-nums'
+                          : 'text-left'
+                      } ${columnIndex === row.length - 1 ? 'border-r-0' : ''}`}
+                    >
+                      {isBillingHistoryTable && headers[columnIndex] === 'Status'
+                        ? (() => {
+                            const status = cell.trim().toLocaleLowerCase();
+                            const statusClass = ['lunas', 'transfer', 'tunai'].includes(status)
+                              ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                              : status === 'nyicil'
+                                ? 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                : status === 'belum bayar'
+                                  ? 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300'
+                                  : 'border-border bg-muted text-muted-foreground';
+                            return <span className={`inline-flex whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium ${statusClass}`}>{cell}</span>;
+                          })()
+                        : pagination && columnIndex === 0 && /^no\.?$/iu.test(headers[0].trim())
+                          ? (pagination.page - 1) * pagination.pageSize + rowIndex + 1
+                          : cell}
+                    </td>
                 ))}
               </tr>
             ))}
@@ -194,6 +277,36 @@ function renderChatMessage(content: string): ReactNode {
         </table>
       </div>
     );
+    if (pagination && onPageChange && !paginationRendered) {
+      paginationRendered = true;
+      blocks.push(
+        <nav key={`pagination-${blockIndex++}`} className="flex items-center justify-end gap-2" aria-label="Halaman tabel">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Halaman sebelumnya"
+            disabled={pageLoading || pagination.page <= 1}
+            onClick={() => onPageChange(pagination.page - 1)}
+          >
+            <ArrowLeft className="size-4" aria-hidden="true" />
+          </Button>
+          <span className="min-w-28 text-center text-xs text-muted-foreground" aria-live="polite">
+            {pageLoading ? 'Memuat halaman…' : `Halaman ${pagination.page}`}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Halaman berikutnya"
+            disabled={pageLoading || !pagination.hasNext}
+            onClick={() => onPageChange(pagination.page + 1)}
+          >
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </Button>
+        </nav>,
+      );
+    }
   }
 
   flushText();
@@ -201,12 +314,14 @@ function renderChatMessage(content: string): ReactNode {
 }
 
 export default function ChatClient({ canManageSettings }: { canManageSettings: boolean }) {
+  const prefersReducedMotion = useReducedMotion();
   const [messages, setMessages] = useState<Message[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState('');
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [sendStage, setSendStage] = useState<'context' | 'answer'>('context');
+  const [streamingResponse, setStreamingResponse] = useState(false);
+  const [pageLoadingIndex, setPageLoadingIndex] = useState<number | null>(null);
   const [chatError, setChatError] = useState('');
   const [config, setConfig] = useState<ChatAISettings | null>(null);
   const [configLoaded, setConfigLoaded] = useState(false);
@@ -224,6 +339,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
   const [clearingHistory, setClearingHistory] = useState(false);
   const messagesContainerRef = useRef<HTMLElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
 
@@ -403,8 +519,8 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
       setSettingsError('Nama model wajib diisi dan maksimal 120 karakter.');
       return;
     }
-    if (selectedProvider === 'cloudflare' && !isCloudflareWorkersAIModel(normalizedModel)) {
-      setSettingsError('Model Workers AI harus berupa ID @cf/provider/model yang valid.');
+    if (selectedProvider === 'cloudflare' && !isCloudflareAIModel(normalizedModel)) {
+      setSettingsError('ID model Cloudflare tidak valid. Gunakan format @cf/provider/model atau provider/model.');
       return;
     }
     if (selectedProvider !== 'cloudflare' && !availableModels.includes(normalizedModel)) {
@@ -441,6 +557,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
       setModel(savedConfig.model);
       setApiKeyInput('');
       setSettingsSaved(true);
+      setSettingsOpen(false);
       if (savedConfig.provider !== 'cloudflare') {
         void loadModels({
           provider: savedConfig.provider,
@@ -466,7 +583,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
   }
 
   async function clearChatHistory() {
-    if (historyLoading || sending || clearingHistory) return;
+    if (historyLoading || sending || pageLoadingIndex !== null || clearingHistory) return;
 
     setClearingHistory(true);
     setHistoryError('');
@@ -483,6 +600,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
 
       setMessages([]);
       setInput('');
+      if (textareaRef.current) textareaRef.current.style.height = '40px';
       setChatError('');
       setHistoryError('');
       shouldAutoScrollRef.current = true;
@@ -497,19 +615,146 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
     }
   }
 
-  async function appendAssistantMessage(content: string, userHistorySaved: boolean, alreadyDisplayed = false) {
+  async function appendAssistantMessage(
+    content: string,
+    userHistorySaved: boolean,
+    alreadyDisplayed = false,
+    pendingLearning: ChatPendingLearning | null = null,
+  ) {
     const assistantMessage: Message = { role: 'assistant', content };
-    if (!alreadyDisplayed) setMessages((current) => [...current, assistantMessage]);
+    setMessages((current) => {
+      if (!alreadyDisplayed) return [...current, assistantMessage];
+      const lastIndex = current.length - 1;
+      if (current[lastIndex]?.role !== 'assistant') return [...current, assistantMessage];
+      return [...current.slice(0, lastIndex), assistantMessage];
+    });
     if (!userHistorySaved) {
       setHistoryError('Jawaban diterima, tetapi riwayat chat tidak dapat disimpan.');
-      return;
+    } else {
+      try {
+        await saveHistory([assistantMessage]);
+        setHistoryError('');
+      } catch {
+        setHistoryError('Jawaban diterima, tetapi riwayat chat tidak dapat disimpan.');
+      }
     }
 
+    const learningAction = getChatLearningAction(content);
+    if (pendingLearning && learningAction?.action === 'learn') {
+      try {
+        const response = await fetch('/api/chat/knowledge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: learningAction.content }),
+        });
+        const data: unknown = await readResponseData(response);
+        if (!response.ok) throw new Error(getResponseError(data, 'Pemahaman Alfii gagal disimpan.'));
+      } catch (error) {
+        setHistoryError(error instanceof TypeError
+          ? 'Jawaban diterima, tetapi pemahaman Alfii belum tersimpan.'
+          : error instanceof Error ? error.message : 'Pemahaman Alfii gagal disimpan.');
+      }
+    }
+  }
+
+  async function loadTablePage(
+    messageIndex: number,
+    pagination: ChatTablePageMetadata,
+    page: number,
+  ) {
+    if (page < 1 || pageLoadingIndex !== null || sending) return;
+    const originalContent = messages[messageIndex]?.content;
+    if (!originalContent || messages[messageIndex]?.role !== 'assistant') return;
+
+    setPageLoadingIndex(messageIndex);
+    setChatError('');
+    let hasStartedStreaming = false;
+    let streamedAnswer = '';
     try {
-      await saveHistory([assistantMessage]);
-      setHistoryError('');
-    } catch {
-      setHistoryError('Jawaban diterima, tetapi riwayat chat tidak dapat disimpan.');
+      const contextResponse = await fetch(
+        `/api/chat/context?question=${encodeURIComponent(pagination.question)}&source=${pagination.source}&page=${page}`,
+        { cache: 'no-store' },
+      );
+      const pageContext: unknown = await readResponseData(contextResponse);
+      if (!contextResponse.ok) throw new Error(getResponseError(pageContext, 'Halaman tabel gagal dimuat.'));
+      if (
+        typeof pageContext !== 'object' || pageContext === null || Array.isArray(pageContext)
+        || !('data' in pageContext) || !('pagination' in pageContext)
+        || !isChatTablePageMetadata(pageContext.pagination)
+      ) throw new Error('Respons halaman tabel dari server tidak valid.');
+
+      const pageMetadata = pageContext.pagination;
+      const data = pageContext.data;
+      let answer = getStructuredChatReply(pageContext);
+      if (!answer) {
+        if (!config) throw new Error('Pengaturan AI belum tersedia.');
+        const activeConfig = config;
+        const pageQuestion = [
+          `Tampilkan hanya baris data pada halaman ${page} dari tabel untuk pertanyaan berikut.`,
+          'Gunakan tabel Markdown dengan judul kolom yang sesuai, tampilkan setiap data yang diberikan tepat satu kali, dan jangan mengarang atau mengulang baris dari halaman lain.',
+          `Pertanyaan awal: ${pagination.question}`,
+        ].join('\n');
+        const requestBody = buildChatRequestBody(
+          activeConfig.model,
+          pageQuestion,
+          data,
+          activeConfig.provider,
+          messages.slice(0, messageIndex),
+        );
+        async function sendPageCompletion(streaming: boolean) {
+          return fetch('/api/chat/completion', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              streaming,
+              requestBody: {
+                ...requestBody,
+                ...(streaming && activeConfig.provider !== 'gemini' ? { stream: true } : {}),
+              },
+            }),
+          });
+        }
+
+        let response = await sendPageCompletion(true);
+        if (!response.ok) {
+          const errorData = await readResponseData(response);
+          if (!isChatStreamingRejectionStatus(response.status)) {
+            throw new Error(getResponseError(errorData, 'Penyedia AI menolak permintaan.'));
+          }
+          response = await sendPageCompletion(false);
+          if (!response.ok) {
+            const errorData = await readResponseData(response);
+            throw new Error(getResponseError(errorData, 'Penyedia AI menolak permintaan.'));
+          }
+        }
+
+        if (response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
+          answer = await readChatCompletionStream(response, activeConfig.provider, '', (delta) => {
+            streamedAnswer += delta;
+            hasStartedStreaming = true;
+            setMessages((current) => current.map((message, index) =>
+              index === messageIndex ? { ...message, content: streamedAnswer } : message));
+          });
+        } else {
+          const responseData = await readResponseData(response);
+          answer = getChatResponseContent(responseData, activeConfig.provider);
+        }
+      }
+
+      if (!answer) throw new Error('Penyedia AI mengirim jawaban kosong atau tidak dikenal.');
+      const answerWithPagination = attachChatTablePagination(answer, pageMetadata);
+      setMessages((current) => current.map((message, index) =>
+        index === messageIndex ? { ...message, content: answerWithPagination } : message));
+    } catch (error) {
+      if (hasStartedStreaming) {
+        setMessages((current) => current.map((message, index) =>
+          index === messageIndex ? { ...message, content: originalContent } : message));
+      }
+      setChatError(error instanceof TypeError
+        ? 'Tidak dapat memuat halaman tabel. Periksa koneksi lalu coba lagi.'
+        : error instanceof Error ? error.message : 'Halaman tabel gagal dimuat.');
+    } finally {
+      setPageLoadingIndex(null);
     }
   }
 
@@ -606,16 +851,22 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
 
   async function submitQuestion(question: string) {
     const trimmed = question.trim();
-    if (!trimmed || sending || historyLoading || !configLoaded || !config) return;
+    if (!trimmed || sending || pageLoadingIndex !== null || historyLoading || !configLoaded || !config) return;
     const activeConfig = config;
+    const lastMessage = messages.at(-1);
     const previousQuestion = [...messages].reverse().find((message) => message.role === 'user')?.content || '';
     const newCustomerQuestion = getChatNewCustomerFollowUpQuestion(trimmed, previousQuestion);
     const questionForProcessing = getChatBillingFollowUpQuestion(newCustomerQuestion, previousQuestion);
+    const contextQuestion = getChatContextFollowUpQuestion(trimmed, messages);
+    const pendingLearning = lastMessage?.role === 'assistant'
+      ? getPendingChatLearning(lastMessage.content, contextQuestion)
+      : null;
 
     setInput('');
+    if (textareaRef.current) textareaRef.current.style.height = '40px';
     setChatError('');
     setSending(true);
-    setSendStage('context');
+    setStreamingResponse(false);
     const userMessage: Message = { role: 'user', content: trimmed };
     setMessages((current) => [...current, userMessage]);
     let requestingProvider = false;
@@ -630,10 +881,17 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         setHistoryError('Pesan terkirim, tetapi riwayat chat tidak dapat disimpan.');
       }
 
-      const topics = getChatContextTopics(questionForProcessing);
+      const greetingReply = getChatGreetingReply(trimmed);
+      if (greetingReply) {
+        await appendAssistantMessage(greetingReply, userHistorySaved);
+        return;
+      }
+
+      const topics = pendingLearning ? [] : getChatContextTopics(contextQuestion);
       let context: unknown = null;
+      let tablePagination: ChatTablePageMetadata | null = null;
       if (topics.length > 0) {
-        const contextResponse = await fetch(`/api/chat/context?question=${encodeURIComponent(questionForProcessing)}`, {
+        const contextResponse = await fetch(`/api/chat/context?question=${encodeURIComponent(contextQuestion)}`, {
           cache: 'no-store',
         });
         const contextData: unknown = await contextResponse.json();
@@ -644,31 +902,22 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
             : 'Data website gagal dimuat.';
           throw new Error(errorMessage);
         }
-        const noDataReply = getChatNoDataReply(contextData);
-        if (noDataReply) {
-          await appendAssistantMessage(noDataReply, userHistorySaved);
-          return;
-        }
-        const unpaidBillingReply = getChatUnpaidBillingReply(contextData);
-        if (unpaidBillingReply) {
-          await appendAssistantMessage(unpaidBillingReply, userHistorySaved);
-          return;
-        }
-        const visitedCustomerReply = getChatVisitedCustomerReply(contextData);
-        if (visitedCustomerReply) {
-          await appendAssistantMessage(visitedCustomerReply, userHistorySaved);
-          return;
-        }
-        const customerDataReply = getChatCustomerDataReply(contextData);
-        if (customerDataReply) {
-          await appendAssistantMessage(customerDataReply, userHistorySaved);
+        if (
+          typeof contextData === 'object' && contextData !== null && !Array.isArray(contextData)
+          && 'pagination' in contextData && isChatTablePageMetadata(contextData.pagination)
+        ) tablePagination = contextData.pagination;
+        const structuredReply = getStructuredChatReply(contextData);
+        if (structuredReply) {
+          await appendAssistantMessage(
+            attachChatTablePagination(structuredReply, tablePagination),
+            userHistorySaved,
+          );
           return;
         }
         context = typeof contextData === 'object' && contextData !== null && 'data' in contextData
           ? contextData.data
           : null;
       }
-      setSendStage('answer');
 
       requestingProvider = true;
       const baseRequestBody = buildChatRequestBody(
@@ -677,6 +926,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         context,
         activeConfig.provider,
         messages,
+        pendingLearning,
       );
       async function sendCompletion(streaming: boolean) {
         const requestBody = {
@@ -710,6 +960,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         let streamedAnswer = '';
         answer = await readChatCompletionStream(response, activeConfig.provider, '', (delta) => {
           streamedAnswer += delta;
+          setStreamingResponse(true);
           const updateVisibleStream = streamedMessageVisible;
           streamedMessageVisible = true;
           setMessages((current) => {
@@ -725,7 +976,12 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         answer = getChatResponseContent(responseData, activeConfig.provider);
       }
       if (!answer) throw new Error('Penyedia AI mengirim jawaban kosong atau tidak dikenal.');
-      await appendAssistantMessage(answer, userHistorySaved, streamedMessageVisible);
+      await appendAssistantMessage(
+        attachChatTablePagination(answer, tablePagination),
+        userHistorySaved,
+        streamedMessageVisible,
+        pendingLearning,
+      );
     } catch (error) {
       if (error instanceof TypeError) {
         setChatError(requestingProvider
@@ -736,6 +992,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
       }
     } finally {
       setSending(false);
+      setStreamingResponse(false);
     }
   }
 
@@ -744,13 +1001,51 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
     void submitQuestion(input);
   }
 
-  const canSend = Boolean(config) && configLoaded && !historyLoading && !sending && Boolean(input.trim());
+  const canSend = Boolean(config) && configLoaded && !historyLoading
+    && !sending && pageLoadingIndex === null && Boolean(input.trim());
 
   return (
     <main
       data-chat-page="true"
-      className="app-page mx-auto flex h-full min-h-0 max-w-5xl flex-col gap-4 overflow-hidden"
+      className="app-page mx-auto flex h-full min-h-0 max-w-6xl flex-col gap-4 overflow-hidden"
     >
+      <header className="flex min-h-12 shrink-0 items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <ChatSignal active={sending} className="size-10" />
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-semibold leading-6">Alfii</h1>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 gap-2 sm:w-auto sm:px-3"
+            aria-label="Hapus percakapan"
+            title="Hapus percakapan"
+            disabled={messages.length === 0 || historyLoading || sending || pageLoadingIndex !== null || clearingHistory}
+            onClick={() => setClearHistoryOpen(true)}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Hapus</span>
+          </Button>
+          {canManageSettings && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 gap-2 sm:w-auto sm:px-3"
+              aria-label="Buka pengaturan AI"
+              title="Pengaturan AI"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <Settings className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Pengaturan</span>
+            </Button>
+          )}
+        </div>
+      </header>
       {canManageSettings && (
         <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
           <DialogContent className="max-h-[min(85dvh,52rem)] gap-5 overflow-y-auto rounded-2xl p-4 sm:p-6">
@@ -800,6 +1095,8 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                       }}
                       autoComplete="off"
                       maxLength={32}
+                      pattern="[a-fA-F0-9]{32}"
+                      title="Account ID harus terdiri dari 32 karakter heksadesimal."
                       aria-describedby="chat-ai-cloudflare-account-hint"
                       required
                     />
@@ -863,7 +1160,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                   />
                   {selectedProvider === 'cloudflare' && (
                     <p id="chat-ai-key-hint" className="text-xs text-muted-foreground">
-                      Gunakan token dengan izin Workers AI Read serta AI Gateway Read/Edit.
+                      Gunakan API Token dengan izin Account &gt; Workers AI &gt; Read.
                     </p>
                   )}
                 </div>
@@ -916,7 +1213,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                   )}
                   {selectedProvider === 'cloudflare' && (
                     <p id="chat-ai-model-hint" className="text-xs text-muted-foreground">
-                      Masukkan ID model dari katalog Workers AI, contohnya @cf/meta/llama-3.1-8b-instruct.
+                      Gunakan ID dari katalog Cloudflare: @cf/meta/llama-3.1-8b-instruct atau google/gemini-4-argon.
                     </p>
                   )}
                   <div className="flex flex-wrap items-center gap-3">
@@ -960,122 +1257,147 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         </Dialog>
       )}
 
-      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border-border shadow-none">
-        <div className="flex min-h-14 items-center gap-3 border-b border-border px-4 py-3">
-          <RexxaaMark className="h-5 w-5 shrink-0 text-primary" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">Rexxaa</p>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Hapus percakapan"
-            title="Hapus percakapan"
-            disabled={messages.length === 0 || historyLoading || sending || clearingHistory}
-            onClick={() => setClearHistoryOpen(true)}
-          >
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
-          </Button>
-          {canManageSettings && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Buka pengaturan AI"
-              title="Pengaturan AI"
-              onClick={() => setSettingsOpen(true)}
-            >
-              <Settings className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          )}
-        </div>
-
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
         <div className="relative flex min-h-0 flex-1">
-        <section
-          ref={messagesContainerRef}
-          onScroll={handleMessagesScroll}
-          className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain p-4 pb-16 sm:p-6 sm:pb-20"
-          aria-label="Percakapan"
-          aria-live="polite"
-        >
-          {messages.map((message, index) => (
-            <div key={`${index}-${message.role}`} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {message.role === 'assistant' && <RexxaaMark className="mt-1 h-4 w-4 shrink-0 text-primary" />}
-              <div className={`max-w-[min(88%,38rem)] whitespace-pre-wrap rounded-md px-4 py-3 text-sm leading-6 ${message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}`}>
-                {message.role === 'assistant' ? renderChatMessage(message.content) : message.content}
-              </div>
-              {message.role === 'user' && <UserRound className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
-            </div>
-          ))}
-          {historyLoading && messages.length === 0 && (
-            <div className="mx-auto my-auto flex items-center gap-2 text-sm text-muted-foreground" role="status">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Memuat riwayat chat…
-            </div>
-          )}
-
-          {historyError && (
-            <Alert variant="destructive" role="alert">
-              <CircleAlert className="h-4 w-4" aria-hidden="true" />
-              <AlertDescription>{historyError}</AlertDescription>
-            </Alert>
-          )}
-
-          {sending && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              {sendStage === 'context' ? 'Memeriksa catatan terbaru…' : 'Bentarrr yaaawww'}
-            </div>
-          )}
-          {chatError && (
-            <Alert variant="destructive" role="alert">
-              <CircleAlert className="h-4 w-4" aria-hidden="true" />
-              <AlertDescription>{chatError}</AlertDescription>
-            </Alert>
-          )}
-        </section>
-        {showScrollDown && (
-          <button
-            type="button"
-            onClick={scrollToLatest}
-            className="absolute bottom-3 right-3 z-10 flex size-10 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="Gulir ke pesan terbaru"
-            title="Gulir ke pesan terbaru"
+          <section
+            ref={messagesContainerRef}
+            onScroll={handleMessagesScroll}
+            className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 py-5 sm:px-8 sm:py-7"
+            aria-label="Percakapan"
+            aria-live="polite"
           >
-            <ArrowDown className="h-4 w-4" aria-hidden="true" />
-          </button>
-        )}
+            <AnimatePresence initial={false}>
+              {messages.map((message, index) => (
+                <motion.article
+                  key={`${index}-${message.role}`}
+                  initial={prefersReducedMotion ? false : {
+                    opacity: 0,
+                    x: message.role === 'user' ? 8 : -8,
+                  }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  {message.role === 'assistant' ? (
+                    <>
+                      <AlfiiMark className="mt-1 size-7 shrink-0 rounded-full border border-border text-xs" />
+                      <div className="min-w-0 max-w-[min(90%,48rem)] space-y-1">
+                        <p className="px-1 text-xs font-medium text-muted-foreground">Alfii</p>
+                        <div className="min-w-0 rounded-md bg-muted px-4 py-3 text-sm leading-6 text-foreground">
+                          {renderChatMessage(
+                            message.content,
+                            (page) => {
+                              const pagination = getChatTablePageMetadata(message.content);
+                              if (pagination) void loadTablePage(index, pagination, page);
+                            },
+                            pageLoadingIndex === index || sending,
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="max-w-[min(88%,42rem)] rounded-md bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground">
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                    </div>
+                  )}
+                </motion.article>
+              ))}
+            </AnimatePresence>
+
+            {historyLoading && messages.length === 0 && (
+              <div className="mx-auto my-auto flex items-center gap-2 text-sm text-muted-foreground" role="status">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Memuat riwayat chat…
+              </div>
+            )}
+
+            {historyError && (
+              <Alert variant="destructive" role="alert">
+                <CircleAlert className="h-4 w-4" aria-hidden="true" />
+                <AlertDescription>{historyError}</AlertDescription>
+              </Alert>
+            )}
+
+            {sending && !streamingResponse && (
+              <div className="flex items-center gap-3 text-sm text-muted-foreground" role="status">
+                <AlfiiMark className="size-7 shrink-0 rounded-full border border-border text-xs" />
+                <span>bentarrr yaaawww</span>
+                <span className="flex items-center gap-1" aria-hidden="true">
+                  {[0, 1, 2].map((dot) => (
+                    <motion.span
+                      key={dot}
+                      className="size-1 rounded-full bg-primary"
+                      animate={prefersReducedMotion ? undefined : { opacity: [0.35, 1, 0.35] }}
+                      transition={{ duration: 1.1, repeat: Infinity, delay: dot * 0.16 }}
+                    />
+                  ))}
+                </span>
+              </div>
+            )}
+            {chatError && (
+              <Alert variant="destructive" role="alert">
+                <CircleAlert className="h-4 w-4" aria-hidden="true" />
+                <AlertDescription>{chatError}</AlertDescription>
+              </Alert>
+            )}
+          </section>
+          {showScrollDown && (
+            <button
+              type="button"
+              onClick={scrollToLatest}
+              className="absolute bottom-3 left-1/2 z-10 flex size-10 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Gulir ke pesan terbaru"
+              title="Gulir ke pesan terbaru"
+            >
+              <ArrowDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
         </div>
 
-        <form onSubmit={handleSubmit} className="border-t border-border p-3 sm:p-4">
-          <div className="flex items-end gap-2 rounded-md border border-input bg-background p-2 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+        <form onSubmit={handleSubmit} className="shrink-0 border-t border-border bg-card p-3 sm:p-4">
+          <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-md border border-input bg-background p-2 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20">
             <Textarea
+              ref={textareaRef}
               value={input}
-              onChange={(event) => setInput(event.target.value)}
+              onChange={(event) => {
+                setInput(event.target.value);
+                event.target.style.height = 'auto';
+                event.target.style.height = `${Math.min(event.target.scrollHeight, 128)}px`;
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault();
                   void submitQuestion(input);
                 }
               }}
-              aria-label="Tulis pertanyaan untuk asisten AI"
+              aria-label="Tulis pertanyaan untuk Alfii"
+              placeholder="Tulis pertanyaan…"
               rows={1}
               maxLength={500}
+              required
               disabled={sending || historyLoading || !configLoaded || !config}
               className="max-h-32 min-h-10 resize-none border-0 px-2 py-2 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
             />
-            <Button type="submit" size="icon" aria-label="Kirim pertanyaan" disabled={!canSend}>
+            <Button
+              type="submit"
+              size="icon"
+              aria-label="Kirim pertanyaan"
+              disabled={!canSend}
+              className="size-10 shrink-0 bg-foreground text-background hover:bg-foreground/90"
+            >
               <Send className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
-          {configLoaded && !config && (
-            <p className="mt-2 px-1 text-xs text-muted-foreground">
-              Pengaturan AI belum tersedia di browser ini. Hubungi superadmin.
-            </p>
-          )}
+          <div className="mx-auto mt-2 flex max-w-3xl items-center justify-between gap-3 px-1">
+            {configLoaded && !config && (
+              <p className="text-xs leading-5 text-muted-foreground">
+                Pengaturan AI belum tersedia. Hubungi superadmin.
+              </p>
+            )}
+          </div>
         </form>
-      </Card>
+      </section>
       <AlertDialog open={clearHistoryOpen} onOpenChange={setClearHistoryOpen}>
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>

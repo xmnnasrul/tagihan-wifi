@@ -47,6 +47,7 @@ import { Textarea } from '@/components/ui/textarea';
 import PageSkeleton from '@/components/PageSkeleton';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
 import { getBillingOutstandingAmount, getBillingPaidAmount, getBillingTotalDue } from '@/lib/billing-amounts';
+import { isPositiveAmount, isValidOptionalPhoneNumber } from '@/lib/form-validation';
 
 interface Billing {
   _id: string;
@@ -182,6 +183,10 @@ export default function CustomerDetailPage() {
 
   const handleSaveCustomer = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!isValidOptionalPhoneNumber(customerPhone)) {
+      toast.error('Nomor HP harus berisi 8-15 angka.');
+      return;
+    }
     setSavingCustomer(true);
     try {
       const res = await fetch('/api/customers', {
@@ -212,6 +217,10 @@ export default function CustomerDetailPage() {
       return;
     }
     const amount = getAmountValue(billingAmount);
+    if (billingStatus !== 'Belum Bayar' && !isPositiveAmount(amount)) {
+      toast.error('Nominal pembayaran harus lebih dari 0.');
+      return;
+    }
     const existingBilling = billings.find((billing) => billing.month === billingMonth && billing.year === Number(billingYear));
     const alreadyPaid = existingBilling?.paidAmount || existingBilling?.installmentAmount || 0;
     const remainingAmount = currentDueAmount - alreadyPaid;
@@ -294,6 +303,10 @@ export default function CustomerDetailPage() {
   const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editBilling) return;
+    if (editStatus === 'Nyicil' && !isPositiveAmount(editInstallment)) {
+      toast.error('Total cicilan harus lebih dari 0.');
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch('/api/billings', {
@@ -485,7 +498,8 @@ export default function CustomerDetailPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="customer-phone">HP</Label>
-                  <Input id="customer-phone" type="tel" value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} autoComplete="tel" />
+                  <Input id="customer-phone" type="tel" value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} autoComplete="tel" maxLength={24} aria-describedby="customer-edit-phone-hint" />
+                  <p id="customer-edit-phone-hint" className="text-xs text-muted-foreground">Opsional. Jika diisi, gunakan 8-15 angka.</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Paket</Label>
@@ -583,6 +597,7 @@ export default function CustomerDetailPage() {
                     value={formatAmountInput(billingAmount)}
                     onChange={(event) => setBillingAmount(event.target.value.replace(/\D/g, ''))}
                     placeholder={currentPackage ? formatRupiah(currentRemainingAmount) : 'Masukkan nominal'}
+                    required
                   />
                   <p className="text-xs text-muted-foreground">
                     {billingStatus === 'Nyicil'
@@ -594,7 +609,7 @@ export default function CustomerDetailPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="billing-note">Keterangan</Label>
-                <Textarea id="billing-note" value={billingNote} onChange={(event) => setBillingNote(event.target.value)} placeholder="Keterangan tambahan (opsional)" rows={3} />
+                <Textarea id="billing-note" value={billingNote} onChange={(event) => setBillingNote(event.target.value)} placeholder="Keterangan tambahan (opsional)" maxLength={500} rows={3} />
               </div>
               <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
                 {currentPackage && (
@@ -782,6 +797,7 @@ export default function CustomerDetailPage() {
                   value={formatAmountInput(editInstallment)}
                   onChange={(e) => setEditInstallment(e.target.value.replace(/\D/g, ''))}
                   placeholder="Contoh: 100.000"
+                  required
                 />
               </div>
             )}

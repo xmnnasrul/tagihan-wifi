@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
+import type { PipelineStage } from 'mongoose';
 import { getArrearsReport } from '@/lib/arrears-report';
 import { getAIChatPageAccess, requireAuthenticatedUser } from '@/lib/session';
 import { connectDB } from '@/lib/mongodb';
 import Customer from '@/lib/models/Customer';
 import Billing from '@/lib/models/Billing';
-import '@/lib/models/Package';
+import Package from '@/lib/models/Package';
+import Note from '@/lib/models/Note';
 import CollectionVisit from '@/lib/models/CollectionVisit';
 import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 import {
@@ -18,12 +20,16 @@ import {
   getChatContextTopics,
   getChatCustomerAddressQualifierTerms,
   getChatNewCustomerPeriod,
+  getChatUnpaidMonthThreshold,
   matchesChatCustomerNameQuery,
   matchesChatCustomerAddressQuery,
   requestsChatCustomerAddress,
   selectChatCustomerMatchIds,
   type ChatNewCustomerPeriod,
+  type ChatTablePageSource,
 } from '@/lib/chat-answer';
+
+const CHAT_TABLE_PAGE_SIZE = 20;
 
 function getJakartaPeriod() {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -123,6 +129,37 @@ export async function GET(request: Request) {
     const ownerFilter = getOwnerFilter(ownerScope);
     const includeArchived = topics.includes('archive');
     const normalizedQuestion = ` ${normalizeText(question)} `;
+    const currentQuestion = question.split('\n').filter((line) => line.trim()).at(-1) || question;
+    const normalizedCurrentQuestion = ` ${normalizeText(currentQuestion)} `;
+    const requestedPage = Number(searchParams.get('page') || 1);
+    if (!Number.isInteger(requestedPage) || requestedPage < 1 || requestedPage > 10_000) {
+      return NextResponse.json({ error: 'Nomor halaman tabel tidak valid.' }, { status: 400 });
+    }
+    const sourceParameter = searchParams.get('source');
+    const pageSource: ChatTablePageSource = sourceParameter
+      ? sourceParameter as ChatTablePageSource
+      : topics.includes('packages')
+        ? 'packages'
+        : topics.includes('notes')
+          ? 'notes'
+          : topics.includes('billing')
+            ? /\blebih dari \d+ bulan\b/u.test(normalizedQuestion) ? 'overdueCustomers' : 'billings'
+            : topics.includes('collection')
+              ? /\b(?:kemarin|hari sebelumnya)\b/u.test(normalizedQuestion) ? 'visits' : 'collectionCustomers'
+              : includeArchived ? 'archivedCustomers' : 'customers';
+    const allowedPageSources: readonly string[] = [
+      'customers', 'archivedCustomers', 'packages', 'notes',
+      'billings', 'overdueCustomers', 'visits', 'collectionCustomers',
+    ];
+    if (!allowedPageSources.includes(pageSource)) {
+      return NextResponse.json({ error: 'Sumber halaman tabel tidak valid.' }, { status: 400 });
+    }
+    const pageOffset = (requestedPage - 1) * CHAT_TABLE_PAGE_SIZE;
+    let hasNextPage = false;
+    const pageRows = <T>(source: ChatTablePageSource, rows: T[]) => {
+      if (pageSource === source) hasNextPage = rows.length > CHAT_TABLE_PAGE_SIZE;
+      return rows.slice(0, CHAT_TABLE_PAGE_SIZE);
+    };
     const newCustomersPeriod = getChatNewCustomerPeriod(question);
     const newCustomerSelection = newCustomersPeriod ? getNewCustomerMonthSelection(newCustomersPeriod) : null;
     const asksNewCustomers = newCustomersPeriod !== null;
@@ -135,18 +172,22 @@ export async function GET(request: Request) {
     const createdAtFilter = newCustomerSelection
       ? { createdAt: getJakartaMonthRange(newCustomerSelection.year, newCustomerSelection.month) }
       : {};
-    const allCustomers = await Customer.find({
-      ...ownerFilter,
-      ...statusFilter,
-      ...createdAtFilter,
-    }).select('_id name').lean();
+    const needsCustomerLookup = topics.some((topic) =>
+      ['customers', 'billing', 'reports', 'archive', 'collection'].includes(topic));
+    const allCustomers = needsCustomerLookup
+      ? await Customer.find({
+          ...ownerFilter,
+          ...statusFilter,
+          ...createdAtFilter,
+        }).select('_id name').lean()
+      : [];
     const customersMatchingName = allCustomers.filter((customer) =>
       matchesChatCustomerNameQuery(question, customer.name));
     const nameMatchingIds = customersMatchingName.map((customer) => customer._id);
-    const hasAddressQualifier = customersMatchingName.length > 0
+    const hasAddressQualifier = needsCustomerLookup && (customersMatchingName.length > 0
       ? customersMatchingName.some((customer) =>
         getChatCustomerAddressQualifierTerms(question, customer.name).length > 0)
-      : getChatCustomerAddressQualifierTerms(question, '').length > 0;
+      : getChatCustomerAddressQualifierTerms(question, '').length > 0);
     const addressSearchCandidates = customersMatchingName.length > 0
       ? customersMatchingName
       : hasAddressQualifier ? allCustomers : [];
@@ -181,7 +222,37 @@ export async function GET(request: Request) {
     };
     const data: Record<string, unknown> = {};
     const addressByCustomerId = new Map<string, string>();
-    let customerNotFound = hasAddressQualifier && !hasCustomerMatch && !asksNewCustomers;
+
+    if (topics.includes('packages')) {
+      const packages = await Package.find(ownerFilter)
+        .select('name price speed description')
+        .sort({ price: 1, name: 1 })
+        .skip(pageSource === 'packages' ? pageOffset : 0)
+        .limit(CHAT_TABLE_PAGE_SIZE + 1)
+        .lean();
+      data.packages = pageRows('packages', packages).map(({ name, price, speed, description }) => ({
+        name,
+        price,
+        speed,
+        ...(description?.trim() && { description }),
+      }));
+    }
+
+    if (topics.includes('notes')) {
+      const notes = await Note.find({ ownerId: ownerScope.ownerId })
+        .select('text completed createdAt')
+        .sort({ completed: 1, createdAt: -1 })
+        .skip(pageSource === 'notes' ? pageOffset : 0)
+        .limit(CHAT_TABLE_PAGE_SIZE + 1)
+        .lean();
+      data.notes = pageRows('notes', notes).map(({ text, completed, createdAt }) => ({
+        text,
+        completed,
+        createdAt,
+      }));
+    }
+
+    let customerNotFound = needsCustomerLookup && hasAddressQualifier && !hasCustomerMatch && !asksNewCustomers;
     let unpaidBillingNotFound = false;
     let newCustomersNotFound = false;
     let visitedYesterdayNotFound = false;
@@ -196,14 +267,16 @@ export async function GET(request: Request) {
           .select('name status archivedAt packageId address phone createdAt')
           .populate('packageId', 'name speed price')
           .sort({ name: 1 })
-          .limit(101)
+          .skip(pageSource === (includeArchived ? 'archivedCustomers' : 'customers') ? pageOffset : 0)
+          .limit(CHAT_TABLE_PAGE_SIZE + 1)
           .lean();
         customers.forEach((customer) => {
           if (asksAddress && typeof customer.address === 'string' && customer.address.trim()) {
             addressByCustomerId.set(customer._id.toString(), customer.address.trim());
           }
         });
-        data[topics.includes('archive') ? 'archivedCustomers' : 'customers'] = customers.slice(0, 100).map((customer) => {
+        const customerPageSource = includeArchived ? 'archivedCustomers' : 'customers';
+        data[customerPageSource] = pageRows(customerPageSource, customers).map((customer) => {
           const packageValue = customer.packageId;
           const packageInfo = typeof packageValue === 'object' && packageValue !== null && 'name' in packageValue
             ? {
@@ -228,7 +301,6 @@ export async function GET(request: Request) {
           data.newCustomersPeriod = newCustomersPeriod;
           data.newCustomersPeriodLabel = newCustomerSelection?.label;
         }
-        if (customers.length > 100) data.customerListTruncated = true;
         if (requestsCustomerList && customers.length === 0) {
           if (asksNewCustomers) newCustomersNotFound = true;
           else customerNotFound = true;
@@ -247,52 +319,122 @@ export async function GET(request: Request) {
         : [];
 
     const asksUnpaid = /\b(?:belum\s+(?:bayar|membayar|dibayar|lunas|transfer)|nunggak|tunggakan|utang)\b/u
-      .test(normalizedQuestion);
-    const asksForBillingDetails = /\b(?:daftar|semua|seluruh|siapa|detail|rincian|riwayat|transaksi)\b/u
+      .test(normalizedCurrentQuestion);
+    const minimumUnpaidMonths = asksUnpaid ? getChatUnpaidMonthThreshold(question) : null;
+    const asksForBillingDetails = /\b(?:daftar|semua|seluruh|siapa|detail|rincian|riwayat|history|transaksi)\b/u
       .test(normalizedQuestion);
     if (topics.includes('billing') && (asksForBillingDetails || hasCustomerMatch || !topics.includes('reports'))) {
       const period = getRequestedPeriod(question);
-      const periodRequested = /\b(?:bulan|periode|tahun)\b/u.test(normalizedQuestion)
+      const periodRequested = minimumUnpaidMonths === null && (/\b(?:bulan|periode|tahun)\b/u.test(normalizedQuestion)
         || CHAT_MONTHS.some((month) => normalizedQuestion.includes(normalizeText(month)))
-        || /\b20\d{2}\b/.test(question);
-      const paymentDetails = /\b(?:riwayat|detail|rincian|transaksi|metode|cash|transfer|tunai)\b/u.test(normalizedQuestion);
+        || /\b20\d{2}\b/.test(question));
+      const paymentDetails = /\b(?:riwayat|history|detail|rincian|transaksi|metode|cash|transfer|tunai)\b/u
+        .test(normalizedCurrentQuestion);
+      const asksForBillingHistory = /\b(?:riwayat|history|transaksi)\b/u.test(normalizedCurrentQuestion);
       const billingQuery: Record<string, unknown> = { customerId: { $in: customerIds } };
       if (periodRequested) {
         billingQuery.month = period.month;
         billingQuery.year = period.year;
       }
-      const billings = await Billing.find(billingQuery)
-        .select('customerId customerName month year status packagePrice paidAmount installmentAmount paymentHistory')
-        .sort({ year: -1, createdAt: -1 })
-        .limit(201)
-        .lean();
-      const billingData = billings.slice(0, 200).map((billing) => ({
-        customerName: billing.customerName,
-        ...(addressMatchedIds.has(billing.customerId.toString()) && { matchedByAddress: true }),
-        ...(asksAddress && addressByCustomerId.has(billing.customerId.toString())
-          ? { address: addressByCustomerId.get(billing.customerId.toString()) }
-          : {}),
-        month: billing.month,
-        year: billing.year,
-        status: billing.status,
-        totalDue: getBillingTotalDue(billing),
-        paidAmount: getBillingPaidAmount(billing),
-        outstandingAmount: getBillingOutstandingAmount(billing),
-        ...(paymentDetails && {
-          payments: (billing.paymentHistory || []).slice(-10).map((payment) => ({
-            amount: payment.amount,
-            date: payment.addedAt,
-            method: payment.method || payment.status,
-          })),
-        }),
-      }));
       data.unpaidOnly = asksUnpaid;
-      const selectedBillings = asksUnpaid
-        ? billingData.filter((billing) => billing.outstandingAmount > 0)
-        : billingData;
-      data.billings = selectedBillings;
-      unpaidBillingNotFound = asksUnpaid && customerIds.length > 0 && selectedBillings.length === 0;
-      if (billings.length > 200) data.billingHistoryTruncated = true;
+      data.billingHistory = asksForBillingHistory && !asksUnpaid;
+      if (minimumUnpaidMonths !== null) {
+        const arrearsPipeline: PipelineStage[] = [
+          { $match: billingQuery },
+          {
+            $addFields: {
+              _chatPaidAmount: {
+                $cond: [
+                  { $gt: ['$paidAmount', 0] },
+                  { $min: ['$packagePrice', '$paidAmount'] },
+                  {
+                    $cond: [
+                      { $in: ['$status', ['TF', 'Cash', 'Lunas']] },
+                      '$packagePrice',
+                      { $min: ['$packagePrice', { $ifNull: ['$installmentAmount', 0] }] },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+          {
+            $addFields: {
+              _chatOutstanding: { $max: [0, { $subtract: ['$packagePrice', '$_chatPaidAmount'] }] },
+            },
+          },
+          { $match: { _chatOutstanding: { $gt: 0 } } },
+          {
+            $group: {
+              _id: { customerId: '$customerId', month: '$month', year: '$year' },
+              customerName: { $first: '$customerName' },
+              outstandingAmount: { $sum: '$_chatOutstanding' },
+            },
+          },
+          {
+            $group: {
+              _id: '$_id.customerId',
+              customerName: { $first: '$customerName' },
+              unpaidMonths: { $sum: 1 },
+              totalOutstanding: { $sum: '$outstandingAmount' },
+            },
+          },
+          { $match: { unpaidMonths: { $gte: minimumUnpaidMonths } } },
+          { $sort: { unpaidMonths: -1, customerName: 1 } },
+          { $skip: pageSource === 'overdueCustomers' ? pageOffset : 0 },
+          { $limit: CHAT_TABLE_PAGE_SIZE + 1 },
+        ];
+        const overdueCustomers = await Billing.aggregate(arrearsPipeline);
+        data.minimumUnpaidMonths = minimumUnpaidMonths;
+        data.overdueCustomers = pageRows('overdueCustomers', overdueCustomers).map((customer) => ({
+          name: customer.customerName,
+          unpaidMonths: customer.unpaidMonths,
+          totalOutstanding: customer.totalOutstanding,
+        }));
+        data.billings = [];
+        unpaidBillingNotFound = requestedPage === 1 && overdueCustomers.length === 0;
+      } else {
+        const billingQueryResult = await Billing.find(billingQuery)
+          .select('customerId customerName month year status packagePrice paidAmount installmentAmount note createdAt paymentHistory')
+          .sort({ year: -1, createdAt: -1 })
+          .skip(!asksUnpaid && pageSource === 'billings' ? pageOffset : 0)
+          .limit(asksUnpaid ? 0 : CHAT_TABLE_PAGE_SIZE + 1)
+          .lean();
+        const billingData = billingQueryResult.map((billing) => ({
+          customerName: billing.customerName,
+          ...(addressMatchedIds.has(billing.customerId.toString()) && { matchedByAddress: true }),
+          ...(asksAddress && addressByCustomerId.has(billing.customerId.toString())
+            ? { address: addressByCustomerId.get(billing.customerId.toString()) }
+            : {}),
+          month: billing.month,
+          year: billing.year,
+          status: billing.status,
+          packagePrice: billing.packagePrice,
+          totalDue: getBillingTotalDue(billing),
+          paidAmount: getBillingPaidAmount(billing),
+          outstandingAmount: getBillingOutstandingAmount(billing),
+          ...(paymentDetails && {
+            note: billing.note || '',
+            createdAt: billing.createdAt,
+            payments: (billing.paymentHistory || []).map((payment) => ({
+              amount: payment.amount,
+              date: payment.addedAt,
+              addedBy: payment.addedBy,
+              status: payment.status,
+              method: payment.method,
+              note: payment.note,
+              isSettlementAllocation: payment.isSettlementAllocation,
+            })),
+          }),
+        }));
+        const selectedBillings = asksUnpaid
+          ? billingData.filter((billing) => billing.outstandingAmount > 0)
+          : billingData;
+        data.billings = asksUnpaid
+          ? pageRows('billings', selectedBillings.slice(pageOffset, pageOffset + CHAT_TABLE_PAGE_SIZE + 1))
+          : pageRows('billings', selectedBillings);
+        unpaidBillingNotFound = asksUnpaid && customerIds.length > 0 && selectedBillings.length === 0;
+      }
     }
 
     if (topics.includes('reports')) {
@@ -329,6 +471,8 @@ export async function GET(request: Request) {
         })
           .select('customerId collectorUsername visitedAt')
           .sort({ visitedAt: 1 })
+          .skip(pageSource === 'visits' ? pageOffset : 0)
+          .limit(CHAT_TABLE_PAGE_SIZE + 1)
           .lean();
         const visitedCustomerIds = visits.map((visit) => visit.customerId);
         const visitedCustomers = await Customer.find({
@@ -349,7 +493,10 @@ export async function GET(request: Request) {
             visitedAt: visit.visitedAt,
           }];
         });
-        data.collection = { visitedYesterday: true, visits: visitData };
+        data.collection = {
+          visitedYesterday: true,
+          visits: pageRows('visits', visitData),
+        };
         visitedYesterdayNotFound = visitData.length === 0;
       } else {
         const period = getRequestedPeriod(question);
@@ -371,21 +518,29 @@ export async function GET(request: Request) {
           }).select('customerId collectorUsername visitedAt').lean(),
         ]);
         const visitedByCustomer = new Map(visits.map((visit) => [visit.customerId.toString(), visit]));
+        const collectionCustomers = currentBillings
+          .filter((billing) => getBillingOutstandingAmount(billing) > 0)
+          .map((billing) => {
+            const visit = visitedByCustomer.get(billing.customerId.toString());
+            return {
+              customerName: billing.customerName,
+              outstandingAmount: getBillingOutstandingAmount(billing),
+              visited: Boolean(visit?.visitedAt),
+              collector: visit?.collectorUsername || null,
+              visitedAt: visit?.visitedAt || null,
+            };
+          });
+        const selectedCollectionCustomers = pageRows(
+          'collectionCustomers',
+          collectionCustomers.slice(
+            pageSource === 'collectionCustomers' ? pageOffset : 0,
+            (pageSource === 'collectionCustomers' ? pageOffset : 0) + CHAT_TABLE_PAGE_SIZE + 1,
+          ),
+        );
         data.collection = {
           month: period.month,
           year: period.year,
-          customers: currentBillings
-            .filter((billing) => getBillingOutstandingAmount(billing) > 0)
-            .map((billing) => {
-              const visit = visitedByCustomer.get(billing.customerId.toString());
-              return {
-                customerName: billing.customerName,
-                outstandingAmount: getBillingOutstandingAmount(billing),
-                visited: Boolean(visit?.visitedAt),
-                collector: visit?.collectorUsername || null,
-                visitedAt: visit?.visitedAt || null,
-              };
-            }),
+          customers: selectedCollectionCustomers,
         };
       }
     }
@@ -393,13 +548,27 @@ export async function GET(request: Request) {
     return NextResponse.json({
       topics,
       data,
+      pagination: {
+        question,
+        source: pageSource,
+        page: requestedPage,
+        pageSize: CHAT_TABLE_PAGE_SIZE,
+        hasNext: hasNextPage,
+      },
       ...(newCustomersNotFound && {
         notFound: 'new-customers',
         ...(newCustomerSelection && { notFoundPeriod: newCustomerSelection.label }),
       }),
       ...(customerNotFound && { notFound: 'customer' }),
       ...(visitedYesterdayNotFound && { notFound: 'visits-yesterday' }),
-      ...(!customerNotFound && unpaidBillingNotFound && { notFound: 'unpaid-billing' }),
+      ...(!customerNotFound && unpaidBillingNotFound && {
+        notFound: minimumUnpaidMonths !== null ? 'unpaid-threshold' : 'unpaid-billing',
+        ...(minimumUnpaidMonths !== null && { minimumUnpaidMonths }),
+      }),
+      ...(topics.length === 1 && topics.includes('packages')
+        && Array.isArray(data.packages) && data.packages.length === 0 && { notFound: 'packages' }),
+      ...(topics.length === 1 && topics.includes('notes')
+        && Array.isArray(data.notes) && data.notes.length === 0 && { notFound: 'notes' }),
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('GET /api/chat/context failed:', error);

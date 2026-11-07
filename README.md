@@ -6,7 +6,7 @@ Aplikasi administrasi pelanggan WiFi untuk mengelola paket, tagihan, pembayaran,
 
 - Dashboard periode tagihan, pemasukan, saldo tertunggak, dan pelanggan.
 - Data pelanggan, detail pelanggan, paket, serta riwayat tagihan.
-- Tagihan bulanan otomatis untuk pelanggan aktif, mulai tanggal 15 waktu Jakarta.
+- Generate Month membuat tagihan bulanan maksimal sekali per pemilik data dan periode, saat dashboard dibuka. Proses memakai waktu Jakarta mulai tanggal 1; jika tanggal 1 terlewat, proses mengejar saat dashboard dibuka berikutnya. Tagihan yang sudah ada tidak diubah.
 - Pembayaran penuh dan cicilan; pembayaran tunggakan dialokasikan ke tagihan tertua.
 - Pencatatan kunjungan dan rekap setoran harian.
 - Catatan operasional per admin dengan checklist selesai dan penghapusan catatan.
@@ -18,11 +18,18 @@ Aplikasi administrasi pelanggan WiFi untuk mengelola paket, tagihan, pembayaran,
 
 ### Chat AI
 
-- Rexxaa membantu obrolan umum serta pertanyaan tentang pelanggan, tagihan/pembayaran, laporan, arsip, dan penagihan.
+- Alfii membantu obrolan umum serta pertanyaan tentang pelanggan, paket, catatan, tagihan/pembayaran, laporan, arsip, dan penagihan. Gaya jawabannya menyesuaikan konteks: pembuka dan susunan jawaban bervariasi tanpa mengulang sapaan secara otomatis.
+- Riwayat tagihan pelanggan ditampilkan dalam tabel per bulan, termasuk status, jumlah dibayar, dan catatan. Rincian pembayaran mencakup tanggal, petugas, nominal, catatan, dan status.
+- Tabel hasil Alfii memakai navigasi halaman dengan maksimal 20 data per halaman; nomor urut berlanjut pada halaman berikutnya.
 - Admin hanya dapat memakai Chat AI setelah aksesnya diaktifkan superadmin. Pengaturan Base URL, API Key, dan model hanya dapat diubah superadmin.
 - Pengaturan penyedia AI disimpan di MongoDB. API Key dienkripsi dengan AES-256-GCM di server dan tidak dikirim ke browser. Permintaan model dan chat diteruskan melalui server; hanya superadmin yang dapat mengubah pengaturan.
-- Pengaturan provider dilakukan dari dialog **Pengaturan koneksi AI** pada halaman Chat AI. Untuk Cloudflare Workers AI, masukkan Account ID, API Token dengan izin Workers AI Read serta AI Gateway Read/Edit, dan ID model seperti `@cf/meta/llama-3.1-8b-instruct`.
-- Untuk pertanyaan tentang data website, server mengambil konteks relevan dari MongoDB dengan pembatasan kepemilikan akun. Konteks tersebut dikirim bersama pertanyaan ke penyedia AI; AI tidak terhubung langsung ke database.
+- Pengaturan provider dilakukan dari dialog **Pengaturan koneksi AI** pada halaman Chat AI. Untuk Cloudflare AI, masukkan Account ID, API Token dengan izin Account > Workers AI > Read, dan ID model dari katalog Cloudflare seperti `@cf/meta/llama-3.1-8b-instruct` atau model eksternal `google/gemini-4-argon`.
+- Untuk pertanyaan tentang data website, server mengambil konteks relevan dari MongoDB dengan pembatasan kepemilikan akun dan izin role. Konteks yang diperlukan dikirim bersama pertanyaan ke penyedia AI; Alfii tidak terhubung langsung ke database dan tidak dapat mengubah data bisnis.
+- Alfii juga dapat menjawab daftar paket beserta nama, kecepatan, harga, dan keterangan; serta catatan/checklist milik akun aktif beserta status selesai. Daftar catatan dibatasi hingga 20 catatan terbaru per permintaan. Data hanya dimuat ketika topik paket atau catatan diminta.
+- Pertanyaan lanjutan seperti "berapa tagihannya?" dapat memakai pelanggan/topik dari pertanyaan sebelumnya untuk mencari konteks database. Riwayat membantu memahami rujukan, tetapi bukan sumber fakta; Alfii diminta meminta klarifikasi jika rujukannya tidak jelas.
+- Jika admin memberi istilah/perintah kerja yang belum dipahami, Alfii akan meminta klarifikasi. Setelah admin menjelaskan maksudnya, Alfii otomatis memperbarui satu rangkuman memori privat per akun: satu baris ringkas per istilah, dan penjelasan terbaru menggantikan baris dengan istilah yang sama. Batas rangkuman adalah 80.000 karakter; bila penuh, memori baru tidak disimpan dan aplikasi menampilkan pesan gagal.
+- Chat biasa tidak otomatis menjadi pelatihan. Memori hanya untuk arti istilah/perintah kerja yang dijelaskan admin, bukan rahasia atau fakta pelanggan/tagihan yang dapat berubah. Memori tidak menggantikan data terbaru dari website dan tidak melatih ulang model AI. Saat menjawab, Alfii hanya menyertakan maksimal empat baris memori yang relevan dengan batas gabungan sekitar 1.200 karakter untuk menghemat token.
+- Akses Alfii dibatasi oleh konteks yang server pilih dan izin role: admin mendapat data akunnya, sedangkan superadmin dapat menanyakan data lintas akun sesuai izin yang berlaku. Alfii sendiri tidak memiliki akses langsung ke database atau kewenangan menulis data; perubahan bisnis tetap harus melalui API dan pemeriksaan izin. Memori tidak menambah hak akses. Pertanyaan dan konteks relevan tetap diteruskan ke penyedia AI yang dikonfigurasi.
 - Konteks pelanggan yang relevan—termasuk alamat untuk hasil pencarian pelanggan tertentu—dapat diteruskan ke penyedia AI. Periksa kebijakan privasi penyedia sebelum menggunakannya.
 - Riwayat chat disimpan di MongoDB, privat per akun, dan kedaluwarsa setelah lima hari. Hingga delapan pesan sebelumnya dapat dikirim ke penyedia AI sebagai konteks percakapan.
 

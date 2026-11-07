@@ -91,6 +91,10 @@ export default function ProfilePage() {
       toast.error('Konfirmasi password baru tidak cocok');
       return;
     }
+    if (newPassword === currentPassword) {
+      toast.error('Password baru harus berbeda dari password saat ini.');
+      return;
+    }
 
     setChangingPassword(true);
     try {
@@ -192,6 +196,7 @@ export default function ProfilePage() {
                     minLength={3}
                     maxLength={32}
                     pattern="[a-zA-Z0-9._-]+"
+                    title="Gunakan 3-32 karakter: huruf, angka, titik, garis bawah, atau tanda hubung."
                     className="h-11"
                     required
                   />
@@ -247,6 +252,7 @@ export default function ProfilePage() {
                     onChange={(event) => setNewPassword(event.target.value)}
                     autoComplete="new-password"
                     minLength={10}
+                    maxLength={72}
                     className="h-11 pr-10"
                     placeholder="Minimal 10 karakter"
                     required
@@ -267,6 +273,7 @@ export default function ProfilePage() {
                     onChange={(event) => setConfirmPassword(event.target.value)}
                     autoComplete="new-password"
                     minLength={10}
+                    maxLength={72}
                     className="h-11 pr-10"
                     placeholder="Ulangi password baru"
                     required

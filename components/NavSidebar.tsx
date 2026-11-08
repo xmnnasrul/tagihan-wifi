@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, History, Shield, Users, UserCircle2, FileText, WalletCards, MoreHorizontal, ArrowUpRight, StickyNote, MessageCircle } from 'lucide-react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, History, Shield, Users, UserCircle2, FileText, WalletCards, MoreHorizontal, ArrowUpRight, StickyNote, MessageCircle, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ThemeToggle from '@/components/ThemeToggle';
 import { cn } from '@/lib/utils';
@@ -13,7 +13,10 @@ import { useCurrentUser } from '@/components/CurrentUserProvider';
 import { getScheduledTheme, THEME_PREFERENCE_KEY } from '@/components/ThemeProvider';
 
 const navGroups = [
-  { label: 'Ringkasan', items: [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }] },
+  { label: 'Ringkasan', items: [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/monthly-recap', label: 'Rekap Bulanan', icon: CalendarDays },
+  ] },
   { label: 'Operasional', items: [
     { href: '/customers/all', label: 'Pelanggan', icon: Users },
     { href: '/collector', label: 'Setoran Harian', icon: WalletCards },

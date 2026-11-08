@@ -22,6 +22,7 @@ interface BillingListItem {
   carriedAmount: number;
   paidAmount: number;
   installmentAmount: number;
+  paymentHistory?: Array<{ amount: number; method?: string; status?: string }>;
 }
 
 const months = [
@@ -29,10 +30,29 @@ const months = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
 ];
 
+function getMethodAmount(billing: BillingListItem, method: 'TF' | 'Cash') {
+  if (billing.paymentHistory?.length) {
+    return billing.paymentHistory.reduce((total, payment) =>
+      (payment.method || payment.status) === method ? total + payment.amount : total, 0);
+  }
+  return billing.status === method ? getBillingPaidAmount(billing) : 0;
+}
+
 export default function BillingListPage() {
   const params = useParams<{ type: string }>();
   const searchParams = useSearchParams();
+  const monthlyRecapTitles: Record<string, string> = {
+    pelanggan: 'Pelanggan Ditagih',
+    'total-tagihan': 'Total Tagihan',
+    'total-dibayar': 'Total Pembayaran',
+    transfer: 'Pembayaran Transfer',
+    tunai: 'Pembayaran Tunai',
+    'sisa-tagihan': 'Sisa Tagihan',
+    'pelanggan-belum-bayar': 'Pelanggan Belum Lunas',
+  };
+  const monthlyRecapTypes = Object.keys(monthlyRecapTitles);
   const type = params.type === 'paid' || params.type === 'unpaid' || params.type === 'belum-bayar'
+    || monthlyRecapTypes.includes(params.type)
     ? params.type
     : null;
   const currentMonth = new Date().toLocaleString('id-ID', { month: 'long' });
@@ -64,6 +84,13 @@ export default function BillingListPage() {
 
         const matchingBillings = (data as BillingListItem[]).filter((billing) => {
           if (type === 'belum-bayar') return billing.status === 'Belum Bayar';
+          if (type === 'transfer') return getMethodAmount(billing, 'TF') > 0;
+          if (type === 'tunai') return getMethodAmount(billing, 'Cash') > 0;
+          if (type === 'total-dibayar') return getBillingPaidAmount(billing) > 0;
+          if (type === 'sisa-tagihan' || type === 'pelanggan-belum-bayar') {
+            return getBillingPaidAmount(billing) < getBillingTotalDue(billing);
+          }
+          if (type === 'pelanggan' || type === 'total-tagihan') return true;
           const isPaid = getBillingPaidAmount(billing) >= getBillingTotalDue(billing);
           return type === 'paid' ? isPaid : !isPaid;
         });
@@ -87,7 +114,10 @@ export default function BillingListPage() {
     minimumFractionDigits: 0,
   }).format(amount);
 
-  const title = type === 'paid'
+  const isMonthlyRecapCategory = Boolean(type && type in monthlyRecapTitles);
+  const title = type && monthlyRecapTitles[type]
+    ? monthlyRecapTitles[type]
+    : type === 'paid'
     ? 'Pelanggan Sudah Lunas'
     : type === 'belum-bayar'
       ? 'Pelanggan Belum Bayar'
@@ -100,9 +130,9 @@ export default function BillingListPage() {
           <h1 className="text-2xl font-bold tracking-tight">{type ? title : 'Daftar Tagihan Tidak Ditemukan'}</h1>
           <p className="mt-1 text-sm text-muted-foreground">Periode {month} {year}</p>
         </div>
-        <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+        <Link href={isMonthlyRecapCategory ? '/monthly-recap' : '/dashboard'} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
-          Kembali ke Dashboard
+          {isMonthlyRecapCategory ? 'Kembali ke Rekap Bulanan' : 'Kembali ke Dashboard'}
         </Link>
       </div>
 
@@ -118,11 +148,20 @@ export default function BillingListPage() {
         <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada pelanggan pada kategori ini untuk periode tersebut.</p>
       ) : (
         <>
-          <p className="text-xs text-muted-foreground">{billings.length} pelanggan</p>
+          <p className="text-xs text-muted-foreground">
+            {new Set(billings.map(({ customerId }) => customerId)).size} pelanggan · {billings.length} tagihan
+          </p>
           <ul className="space-y-2">
             {billings.map((billing) => {
               const totalDue = getBillingTotalDue(billing);
               const paidAmount = getBillingPaidAmount(billing);
+              const recapAmount = type === 'total-tagihan' ? totalDue
+                : type === 'total-dibayar' ? paidAmount
+                  : type === 'transfer' ? getMethodAmount(billing, 'TF')
+                    : type === 'tunai' ? getMethodAmount(billing, 'Cash')
+                      : type === 'sisa-tagihan' || type === 'pelanggan-belum-bayar'
+                        ? Math.max(0, totalDue - paidAmount)
+                        : null;
               return (
                 <li key={billing._id}>
                   <Link
@@ -146,7 +185,9 @@ export default function BillingListPage() {
                                 <span className="inline-flex items-center gap-1">
                                   <CalendarDays className="h-3 w-3" /> {billing.month} {billing.year}
                                 </span>
-                                <span>Dibayar {formatRupiah(paidAmount)} dari {formatRupiah(totalDue)}</span>
+                                {recapAmount !== null
+                                  ? <span>{formatRupiah(recapAmount)} · Dibayar {formatRupiah(paidAmount)} dari {formatRupiah(totalDue)}</span>
+                                  : <span>Dibayar {formatRupiah(paidAmount)} dari {formatRupiah(totalDue)}</span>}
                               </div>
                             </div>
                           </div>

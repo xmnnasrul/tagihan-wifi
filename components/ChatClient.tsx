@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import Image from 'next/image';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, CircleAlert, Loader2, Send, Settings, Trash2 } from 'lucide-react';
@@ -30,6 +31,7 @@ import {
   AI_CONFIG_STORAGE_KEY,
   buildChatRequestBody,
   appendChatTablePageMetadata,
+  appendChatWebImageMetadata,
   CHAT_AI_PROVIDERS,
   ChatAIConfig,
   ChatAIProvider,
@@ -53,6 +55,7 @@ import {
   getChatVisitedCustomerReply,
   getChatContextTopics,
   getChatTablePageMetadata,
+  getChatWebImageMetadata,
   getChatLearningAction,
   getPendingChatLearning,
   getChatNoDataReply,
@@ -68,8 +71,11 @@ import {
   normalizeCloudflareWorkersAIBaseURL,
   normalizeChatModel,
 } from '@/lib/chat-answer';
+import { shouldSearchChatImages, shouldSearchChatWeb } from '@/lib/chat-web-search.mjs';
 
 type Message = { role: 'user' | 'assistant'; content: string };
+type ChatWebSource = { title: string; url: string };
+type ChatWebImage = { title: string; thumbnail: string; url: string };
 type ChatAIModelConfig = Pick<ChatAISettings, 'provider' | 'baseURL' | 'model'> & { apiKey?: string };
 
 const ChatSignal = dynamic(() => import('@/components/ChatSignal'), {
@@ -132,6 +138,70 @@ function getResponseError(value: unknown, fallback: string): string {
     : fallback;
 }
 
+function getChatWebSources(response: Response): ChatWebSource[] {
+  const header = response.headers.get('x-chat-web-sources');
+  if (!header) return [];
+  try {
+    const data: unknown = JSON.parse(decodeURIComponent(header));
+    if (!Array.isArray(data)) throw new Error('Daftar sumber internet tidak valid.');
+    return data.flatMap((source): ChatWebSource[] => {
+      if (
+        typeof source !== 'object' || source === null
+        || !('title' in source) || typeof source.title !== 'string'
+        || !('url' in source) || typeof source.url !== 'string'
+      ) throw new Error('Format sumber internet tidak valid.');
+      try {
+        const url = new URL(source.url);
+        if (url.protocol !== 'https:') throw new Error('Tautan sumber internet tidak aman.');
+        return [{ title: source.title.slice(0, 180), url: url.href }];
+      } catch {
+        throw new Error('Tautan sumber internet tidak valid.');
+      }
+    });
+  } catch {
+    throw new Error('Sumber internet dari server tidak dapat dibaca.');
+  }
+}
+
+function getChatWebImages(response: Response): ChatWebImage[] {
+  const header = response.headers.get('x-chat-web-images');
+  if (!header) return [];
+  try {
+    const data: unknown = JSON.parse(decodeURIComponent(header));
+    if (!Array.isArray(data)) throw new Error('Daftar gambar internet tidak valid.');
+    return data.flatMap((image): ChatWebImage[] => {
+      if (
+        typeof image !== 'object' || image === null
+        || !('title' in image) || typeof image.title !== 'string'
+        || !('thumbnail' in image) || typeof image.thumbnail !== 'string'
+        || !('url' in image) || typeof image.url !== 'string'
+      ) throw new Error('Format gambar internet tidak valid.');
+      try {
+        const thumbnail = new URL(image.thumbnail);
+        const url = new URL(image.url);
+        if (
+          thumbnail.protocol !== 'https:'
+          || !/^tse\d+\.mm\.bing\.net$/iu.test(thumbnail.hostname)
+          || url.protocol !== 'https:'
+          || url.username || url.password
+        ) throw new Error('Tautan gambar internet tidak aman.');
+        return [{ title: image.title.slice(0, 180), thumbnail: thumbnail.href, url: url.href }];
+      } catch {
+        throw new Error('Tautan gambar internet tidak valid.');
+      }
+    });
+  } catch {
+    throw new Error('Gambar internet dari server tidak dapat dibaca.');
+  }
+}
+
+function appendChatWebSources(content: string, sources: ChatWebSource[]): string {
+  if (sources.length === 0) return content;
+  return `${content.trimEnd()}\n\nSumber internet:\n${sources
+    .map((source, index) => `${index + 1}. ${source.title}\n${source.url}`)
+    .join('\n')}`;
+}
+
 function getStructuredChatReply(value: unknown): string | null {
   return getChatNoDataReply(value)
     || getChatBillingHistoryReply(value)
@@ -172,7 +242,28 @@ function renderChatMessage(
       const key = `text-${blockIndex++}`;
       blocks.push(/^(?:Riwayat Tagihan|Detail pembayaran)$/u.test(text)
         ? <h4 key={key} className="pt-2 text-sm font-semibold text-foreground">{text}</h4>
-        : <p key={key} className="whitespace-pre-wrap">{text}</p>);
+        : (
+          <p key={key} className="whitespace-pre-wrap">
+            {text.split(/(https:\/\/[^\s<]+)/giu).map((part, index) => {
+              if (!part.startsWith('https://')) return part;
+              const trailingPunctuation = part.match(/[.,!?;:)]+$/u)?.[0] || '';
+              const link = trailingPunctuation ? part.slice(0, -trailingPunctuation.length) : part;
+              return (
+                <span key={`${key}-link-${index}`}>
+                  <a
+                    href={link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="break-all text-primary underline underline-offset-2 hover:opacity-80 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {link}
+                  </a>
+                  {trailingPunctuation}
+                </span>
+              );
+            })}
+          </p>
+        ));
     }
     textLines = [];
   }
@@ -310,6 +401,35 @@ function renderChatMessage(
   }
 
   flushText();
+  const images = getChatWebImageMetadata(content);
+  if (images.length > 0) {
+    blocks.push(
+      <div key="web-images" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {images.map((image, index) => (
+          <a
+            key={`${image.url}-${index}`}
+            href={image.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Buka sumber gambar: ${image.title}`}
+            className="group min-w-0 overflow-hidden rounded-md bg-background transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="relative block aspect-[4/3] overflow-hidden">
+              <Image
+                src={image.thumbnail}
+                alt={image.title}
+                fill
+                sizes="(max-width: 640px) 42vw, 220px"
+                unoptimized
+                className="object-cover transition-transform duration-300 group-hover:scale-105"
+              />
+            </span>
+            <span className="block truncate px-2 py-1.5 text-xs text-muted-foreground">{image.title}</span>
+          </a>
+        ))}
+      </div>,
+    );
+  }
   return <div className="space-y-3">{blocks}</div>;
 }
 
@@ -320,6 +440,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
   const [historyError, setHistoryError] = useState('');
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [searchingWeb, setSearchingWeb] = useState(false);
   const [streamingResponse, setStreamingResponse] = useState(false);
   const [pageLoadingIndex, setPageLoadingIndex] = useState<number | null>(null);
   const [chatError, setChatError] = useState('');
@@ -888,6 +1009,8 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
       }
 
       const topics = pendingLearning ? [] : getChatContextTopics(contextQuestion);
+      const searchTheWeb = shouldSearchChatWeb(trimmed, topics.length > 0, Boolean(pendingLearning));
+      const searchImages = shouldSearchChatImages(trimmed, topics.length > 0, Boolean(pendingLearning));
       let context: unknown = null;
       let tablePagination: ChatTablePageMetadata | null = null;
       if (topics.length > 0) {
@@ -936,18 +1059,27 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         return fetch('/api/chat/completion', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ streaming, requestBody }),
+          body: JSON.stringify({
+            streaming,
+            requestBody,
+            webSearch: searchTheWeb,
+            imageSearch: searchImages,
+          }),
         });
       }
 
+      setSearchingWeb(searchTheWeb || searchImages);
       let response = await sendCompletion(true);
+      setSearchingWeb(false);
       if (!response.ok) {
         const responseData = await readResponseData(response);
         if (!isChatStreamingRejectionStatus(response.status)) {
           throw new Error(getResponseError(responseData, 'Penyedia AI menolak permintaan.'));
         }
 
+        setSearchingWeb(searchTheWeb || searchImages);
         response = await sendCompletion(false);
+        setSearchingWeb(false);
         if (!response.ok) {
           const fallbackError = await readResponseData(response);
           throw new Error(getResponseError(fallbackError, 'Penyedia AI menolak permintaan.'));
@@ -976,8 +1108,10 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         answer = getChatResponseContent(responseData, activeConfig.provider);
       }
       if (!answer) throw new Error('Penyedia AI mengirim jawaban kosong atau tidak dikenal.');
+      const answerWithWebSources = appendChatWebSources(answer, getChatWebSources(response));
+      const answerWithImages = appendChatWebImageMetadata(answerWithWebSources, getChatWebImages(response));
       await appendAssistantMessage(
-        attachChatTablePagination(answer, tablePagination),
+        attachChatTablePagination(answerWithImages, tablePagination),
         userHistorySaved,
         streamedMessageVisible,
         pendingLearning,
@@ -992,6 +1126,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
       }
     } finally {
       setSending(false);
+      setSearchingWeb(false);
       setStreamingResponse(false);
     }
   }
@@ -1048,7 +1183,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
       </header>
       {canManageSettings && (
         <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-          <DialogContent className="max-h-[min(85dvh,52rem)] gap-5 overflow-y-auto rounded-2xl p-4 sm:p-6">
+          <DialogContent className="chat-settings-dialog max-h-[min(85dvh,52rem)] gap-5 overflow-y-auto rounded-2xl p-4 sm:p-6">
             <DialogHeader>
               <DialogTitle>Pengaturan koneksi AI</DialogTitle>
               <DialogDescription>
@@ -1267,16 +1402,17 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
             aria-live="polite"
           >
             <AnimatePresence initial={false}>
-              {messages.map((message, index) => (
-                <motion.article
-                  key={`${index}-${message.role}`}
-                  initial={prefersReducedMotion ? false : {
-                    opacity: 0,
-                    x: message.role === 'user' ? 8 : -8,
-                  }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={prefersReducedMotion ? undefined : { opacity: 0 }}
-                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  {messages.map((message, index) => (
+                    <motion.article
+                      key={`${index}-${message.role}`}
+                      initial={prefersReducedMotion ? false : {
+                        opacity: 0,
+                        x: message.role === 'user' ? 8 : -8,
+                        scale: 0.985,
+                      }}
+                      animate={{ opacity: 1, x: 0, scale: 1 }}
+                      exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+                      transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
                   className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   {message.role === 'assistant' ? (
@@ -1322,7 +1458,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
             {sending && !streamingResponse && (
               <div className="flex items-center gap-3 text-sm text-muted-foreground" role="status">
                 <AlfiiMark className="size-7 shrink-0 rounded-full border border-border text-xs" />
-                <span>bentarrr yaaawww</span>
+                <span>{searchingWeb ? 'Mencari di internet…' : 'bentarrr yaaawww'}</span>
                 <span className="flex items-center gap-1" aria-hidden="true">
                   {[0, 1, 2].map((dot) => (
                     <motion.span
@@ -1377,7 +1513,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
               maxLength={500}
               required
               disabled={sending || historyLoading || !configLoaded || !config}
-              className="max-h-32 min-h-10 resize-none border-0 px-2 py-2 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              className="min-w-0 max-h-32 min-h-10 flex-1 resize-none border-0 px-2 py-2 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
             />
             <Button
               type="submit"
@@ -1390,6 +1526,9 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
             </Button>
           </div>
           <div className="mx-auto mt-2 flex max-w-3xl items-center justify-between gap-3 px-1">
+            <p className="text-xs leading-5 text-muted-foreground">
+              Pertanyaan informasi umum otomatis dicari di internet dan disertai sumber.
+            </p>
             {configLoaded && !config && (
               <p className="text-xs leading-5 text-muted-foreground">
                 Pengaturan AI belum tersedia. Hubungi superadmin.
@@ -1399,7 +1538,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         </form>
       </section>
       <AlertDialog open={clearHistoryOpen} onOpenChange={setClearHistoryOpen}>
-        <AlertDialogContent className="rounded-2xl">
+        <AlertDialogContent className="chat-clear-dialog rounded-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus percakapan?</AlertDialogTitle>
             <AlertDialogDescription>

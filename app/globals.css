@@ -89,11 +89,6 @@
   main h1 {
     letter-spacing: 0;
   }
-  html.theme-transition,
-  html.theme-transition body,
-  html.theme-transition body * {
-    transition-duration: 100ms !important;
-  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -119,11 +114,38 @@
   .theme-transition *::before,
   .theme-transition *::after {
     transition-property: background-color, color, border-color, fill, stroke;
-    transition-duration: 240ms;
-    transition-timing-function: ease;
+    transition-duration: 700ms;
+    transition-timing-function: cubic-bezier(0.2, 0.82, 0.25, 1);
   }
   .app-page {
     min-width: 0;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    [data-chat-page="true"] button:not(:disabled),
+    .chat-settings-dialog button:not(:disabled),
+    .chat-clear-dialog button:not(:disabled) {
+      transition-property: scale, background-color, border-color, color, opacity, box-shadow;
+      transition-duration: 180ms;
+      transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    [data-chat-page="true"] button:not(:disabled):hover,
+    .chat-settings-dialog button:not(:disabled):hover,
+    .chat-clear-dialog button:not(:disabled):hover {
+      scale: 1.025;
+    }
+    [data-chat-page="true"] button:not(:disabled):active,
+    .chat-settings-dialog button:not(:disabled):active,
+    .chat-clear-dialog button:not(:disabled):active {
+      scale: 0.97;
+    }
+    [data-chat-page="true"] textarea,
+    .chat-settings-dialog input,
+    .chat-settings-dialog select {
+      transition: height 140ms ease, border-color 180ms ease, box-shadow 180ms ease;
+    }
+    [data-chat-page="true"] a {
+      transition: color 160ms ease, opacity 160ms ease;
+    }
   }
   html:has([data-chat-page="true"]),
   body:has([data-chat-page="true"]) {

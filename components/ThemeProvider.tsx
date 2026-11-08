@@ -33,7 +33,7 @@ function ThemeSchedule() {
         transitionTimer.current = window.setTimeout(() => {
           document.documentElement.classList.remove('theme-transition');
           transitionTimer.current = null;
-        }, 280);
+        }, 760);
       }
       if (!hasManualPreference) window.localStorage.removeItem(THEME_PREFERENCE_KEY);
     };

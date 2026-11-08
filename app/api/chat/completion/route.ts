@@ -10,6 +10,14 @@ import {
   isChatAIProvider,
   type ChatAIProvider,
 } from '@/lib/chat-answer';
+import {
+  addChatWebSearchContext,
+  getChatImageSearchQuery,
+  getChatWebSearchQuery,
+  searchChatImages,
+  searchChatWeb,
+  shouldSearchChatImages,
+} from '@/lib/chat-web-search.mjs';
 import ChatAISettings from '@/lib/models/ChatAISettings';
 import ChatKnowledge from '@/lib/models/ChatKnowledge';
 import { connectDB } from '@/lib/mongodb';
@@ -47,6 +55,12 @@ export async function POST(request: Request) {
     if (typeof candidate.streaming !== 'boolean') {
       return NextResponse.json({ error: 'Jenis permintaan chat tidak valid.' }, { status: 400, headers: NO_STORE });
     }
+    if ('webSearch' in candidate && typeof candidate.webSearch !== 'boolean') {
+      return NextResponse.json({ error: 'Pilihan pencarian web tidak valid.' }, { status: 400, headers: NO_STORE });
+    }
+    if ('imageSearch' in candidate && typeof candidate.imageSearch !== 'boolean') {
+      return NextResponse.json({ error: 'Pilihan pencarian gambar tidak valid.' }, { status: 400, headers: NO_STORE });
+    }
 
     await connectDB();
     const settings = await ChatAISettings.findById('global')
@@ -67,17 +81,65 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Konfigurasi atau isi permintaan AI tidak valid.' }, { status: 400, headers: NO_STORE });
     }
 
+    let webResults: Awaited<ReturnType<typeof searchChatWeb>> = [];
+    let imageResults: Awaited<ReturnType<typeof searchChatImages>> = [];
+    if (candidate.webSearch === true) {
+      const query = getChatWebSearchQuery(provider, candidate.requestBody);
+      if (!query) {
+        return NextResponse.json({ error: 'Pertanyaan tidak dapat digunakan untuk pencarian web.' }, { status: 400, headers: NO_STORE });
+      }
+      try {
+        webResults = await searchChatWeb(query);
+      } catch {
+        return NextResponse.json({
+          error: 'Pencarian internet gagal. Periksa koneksi lalu coba lagi.',
+        }, { status: 502, headers: NO_STORE });
+      }
+    }
+    if (candidate.imageSearch === true) {
+      const question = getChatWebSearchQuery(provider, candidate.requestBody);
+      if (!question || !shouldSearchChatImages(question)) {
+        return NextResponse.json({ error: 'Permintaan gambar perlu menyebutkan topik yang jelas.' }, { status: 400, headers: NO_STORE });
+      }
+      const query = getChatImageSearchQuery(question);
+      try {
+        imageResults = await searchChatImages(query);
+      } catch {
+        return NextResponse.json({
+          error: 'Pencarian gambar gagal. Periksa koneksi lalu coba lagi.',
+        }, { status: 502, headers: NO_STORE });
+      }
+    }
+
     const { ownerId } = await getDataOwnerScope();
     const savedKnowledge = await ChatKnowledge.find({ ownerId })
       .select('content')
       .sort({ updatedAt: -1 })
       .limit(50)
       .lean();
-    const requestBody = addChatKnowledgeToRequestBody(
+    const requestWithKnowledge = addChatKnowledgeToRequestBody(
       provider,
       candidate.requestBody,
       savedKnowledge.map(({ content }) => content),
     );
+    const requestBody = webResults.length > 0 || imageResults.length > 0
+      ? addChatWebSearchContext(provider, requestWithKnowledge, webResults, imageResults)
+      : requestWithKnowledge;
+    const responseHeaders = {
+      ...NO_STORE,
+      ...(webResults.length > 0
+        ? {
+            'X-Chat-Web-Sources': encodeURIComponent(JSON.stringify(
+              webResults.map(({ title, url }) => ({ title, url })),
+            )),
+          }
+        : {}),
+      ...(imageResults.length > 0
+        ? {
+            'X-Chat-Web-Images': encodeURIComponent(JSON.stringify(imageResults)),
+          }
+        : {}),
+    };
 
     let apiKey: string;
     try {
@@ -110,7 +172,7 @@ export async function POST(request: Request) {
     if (upstreamResponse.ok && /text\/event-stream/iu.test(contentType)) {
       return new Response(upstreamResponse.body, {
         status: upstreamResponse.status,
-        headers: { ...NO_STORE, 'Content-Type': contentType },
+        headers: { ...responseHeaders, 'Content-Type': contentType },
       });
     }
 
@@ -132,7 +194,7 @@ export async function POST(request: Request) {
 
     return new Response(responseText, {
       status: upstreamResponse.status,
-      headers: { ...NO_STORE, 'Content-Type': contentType },
+      headers: { ...responseHeaders, 'Content-Type': contentType },
     });
   } catch {
     console.error('POST /api/chat/completion failed');

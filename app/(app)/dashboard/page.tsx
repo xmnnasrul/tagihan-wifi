@@ -178,7 +178,7 @@ export default function DashboardPage() {
       title: 'Uang Terkumpul',
       value: statsLoading ? 'Memuat...' : formatRupiah(stats?.totalRevenue ?? 0),
       description: `Pembayaran ${statsMonth} ${statsYear}`,
-      href: `/dashboard/billings/paid?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
+      href: `/monthly-recap?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
     },
     {
       title: 'Sisa Belum Lunas',
@@ -258,13 +258,17 @@ export default function DashboardPage() {
         <Card className="border-border/70">
           <CardContent className="space-y-6 p-4 sm:p-6">
             <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
+              <Link
+                href={`/monthly-recap?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`}
+                className="group rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={`Buka rekap bulanan ${statsMonth ?? ''} ${statsYear ?? ''}`}
+              >
                 <p className="text-sm font-medium">Uang terkumpul</p>
-                <p className="mt-2 text-3xl font-semibold leading-none tabular-nums sm:text-4xl">
+                <p className="mt-2 text-3xl font-semibold leading-none tabular-nums group-hover:text-primary sm:text-4xl">
                   {statsLoading ? 'Memuat...' : formatRupiah(stats?.totalRevenue ?? 0)}
                 </p>
                 <p className="mt-2 text-sm text-muted-foreground">dari {formatRupiah(stats?.totalDue ?? 0)} tagihan periode ini</p>
-              </div>
+              </Link>
               <div className="text-right">
                 <p className="text-2xl font-semibold tabular-nums">{collectedPercent}%</p>
                 <p className="text-xs text-muted-foreground">terbayar</p>

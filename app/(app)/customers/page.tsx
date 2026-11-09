@@ -145,13 +145,13 @@ export default function CustomersPage() {
                 <CardContent className="py-4">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 flex-1 items-start gap-4">
-                      <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
                         {customer.name.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-base font-semibold">{customer.name}</p>
                         <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
-                          <MapPin className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                          <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                           <span className="truncate">{customer.address || 'Alamat belum diisi'}</span>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -166,7 +166,7 @@ export default function CustomersPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex flex-shrink-0 items-center justify-between gap-3 sm:justify-end">
+                    <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
                       <div className="flex gap-1.5">
                         {hasPaid && <Badge className="border-emerald-500/20 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/15">Lunas</Badge>}
                         {hasInstallment && <Badge className="border-amber-500/20 bg-amber-500/15 text-amber-400 hover:bg-amber-500/15">Nyicil</Badge>}

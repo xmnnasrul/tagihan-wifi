@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, History, Shield, Users, UserCircle2, FileText, WalletCards, MoreHorizontal, ArrowUpRight, StickyNote, MessageCircle, CalendarDays } from 'lucide-react';
+import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, History, Shield, Users, UserCircle2, FileText, WalletCards, MoreHorizontal, ArrowUpRight, StickyNote, MessageCircle, CalendarDays, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ThemeToggle from '@/components/ThemeToggle';
 import { cn } from '@/lib/utils';
@@ -21,6 +21,7 @@ const navGroups = [
     { href: '/customers/all', label: 'Pelanggan', icon: Users },
     { href: '/collector', label: 'Setoran Harian', icon: WalletCards },
     { href: '/arrears', label: 'Tunggakan', icon: FileText },
+    { href: '/cek-nota', label: 'Cek Nota', icon: ScanLine },
     { href: '/chat', label: 'Chat AI', icon: MessageCircle },
     { href: '/notes', label: 'Catatan', icon: StickyNote },
     { href: '/billing/add', label: 'Tambah Pelanggan', icon: FilePlus },
@@ -112,7 +113,7 @@ export default function NavSidebar() {
                     aria-current={isActive ? 'page' : undefined}
                     className={cn(
                       'group flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors',
-                      isActive ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground'
+                      isActive ? 'bg-foreground/6 font-medium text-foreground' : 'text-muted-foreground hover:bg-foreground/4 hover:text-foreground'
                     )}
                   >
                     <motion.span whileHover={prefersReducedMotion ? undefined : { y: -1 }} className={cn(isActive ? 'text-primary' : 'text-muted-foreground')}>
@@ -186,7 +187,7 @@ export default function NavSidebar() {
               onClick={() => setMobileOpen(false)}
               className={cn('flex min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors', isActive ? 'text-primary' : 'text-muted-foreground')}
             >
-              <Icon className="h-[18px] w-[18px]" />
+              <Icon className="h-4.5 w-4.5" />
               <span className="truncate">{item.label}</span>
             </Link>
           );
@@ -199,7 +200,7 @@ export default function NavSidebar() {
           onClick={() => setMobileOpen((open) => !open)}
           className={cn('h-full flex-col gap-1 rounded-none px-1 text-[10px] font-medium', mobileOpen ? 'text-primary' : 'text-muted-foreground')}
         >
-          <MoreHorizontal className="h-[18px] w-[18px]" />
+          <MoreHorizontal className="h-4.5 w-4.5" />
           Menu
         </Button>
       </nav>

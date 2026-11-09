@@ -177,7 +177,7 @@ export default function AllCustomersPage() {
                           <p className="truncate text-base font-semibold">{customer.name}</p>
                           <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
                             <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                            <span className="break-words">{customer.address || 'Alamat belum diisi'}</span>
+                            <span className="wrap-break-word">{customer.address || 'Alamat belum diisi'}</span>
                           </div>
                           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                             <span className="inline-flex items-center gap-1">

@@ -172,6 +172,21 @@ export default function CekNotaPage() {
     return customers.filter((customer) => (customer.address || '').toLocaleLowerCase('id-ID').includes(villageSearch));
   }, [customers, search]);
 
+  const orderedCustomers = useMemo(() => {
+    const selectionOrder = new Map(Array.from(selectedIds, (customerId, index) => [customerId, index]));
+    return visibleCustomers
+      .map((customer, originalIndex) => ({ customer, originalIndex }))
+      .sort((left, right) => {
+        const leftSelection = selectionOrder.get(left.customer._id);
+        const rightSelection = selectionOrder.get(right.customer._id);
+        if (leftSelection !== undefined && rightSelection !== undefined) return rightSelection - leftSelection;
+        if (leftSelection !== undefined) return -1;
+        if (rightSelection !== undefined) return 1;
+        return left.originalIndex - right.originalIndex;
+      })
+      .map(({ customer }) => customer);
+  }, [visibleCustomers, selectedIds]);
+
   const checkedCustomers = visibleCustomers.filter((customer) => selectedIds.has(customer._id));
   const totalAmount = checkedCustomers.reduce((total, customer) => total + (Number(customer.packageId?.price) || 0), 0);
   const enterAnimation = prefersReducedMotion ? false : { opacity: 0, y: 8 };
@@ -272,7 +287,7 @@ export default function CekNotaPage() {
           </Button>
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-border/70 bg-card">
+        <div className="overflow-hidden rounded-lg border border-border/70 bg-card [overflow-anchor:none]">
           <div className="grid grid-cols-[36px_48px_minmax(0,1fr)_auto] items-center gap-3 border-b border-border bg-muted/40 px-4 py-3 text-xs font-medium text-muted-foreground sm:grid-cols-[52px_72px_minmax(0,1fr)_minmax(150px,1fr)_170px]">
             <span className="text-right">No.</span>
             <span className="text-center">Cek</span>
@@ -281,7 +296,13 @@ export default function CekNotaPage() {
             <span className="text-right">Nominal</span>
           </div>
 
-          {loading ? (
+          {!search.trim() ? (
+            <div className="px-4 py-12 text-center">
+              <Search className="mx-auto h-5 w-5 text-muted-foreground" />
+              <p className="mt-3 text-sm font-medium">Cari alamat untuk mulai</p>
+              <p className="mt-1 text-xs text-muted-foreground">Pelanggan akan dicocokkan berdasarkan alamatnya.</p>
+            </div>
+          ) : loading ? (
             <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
               <Loader2 className="h-4 w-4 animate-spin" /> Memuat pelanggan...
             </div>
@@ -290,12 +311,6 @@ export default function CekNotaPage() {
               <p className="text-sm text-destructive">{error}</p>
               <Button type="button" variant="outline" size="sm" onClick={() => setReloadKey((key) => key + 1)}>Coba lagi</Button>
             </div>
-          ) : !search.trim() ? (
-            <div className="px-4 py-12 text-center">
-              <Search className="mx-auto h-5 w-5 text-muted-foreground" />
-              <p className="mt-3 text-sm font-medium">Cari alamat untuk mulai</p>
-              <p className="mt-1 text-xs text-muted-foreground">Pelanggan akan dicocokkan berdasarkan alamatnya.</p>
-            </div>
           ) : visibleCustomers.length === 0 ? (
             <div className="px-4 py-12 text-center">
               <p className="text-sm font-medium">Tidak ada pelanggan yang ditemukan</p>
@@ -303,13 +318,17 @@ export default function CekNotaPage() {
             </div>
           ) : (
             <div>
-              {visibleCustomers.map((customer, index) => (
+              {orderedCustomers.map((customer, index) => (
                 <motion.div
                   key={customer._id}
                   layout={!prefersReducedMotion}
                   initial={enterAnimation}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: prefersReducedMotion ? 0 : 0.18, delay: prefersReducedMotion ? 0 : Math.min(index, 6) * 0.025 }}
+                  transition={{
+                    layout: { duration: prefersReducedMotion ? 0 : 0.28, ease: 'easeInOut' },
+                    opacity: { duration: prefersReducedMotion ? 0 : 0.18, delay: prefersReducedMotion ? 0 : Math.min(index, 6) * 0.025 },
+                    y: { duration: prefersReducedMotion ? 0 : 0.18, delay: prefersReducedMotion ? 0 : Math.min(index, 6) * 0.025 },
+                  }}
                   className="grid grid-cols-[36px_48px_minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 px-4 py-3 last:border-b-0 sm:grid-cols-[52px_72px_minmax(0,1fr)_minmax(150px,1fr)_170px]"
                 >
                   <span className="text-right text-sm tabular-nums text-muted-foreground">{index + 1}</span>

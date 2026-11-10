@@ -25,3 +25,9 @@
 - Reuse an existing terminal when the available tools support it.
 - Check whether a server or long-running process is already running before starting a duplicate.
 - Do not stop a process you did not start.
+
+## Git attribution
+
+- Use the configured human Git identity as author and committer. Never set `user.name`, `user.email`, `--author`, or the committer to GitHub Copilot, and never add a Copilot `Co-authored-by` trailer.
+- If the Git identity is missing or identifies Copilot, stop before committing or pushing and ask the user to configure their identity. Do not invent one.
+- Before every push, inspect all outgoing commits against the upstream with `git log --format='%h %an <%ae>%n%B' @{upstream}..HEAD`. Push only if none attributes a commit to Copilot as author or co-author. If there is no upstream, inspect the range against the exact target branch.

@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { Loader2, MapPin, Search, CalendarDays, UserRound, ChevronRight, ArrowUpRight, UserPlus, WalletCards } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { motion, useReducedMotion } from 'framer-motion';
+import { Loader2, MapPin, Search, CalendarDays, ChevronRight, ArrowUpRight, UserPlus, WalletCards, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -49,8 +48,10 @@ const months = [
 ];
 
 const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
 export default function DashboardPage() {
   const currentUser = useCurrentUser();
+  const prefersReducedMotion = useReducedMotion();
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState('');
   const [statsMonth, setStatsMonth] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export default function DashboardPage() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [customersLoading, setCustomersLoading] = useState(true);
   const [customersError, setCustomersError] = useState('');
+  const [customersRefreshVersion, setCustomersRefreshVersion] = useState(0);
 
   useEffect(() => {
     const now = new Date();
@@ -101,6 +103,7 @@ export default function DashboardPage() {
     async function fetchStats() {
       setStatsLoading(true);
       setStats(null);
+      setError('');
       try {
         const response = await fetch(`/api/stats?${params.toString()}`);
         const data = await response.json();
@@ -121,6 +124,8 @@ export default function DashboardPage() {
   useEffect(() => {
     let isCurrentRequest = true;
     async function fetchCustomers() {
+      setCustomersLoading(true);
+      setCustomersError('');
       try {
         const response = await fetch('/api/customers');
         const data = await response.json();
@@ -138,11 +143,13 @@ export default function DashboardPage() {
     return () => {
       isCurrentRequest = false;
     };
-  }, []);
+  }, [customersRefreshVersion]);
 
-  const formatRupiah = (amount: number) => {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
-  };
+  const formatRupiah = (amount: number) => new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+  }).format(amount);
 
   const formatDateTime = (value?: string) => value
     ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -152,51 +159,40 @@ export default function DashboardPage() {
   const matchingCustomers = customers.filter((customer) =>
     `${customer.name} ${customer.address || ''}`.toLocaleLowerCase('id-ID').includes(normalizedCustomerSearch)
   );
-  const visibleCustomers = normalizedCustomerSearch ? matchingCustomers : matchingCustomers.slice(0, 10);
+  const visibleCustomers = normalizedCustomerSearch ? matchingCustomers : matchingCustomers.slice(0, 6);
   const collectedPercent = stats && stats.totalDue > 0
     ? Math.min(100, Math.round((stats.totalRevenue / stats.totalDue) * 100))
     : 0;
-  const statCards = [
-    {
-      title: 'Pelanggan Aktif',
-      value: stats?.totalCustomers ?? 0,
-      description: 'Pelanggan terdaftar',
-      href: '/customers/all',
-    },
-    {
-      title: 'Pelanggan Arsip',
-      value: stats?.archivedCustomers ?? 0,
-      description: 'Pelanggan masuk arsip',
-      href: '/archived',
-    },
-    {
-      title: 'Total Tagihan',
-      value: statsLoading ? 'Memuat...' : formatRupiah(stats?.totalDue ?? 0),
-      description: `${statsLoading ? 'Mengambil' : stats?.totalBillings ?? 0} tagihan`,
-    },
-    {
-      title: 'Uang Terkumpul',
-      value: statsLoading ? 'Memuat...' : formatRupiah(stats?.totalRevenue ?? 0),
-      description: `Pembayaran ${statsMonth} ${statsYear}`,
-      href: `/monthly-recap?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
-    },
-    {
-      title: 'Sisa Belum Lunas',
-      value: statsLoading ? 'Memuat...' : formatRupiah(stats?.outstandingAmount ?? 0),
-      description: `${statsLoading ? 'Menghitung' : stats?.unpaidBillings ?? 0} tagihan`,
-      href: `/dashboard/billings/unpaid?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
-    },
-    {
-      title: 'Belum Bayar',
-      value: statsLoading ? 'Memuat...' : stats?.unpaidCustomers ?? 0,
-      description: 'Pelanggan pada periode',
-      href: `/dashboard/billings/belum-bayar?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`,
-    },
-  ];
+  const periodQuery = new URLSearchParams({
+    month: statsMonth ?? '',
+    year: statsYear ?? '',
+  }).toString();
+  const unpaidHref = `/dashboard/billings/unpaid?${periodQuery}`;
+  const unpaidCustomersHref = `/dashboard/billings/belum-bayar?${periodQuery}`;
+  const recapHref = `/monthly-recap?${periodQuery}`;
+  const billingStatusByCustomer = new Map(
+    (stats?.billingStatuses ?? []).map((billing) => [billing.customerId, billing.status])
+  );
+  const dashboardRefreshing = statsLoading || customersLoading;
+  const revealInitial = prefersReducedMotion ? false : { opacity: 0, y: 12 };
+
+  const refreshDashboard = () => {
+    setStatsRefreshVersion((version) => version + 1);
+    setCustomersRefreshVersion((version) => version + 1);
+  };
 
   return (
-    <div className="space-y-7 sm:space-y-9">
-      <header className="flex justify-end">
+    <div className="space-y-7 sm:space-y-8">
+      <motion.header
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.36, ease: 'easeOut' }}
+        className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between"
+      >
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-[28px]">Dashboard</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">Ringkasan tagihan, pembayaran, dan pelanggan.</p>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -217,12 +213,25 @@ export default function DashboardPage() {
               ))}
             </SelectContent>
           </Select>
-          {statsLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Memuat statistik" />}
-          <Button asChild className="w-full gap-2 sm:w-auto">
-            <Link href="/billing/add"><UserPlus className="h-4 w-4" />Tambah pelanggan</Link>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Muat ulang dashboard"
+            title="Muat ulang dashboard"
+            disabled={dashboardRefreshing}
+            onClick={refreshDashboard}
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Button asChild aria-label="Tambah pelanggan" title="Tambah pelanggan" className="h-10 w-10 p-0 sm:h-9 sm:w-auto sm:gap-2 sm:px-4">
+            <Link href="/billing/add">
+              <UserPlus className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Tambah pelanggan</span>
+            </Link>
           </Button>
         </div>
-      </header>
+      </motion.header>
 
       <Dialog open={statsMonthPickerOpen} onOpenChange={setStatsMonthPickerOpen}>
         <DialogContent className="rounded-2xl sm:max-w-sm">
@@ -236,6 +245,7 @@ export default function DashboardPage() {
                 key={month}
                 type="button"
                 variant={statsMonth === month ? 'default' : 'outline'}
+                aria-label={month}
                 onClick={() => {
                   setStatsMonth(month);
                   setStatsMonthPickerOpen(false);
@@ -248,117 +258,161 @@ export default function DashboardPage() {
         </DialogContent>
       </Dialog>
 
-      {error && (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(260px,.85fr)]" aria-label="Ringkasan keuangan" aria-busy={statsLoading}>
-        <Card className="border-border/70">
-          <CardContent className="space-y-6 p-4 sm:p-6">
-            <div className="flex flex-wrap items-end justify-between gap-4">
+      <motion.section
+        initial={revealInitial}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.12 }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
+        className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(270px,.8fr)]"
+        aria-label="Ringkasan keuangan"
+        aria-busy={statsLoading}
+      >
+        <div className="min-w-0 rounded-xl border border-border/80 bg-background p-5 sm:p-7">
+          {error && <p role="alert" className="mb-5 text-sm text-destructive">{error}</p>}
+          <div className="flex flex-wrap items-start justify-between gap-5">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Uang terkumpul</p>
               <Link
-                href={`/monthly-recap?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`}
-                className="group rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                href={recapHref}
+                className="group mt-2 inline-block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={`Buka rekap bulanan ${statsMonth ?? ''} ${statsYear ?? ''}`}
               >
-                <p className="text-sm font-medium">Uang terkumpul</p>
-                <p className="mt-2 text-3xl font-semibold leading-none tabular-nums group-hover:text-primary sm:text-4xl">
-                  {statsLoading ? 'Memuat...' : formatRupiah(stats?.totalRevenue ?? 0)}
+                <p aria-live="polite" className="text-3xl font-semibold leading-tight tracking-tight tabular-nums group-hover:text-primary sm:text-[38px]">
+                  {statsLoading ? 'Memuat...' : stats ? formatRupiah(stats.totalRevenue) : '-'}
                 </p>
-                <p className="mt-2 text-sm text-muted-foreground">dari {formatRupiah(stats?.totalDue ?? 0)} tagihan periode ini</p>
               </Link>
-              <div className="text-right">
-                <p className="text-2xl font-semibold tabular-nums">{collectedPercent}%</p>
-                <p className="text-xs text-muted-foreground">terbayar</p>
-              </div>
+              <p className="mt-1 text-sm text-muted-foreground">{statsMonth ?? '...'} {statsYear ?? ''}</p>
             </div>
-            <div
-              role="progressbar"
-              aria-label="Progres pembayaran tagihan"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={collectedPercent}
-              className="h-2 overflow-hidden rounded-full bg-muted"
-            >
-              <motion.div
-                className="h-full origin-left rounded-full bg-[hsl(var(--chart-1))]"
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: collectedPercent / 100 }}
-                transition={{ duration: 0.6, ease: 'easeOut' }}
-              />
+            <div className="min-w-[72px] text-right">
+              <p className="text-3xl font-medium tabular-nums text-primary">
+                {statsLoading ? '...' : stats ? `${collectedPercent}%` : '-'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">tertagih</p>
             </div>
-            <div className="grid grid-cols-2 gap-4 border-t border-border/70 pt-4 sm:grid-cols-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Total tagihan</p>
-                <p className="mt-1 text-sm font-medium tabular-nums">{formatRupiah(stats?.totalDue ?? 0)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Sisa belum lunas</p>
-                <p className="mt-1 text-sm font-medium tabular-nums">{formatRupiah(stats?.outstandingAmount ?? 0)}</p>
-              </div>
-              <div className="col-span-2 sm:col-span-1">
-                <p className="text-xs text-muted-foreground">Belum bayar</p>
-                <p className="mt-1 text-sm font-medium tabular-nums">{stats?.unpaidCustomers ?? 0} pelanggan</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <section className="space-y-2" aria-labelledby="follow-up-heading">
-          <div className="flex items-baseline justify-between gap-3 px-1 pb-1">
-            <h2 id="follow-up-heading" className="text-base font-semibold">Tindak lanjut</h2>
-            <span className="text-xs text-muted-foreground">{statsLoading ? 'Memuat' : `${stats?.unpaidCustomers ?? 0} pelanggan belum bayar`}</span>
           </div>
-          <Link href={`/dashboard/billings/unpaid?month=${encodeURIComponent(statsMonth ?? '')}&year=${statsYear ?? ''}`} className="group flex items-center justify-between gap-3 rounded-md border border-border/70 p-3.5 transition-colors hover:bg-muted/50">
-            <span className="min-w-0">
-              <span className="block text-sm font-medium">Periksa tagihan tertunggak</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">{stats?.unpaidBillings ?? 0} tagihan belum selesai</span>
-            </span>
-            <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-          </Link>
-          <Link href="/collector" className="group flex items-center justify-between gap-3 rounded-md border border-border/70 p-3.5 transition-colors hover:bg-muted/50">
-            <span className="min-w-0">
-              <span className="block text-sm font-medium">Buka setoran harian</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">Catat kunjungan dan pembayaran</span>
-            </span>
-            <WalletCards className="h-4 w-4 shrink-0 text-muted-foreground" />
-          </Link>
-        </section>
-      </section>
 
-      <section aria-labelledby="period-numbers-heading" aria-busy={statsLoading}>
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h2 id="period-numbers-heading" className="text-base font-semibold">Angka periode</h2>
-          <span className="text-xs text-muted-foreground">{statsMonth ?? '...'} {statsYear ?? ''}</span>
-        </div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-5 rounded-md bg-muted/30 p-4 sm:grid-cols-3 sm:gap-y-6 lg:grid-cols-6">
-          {statCards.map((stat) => {
-            const value = (
-              <>
-                <span className="block text-xs text-muted-foreground">{stat.title}</span>
-                <span className="mt-1.5 block break-words text-sm font-semibold leading-tight tabular-nums sm:text-base">{stat.value}</span>
-                <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">{stat.description}</span>
-              </>
-            );
-            return stat.href ? (
-              <Link key={stat.title} href={stat.href} className="group min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <span className="group-hover:text-primary">{value}</span>
-              </Link>
-            ) : <div key={stat.title} className="min-w-0">{value}</div>;
-          })}
-        </div>
-      </section>
+          <div
+            role="progressbar"
+            aria-label="Progres pembayaran tagihan"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={stats ? collectedPercent : 0}
+            className="mt-6 h-2 overflow-hidden rounded-full bg-primary/10"
+          >
+            <motion.div
+              className="h-full origin-left rounded-full bg-primary"
+              initial={prefersReducedMotion ? false : { scaleX: 0 }}
+              animate={{ scaleX: collectedPercent / 100 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.55, ease: 'easeOut' }}
+            />
+          </div>
 
-      <section className="space-y-4" aria-labelledby="recent-customers-heading">
+          <div className="mt-6 grid grid-cols-2 gap-x-5 gap-y-4 border-t border-border/70 pt-5 sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Nilai seluruh tagihan</p>
+              <p className="mt-1.5 text-sm font-medium tabular-nums">
+                {statsLoading ? 'Memuat...' : stats ? formatRupiah(stats.totalDue) : '-'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Tagihan lunas</p>
+              <p className="mt-1.5 text-sm font-medium tabular-nums">
+                {statsLoading ? '-' : stats?.paidBillings ?? '-'}
+              </p>
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <p className="text-xs text-muted-foreground">Tagihan dicicil</p>
+              <p className="mt-1.5 text-sm font-medium tabular-nums">
+                {statsLoading ? '-' : stats?.installmentBillings ?? '-'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <aside className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/15 bg-primary/[0.045] p-4 sm:p-5 xl:flex-col xl:items-start xl:justify-start" aria-labelledby="follow-up-heading">
+          <div className="min-w-0">
+            <h2 id="follow-up-heading" className="text-sm font-medium">Sisa yang perlu dikumpulkan</h2>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <p className="text-xl font-semibold tracking-tight tabular-nums">
+                {statsLoading ? 'Memuat...' : stats ? formatRupiah(stats.outstandingAmount) : '-'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {statsLoading ? 'Menghitung tagihan' : stats ? `${stats.unpaidBillings} belum lunas` : 'Data tidak tersedia'}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <Link
+              href={unpaidHref}
+              className="inline-flex min-h-10 items-center gap-2 rounded-md border border-primary/25 bg-background px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+            >
+              Tinjau tagihan
+              <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+            <Link href="/collector" className="hidden items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-flex">
+              <WalletCards className="h-4 w-4" aria-hidden="true" />
+              Setoran
+              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          </div>
+        </aside>
+      </motion.section>
+
+      <motion.section
+        initial={revealInitial}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.2 }}
+        transition={{ duration: 0.38, ease: 'easeOut' }}
+        aria-label="Angka operasional"
+        aria-busy={statsLoading}
+      >
+        <div className="grid grid-cols-2 gap-x-5 gap-y-5 border-y border-border/70 py-5 sm:grid-cols-4">
+          <Link href="/customers/all" className="group min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <p className="text-xs text-muted-foreground">Pelanggan aktif</p>
+            <p className="mt-1.5 text-2xl font-medium tabular-nums group-hover:text-primary">
+              {statsLoading ? '-' : stats?.totalCustomers ?? '-'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">saat ini</p>
+          </Link>
+          <Link href="/archived" className="group min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <p className="text-xs text-muted-foreground">Pelanggan arsip</p>
+            <p className="mt-1.5 text-2xl font-medium tabular-nums group-hover:text-primary">
+              {statsLoading ? '-' : stats?.archivedCustomers ?? '-'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">tidak aktif</p>
+          </Link>
+          <Link href={recapHref} className="group min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <p className="text-xs text-muted-foreground">Tagihan diterbitkan</p>
+            <p className="mt-1.5 text-2xl font-medium tabular-nums group-hover:text-primary">
+              {statsLoading ? '-' : stats?.totalBillings ?? '-'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">periode terpilih</p>
+          </Link>
+          <Link href={unpaidCustomersHref} className="group min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <p className="text-xs text-muted-foreground">Belum bayar</p>
+            <p className="mt-1.5 text-2xl font-medium tabular-nums group-hover:text-primary">
+              {statsLoading ? '-' : stats?.unpaidCustomers ?? '-'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">pelanggan periode ini</p>
+          </Link>
+        </div>
+      </motion.section>
+
+      <motion.section
+        initial={revealInitial}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.08 }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
+        className="space-y-4"
+        aria-labelledby="customer-list-heading"
+      >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 id="recent-customers-heading" className="text-base font-semibold">Pelanggan terbaru</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Akses cepat ke informasi dan status tagihan</p>
+            <h2 id="customer-list-heading" className="text-lg font-semibold">Pelanggan</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Buka profil atau cari berdasarkan nama dan alamat.</p>
           </div>
           <div className="relative w-full sm:max-w-xs">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input
               type="search"
               value={customerSearch}
@@ -371,81 +425,84 @@ export default function DashboardPage() {
         </div>
 
         {customersError ? (
-          <p role="alert" className="text-sm text-destructive">{customersError}</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border/70 py-5">
+            <p role="alert" className="text-sm text-destructive">{customersError}</p>
+            <Button type="button" variant="outline" size="sm" onClick={refreshDashboard}>Coba lagi</Button>
+          </div>
         ) : customersLoading ? (
-          <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground" aria-live="polite">
-            <Loader2 className="h-4 w-4 animate-spin" /> Memuat pelanggan...
+          <div className="flex items-center justify-center gap-2 border-y border-border/70 py-8 text-sm text-muted-foreground" aria-live="polite">
+            <Loader2 className="h-4 w-4" aria-hidden="true" /> Memuat pelanggan...
           </div>
         ) : visibleCustomers.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
+          <p className="border-y border-border/70 py-8 text-center text-sm text-muted-foreground">
             {normalizedCustomerSearch ? 'Tidak ada pelanggan yang cocok.' : 'Belum ada pelanggan aktif.'}
           </p>
         ) : (
           <>
-            <p className="text-xs text-muted-foreground" aria-live="polite">
-              {normalizedCustomerSearch
-                ? `${matchingCustomers.length} hasil pencarian, menampilkan ${visibleCustomers.length}`
-                : `${Math.min(customers.length, 10)} dari ${customers.length} pelanggan aktif`}
-            </p>
-            <ul className="space-y-2">
-              {visibleCustomers.map((customer) => (
-                <li key={customer._id}>
-                  <Link
-                    href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}
-                    className="group block animate-fade-in"
-                  >
-                    <Card className="cursor-pointer border-border/60 transition-colors duration-150 hover:border-primary/40 hover:bg-accent/30">
-                      <CardContent className="py-3">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex min-w-0 flex-1 items-start gap-4">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
-                              {customer.name.charAt(0).toUpperCase()}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-base font-semibold">{customer.name}</p>
-                              <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
-                                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                <span className="truncate">{customer.address || 'Alamat belum diisi'}</span>
-                              </div>
-                              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                                <span className="inline-flex items-center gap-1">
-                                  <CalendarDays className="h-3 w-3" /> {formatDateTime(customer.createdAt)}
-                                </span>
-                                <span className="inline-flex items-center gap-1">
-                                  <UserRound className="h-3 w-3" /> {customer.createdBy || 'Admin'}
-                                </span>
-                                {customer.packageId && <span>{customer.packageId.name} · {customer.packageId.speed}</span>}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
-                            <div className="flex gap-1.5">
-                              {stats?.billingStatuses.some((billing) => billing.customerId === customer._id && ['TF', 'Cash', 'Lunas'].includes(billing.status)) && (
-                                <Badge className="border-emerald-500/20 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/15">Lunas</Badge>
-                              )}
-                              {stats?.billingStatuses.some((billing) => billing.customerId === customer._id && billing.status === 'Nyicil') && (
-                                <Badge className="border-amber-500/20 bg-amber-500/15 text-amber-400 hover:bg-amber-500/15">Nyicil</Badge>
-                              )}
-                              {stats?.billingStatuses.some((billing) => billing.customerId === customer._id && billing.status === 'Belum Bayar') && (
-                                <Badge className="border-red-500/20 bg-red-500/15 text-red-400 hover:bg-red-500/15">Belum Bayar</Badge>
-                              )}
-                              {stats && !stats.billingStatuses.some((billing) => billing.customerId === customer._id) && (
-                                <Badge variant="outline" className="text-muted-foreground">Baru</Badge>
-                              )}
-                            </div>
-                            <ChevronRight className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                </li>
-              ))}
+            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <p aria-live="polite">
+                {normalizedCustomerSearch
+                  ? `${matchingCustomers.length} hasil pencarian`
+                  : `${Math.min(customers.length, 6)} dari ${customers.length} pelanggan aktif`}
+              </p>
+              {!normalizedCustomerSearch && (
+                <Link href="/customers/all" className="inline-flex items-center gap-1 font-medium text-foreground hover:text-primary">
+                  Semua pelanggan <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </Link>
+              )}
+            </div>
+            <ul className="divide-y divide-border/70 border-y border-border/70">
+              {visibleCustomers.map((customer) => {
+                const billingStatus = billingStatusByCustomer.get(customer._id);
+                const isPaid = ['TF', 'Cash', 'Lunas'].includes(billingStatus ?? '');
+                const statusLabel = !stats ? null : billingStatus
+                  ? isPaid ? 'Lunas' : billingStatus === 'Nyicil' ? 'Nyicil' : billingStatus === 'Belum Bayar' ? 'Belum bayar' : billingStatus
+                  : 'Baru';
+                const statusClass = isPaid
+                  ? 'border-emerald-700/15 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300'
+                  : billingStatus === 'Nyicil'
+                    ? 'border-amber-700/15 bg-amber-600/10 text-amber-800 dark:text-amber-300'
+                    : billingStatus === 'Belum Bayar'
+                      ? 'border-destructive/15 bg-destructive/10 text-destructive'
+                      : 'border-border text-muted-foreground';
+
+                return (
+                  <li key={customer._id}>
+                    <Link
+                      href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}
+                      className="group grid min-h-[72px] grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 transition-colors hover:bg-muted/30 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-5"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                          {customer.name.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium group-hover:text-primary">{customer.name}</span>
+                          <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                            <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                            <span className="truncate">{customer.address || 'Alamat belum diisi'}</span>
+                          </span>
+                        </span>
+                      </div>
+                      <span className="hidden min-w-32 text-xs text-muted-foreground sm:block">
+                        {customer.packageId ? `${customer.packageId.name} · ${customer.packageId.speed}` : 'Paket belum dipilih'}
+                        <span className="mt-1 flex items-center gap-1">
+                          {customer.createdAt && <CalendarDays className="h-3 w-3" aria-hidden="true" />}
+                          {customer.createdAt ? formatDateTime(customer.createdAt) : customer.createdBy || 'Admin'}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-2">
+                        {statusLabel && <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>}
+                        <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </>
         )}
-      </section>
-
+      </motion.section>
     </div>
   );
 }

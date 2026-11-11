@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, History, Shield, Users, UserCircle2, FileText, WalletCards, MoreHorizontal, ArrowUpRight, StickyNote, MessageCircle, CalendarDays, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import ThemeToggle from '@/components/ThemeToggle';
 import { cn } from '@/lib/utils';
 import { useTheme } from 'next-themes';
@@ -45,6 +46,14 @@ const mobileNav = [
   { href: '/arrears', label: 'Tunggakan', icon: FileText },
 ];
 
+const desktopNav = [
+  { href: '/dashboard', label: 'Ringkasan', icon: LayoutDashboard },
+  { href: '/customers/all', label: 'Pelanggan', icon: Users },
+  { href: '/collector', label: 'Setoran', icon: WalletCards },
+  { href: '/arrears', label: 'Tunggakan', icon: FileText },
+  { href: '/monthly-recap', label: 'Rekap', icon: CalendarDays },
+];
+
 export default function NavSidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -58,6 +67,11 @@ export default function NavSidebar() {
   const visibleGroups = navGroups.map((group) => ({
     ...group,
     items: group.items.filter((item) => item.href !== '/admins' || isSuperadmin),
+  })).filter((group) => group.items.length > 0);
+  const desktopNavHrefs = new Set(desktopNav.map((item) => item.href));
+  const desktopMoreGroups = visibleGroups.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !desktopNavHrefs.has(item.href) && item.href !== '/profile'),
   })).filter((group) => group.items.length > 0);
   const activeItem = visibleGroups.flatMap((group) => group.items)
     .find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
@@ -152,30 +166,110 @@ export default function NavSidebar() {
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col overflow-y-auto bg-[hsl(var(--chrome))] lg:flex">
-        {NavContent()}
-      </aside>
+      <header className="fixed inset-x-0 top-3 z-40 hidden justify-center px-4 md:flex">
+        <div className="flex h-14 max-w-full items-center gap-2 rounded-full border border-border/80 bg-background px-2.5 shadow-md">
+          <Link href="/dashboard" className="flex shrink-0 items-center gap-2 rounded-full px-1.5" aria-label="Tagihan WiFi, Dashboard">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <Wifi className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <span className="hidden text-sm font-semibold lg:inline">Tagihan WiFi</span>
+          </Link>
 
-      <div className="fixed left-64 right-0 top-0 z-30 hidden h-12 items-center justify-between bg-[hsl(var(--chrome))] px-6 lg:flex">
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Tagihan WiFi</span>
-          <span aria-hidden="true" className="text-muted-foreground/60">/</span>
-          <span className="font-medium">{activeItem?.label || 'Dashboard'}</span>
+          <nav className="flex items-center gap-0.5" aria-label="Navigasi utama">
+            {desktopNav.map((item, index) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={cn(
+                    'inline-flex h-9 items-center gap-2 rounded-full px-2.5 text-xs font-medium transition-colors xl:px-3',
+                    index === desktopNav.length - 1 && 'hidden lg:inline-flex',
+                    isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          {desktopMoreGroups.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="ghost" className="h-9 gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground">
+                  <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                  <span>Lainnya</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 rounded-xl p-2">
+                <nav aria-label="Navigasi lainnya" className="max-h-[min(70dvh,32rem)] space-y-3 overflow-y-auto">
+                  {desktopMoreGroups.map((group) => (
+                    <div key={group.label}>
+                      <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">{group.label}</p>
+                      <ul className="space-y-0.5">
+                        {group.items.map((item) => {
+                          const Icon = item.icon;
+                          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                          return (
+                            <li key={item.href}>
+                              <Link
+                                href={item.href}
+                                aria-current={isActive ? 'page' : undefined}
+                                className={cn(
+                                  'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors',
+                                  isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                                )}
+                              >
+                                <Icon className="h-4 w-4" aria-hidden="true" />
+                                {item.label}
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </nav>
+              </PopoverContent>
+            </Popover>
+          )}
+
+          <span aria-hidden="true" className="mx-0.5 h-6 w-px bg-border" />
+          <ThemeToggle className="h-9 w-9 rounded-full p-0" />
+          <Link
+            href="/profile"
+            title={username || 'Profil'}
+            className="inline-flex h-9 max-w-36 items-center gap-2 rounded-full px-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <UserCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="hidden truncate xl:inline">{username || 'Admin'}</span>
+          </Link>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Keluar"
+            title="Keluar"
+            onClick={handleLogout}
+            className="h-9 w-9 rounded-full text-muted-foreground hover:text-destructive"
+          >
+            <LogOut className="h-4 w-4" aria-hidden="true" />
+          </Button>
         </div>
-        <span className="max-w-48 truncate text-sm text-muted-foreground" title={username || 'Admin'}>
-          {username || 'Admin'}
-        </span>
-      </div>
+      </header>
 
-      <header className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center border-b border-border/70 bg-background px-4 lg:hidden">
+      <header className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center border-b border-border/70 bg-background px-4 md:hidden">
         <Link href="/dashboard" className="flex min-w-0 items-center gap-2" onClick={() => setMobileOpen(false)}>
           <Wifi className="h-4 w-4 shrink-0 text-primary" />
           <span className="truncate text-sm font-semibold">{activeItem?.label || 'Tagihan WiFi'}</span>
         </Link>
       </header>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid h-[calc(4rem+env(safe-area-inset-bottom))] grid-cols-5 border-t border-border/70 bg-background pb-[env(safe-area-inset-bottom)] lg:hidden" aria-label="Navigasi cepat">
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid h-[calc(4rem+env(safe-area-inset-bottom))] grid-cols-5 border-t border-border/70 bg-background pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Navigasi cepat">
         {mobileNav.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -208,7 +302,7 @@ export default function NavSidebar() {
       <AnimatePresence initial={false}>
         {mobileOpen && (
           <motion.div
-            className="fixed inset-0 z-50 bg-black/35 lg:hidden"
+            className="fixed inset-0 z-50 bg-black/35 md:hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

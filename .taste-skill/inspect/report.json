@@ -1,0 +1,1206 @@
+{
+ "url": "http://127.0.0.1:3000/login",
+ "at": "2026-11-10T17:38:05.084Z",
+ "allow": [],
+ "viewports": [
+  {
+   "width": 1440,
+   "height": 900,
+   "load": "load",
+   "screens": 1,
+   "filled": [
+    0.58
+   ],
+   "motion": {
+    "elements": 3,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 3,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "page": {
+     "height": 900,
+     "screens": 1,
+     "words": 39,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 6,
+     "sections": 2,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Administrasi jaringan, lebih teratur.",
+     "words": 4,
+     "chars": 37,
+     "lines": 2,
+     "size": 48,
+     "vw": 3.3,
+     "font": "Inter",
+     "weight": 600,
+     "tracking": 0,
+     "leading": 1.25,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "left",
+     "widthRatio": 0.36,
+     "top": 368,
+     "tag": "h1",
+     "kind": "heading"
+    },
+    "h1": {
+     "text": "Administrasi jaringan, lebih teratur.",
+     "words": 4,
+     "lines": 2,
+     "size": 48,
+     "font": "Inter"
+    },
+    "headings": [
+     {
+      "text": "Administrasi jaringan, lebih teratur.",
+      "words": 4,
+      "chars": 37,
+      "lines": 2,
+      "size": 48,
+      "vw": 3.3,
+      "font": "Inter",
+      "weight": 600,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.36,
+      "top": 368,
+      "tag": "h1",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 1,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": null,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Inter",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      12,
+      14,
+      16,
+      24,
+      48
+     ],
+     "sizeCount": 5,
+     "notLoaded": [],
+     "body": {
+      "font": "Inter",
+      "size": 16,
+      "leading": 1.5,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 2.1
+     },
+     "measureChars": 56,
+     "max": {
+      "size": 48,
+      "vw": 3.3,
+      "font": "Inter",
+      "text": "Administrasi jaringan, lebih teratur."
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.02,
+     "smallText": 1
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#101418",
+     "bodyBgHsl": {
+      "h": 210,
+      "s": 0.2,
+      "l": 0.08
+     },
+     "dark": true,
+     "sectionBgs": [
+      {
+       "color": "#101418",
+       "top": 0,
+       "hsl": {
+        "h": 210,
+        "s": 0.2,
+        "l": 0.08
+       }
+      },
+      {
+       "color": "#45bee3",
+       "top": 0,
+       "hsl": {
+        "h": 194,
+        "s": 0.74,
+        "l": 0.58
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#f8fafc",
+       "share": 0.58
+      },
+      {
+       "color": "#9ea8b3",
+       "share": 0.26
+      },
+      {
+       "color": "#eff2f5",
+       "share": 0.11
+      },
+      {
+       "color": "#45bee3",
+       "share": 0.05
+      }
+     ],
+     "button": {
+      "bg": "#45bee3",
+      "hsl": {
+       "h": 194,
+       "s": 0.74,
+       "l": 0.58
+      },
+      "fg": "#f8fafc"
+     },
+     "lowContrast": [
+      {
+       "text": "Tagihan WiFi",
+       "ratio": 2.1,
+       "need": 4.5,
+       "size": 14,
+       "fg": "#f8fafc",
+       "bg": "#45bee3"
+      },
+      {
+       "text": "Administrasi jaringan, lebih teratur.",
+       "ratio": 2.1,
+       "need": 3,
+       "size": 48,
+       "fg": "#f8fafc",
+       "bg": "#45bee3"
+      },
+      {
+       "text": "Masuk",
+       "ratio": 2.1,
+       "need": 4.5,
+       "size": 14,
+       "fg": "#f8fafc",
+       "bg": "#45bee3"
+      }
+     ]
+    },
+    "buttons": {
+     "count": 1,
+     "inHero": 1,
+     "radius": 6,
+     "height": 44,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Masuk →"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 1,
+     "hairlineSamples": [
+      "p.mt-8.border-t 384px"
+     ],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": null,
+    "fontsLoaded": [
+     "inter"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "pageH": 900,
+    "margins": {
+     "left": 56,
+     "right": 32
+    },
+    "sections": [],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Administrasi jaringan, lebih teratur.",
+      "size": 48,
+      "top": 368,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 56,
+      "n": 2
+     },
+     {
+      "x": 917,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 3,
+    "bodySize": 16,
+    "stage": false,
+    "explains": false,
+    "slivers": [],
+    "voidShare": 0.2,
+    "voidBox": {
+     "x": 360,
+     "y": 660,
+     "w": 1080,
+     "h": 240
+    }
+   },
+   "app": null,
+   "consoleErrors": []
+  },
+  {
+   "width": 768,
+   "height": 1024,
+   "load": "load",
+   "screens": 1,
+   "filled": [
+    0.49
+   ],
+   "motion": {
+    "elements": 3,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 3,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "page": {
+     "height": 1024,
+     "screens": 1,
+     "words": 35,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 6,
+     "sections": 2,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Administrasi jaringan, lebih teratur.",
+     "words": 4,
+     "chars": 37,
+     "lines": 2,
+     "size": 36,
+     "vw": 4.7,
+     "font": "Inter",
+     "weight": 600,
+     "tracking": 0,
+     "leading": 1.25,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "left",
+     "widthRatio": 0.67,
+     "top": 185,
+     "tag": "h1",
+     "kind": "heading"
+    },
+    "h1": {
+     "text": "Administrasi jaringan, lebih teratur.",
+     "words": 4,
+     "lines": 2,
+     "size": 36,
+     "font": "Inter"
+    },
+    "headings": [
+     {
+      "text": "Administrasi jaringan, lebih teratur.",
+      "words": 4,
+      "chars": 37,
+      "lines": 2,
+      "size": 36,
+      "vw": 4.7,
+      "font": "Inter",
+      "weight": 600,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.67,
+      "top": 185,
+      "tag": "h1",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 1,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": null,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Inter",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      12,
+      14,
+      16,
+      24,
+      36
+     ],
+     "sizeCount": 5,
+     "notLoaded": [],
+     "body": {
+      "font": "Inter",
+      "size": 16,
+      "leading": 1.5,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 2.1
+     },
+     "measureChars": 56,
+     "max": {
+      "size": 36,
+      "vw": 4.7,
+      "font": "Inter",
+      "text": "Administrasi jaringan, lebih teratur."
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.03,
+     "smallText": 1
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#101418",
+     "bodyBgHsl": {
+      "h": 210,
+      "s": 0.2,
+      "l": 0.08
+     },
+     "dark": true,
+     "sectionBgs": [
+      {
+       "color": "#101418",
+       "top": 0,
+       "hsl": {
+        "h": 210,
+        "s": 0.2,
+        "l": 0.08
+       }
+      },
+      {
+       "color": "#45bee3",
+       "top": 0,
+       "hsl": {
+        "h": 194,
+        "s": 0.74,
+        "l": 0.58
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#f8fafc",
+       "share": 0.52
+      },
+      {
+       "color": "#9ea8b3",
+       "share": 0.3
+      },
+      {
+       "color": "#eff2f5",
+       "share": 0.12
+      },
+      {
+       "color": "#45bee3",
+       "share": 0.06
+      }
+     ],
+     "button": {
+      "bg": "#45bee3",
+      "hsl": {
+       "h": 194,
+       "s": 0.74,
+       "l": 0.58
+      },
+      "fg": "#f8fafc"
+     },
+     "lowContrast": [
+      {
+       "text": "Tagihan WiFi",
+       "ratio": 2.1,
+       "need": 4.5,
+       "size": 14,
+       "fg": "#f8fafc",
+       "bg": "#45bee3"
+      },
+      {
+       "text": "Administrasi jaringan, lebih teratur.",
+       "ratio": 2.1,
+       "need": 3,
+       "size": 36,
+       "fg": "#f8fafc",
+       "bg": "#45bee3"
+      },
+      {
+       "text": "Masuk",
+       "ratio": 2.1,
+       "need": 4.5,
+       "size": 14,
+       "fg": "#f8fafc",
+       "bg": "#45bee3"
+      }
+     ]
+    },
+    "buttons": {
+     "count": 1,
+     "inHero": 1,
+     "radius": 6,
+     "height": 44,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Masuk →"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 1,
+     "hairlineSamples": [
+      "p.mt-8.border-t 384px"
+     ],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": null,
+    "fontsLoaded": [
+     "inter"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "pageH": 1024,
+    "margins": {
+     "left": 40,
+     "right": 32
+    },
+    "sections": [
+     {
+      "sel": "section.flex.min-h-56",
+      "tag": "section",
+      "top": 0,
+      "height": 411,
+      "words": 17,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Administrasi jaringan, lebih teratur.",
+       "size": 36,
+       "tag": "h1"
+      },
+      "left": 40,
+      "right": 255,
+      "textLeft": 40,
+      "textRight": 255,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section.relative.flex",
+      "tag": "section",
+      "top": 411,
+      "height": 613,
+      "words": 18,
+      "media": 0,
+      "middle": 120,
+      "heading": {
+       "text": "Masuk ke akun",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 192,
+      "right": 32,
+      "textLeft": 192,
+      "textRight": 308,
+      "fullBleed": false,
+      "footer": true,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Administrasi jaringan, lebih teratur.",
+      "size": 36,
+      "top": 185,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 40,
+      "n": 2
+     },
+     {
+      "x": 192,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 3,
+    "bodySize": 16,
+    "stage": false,
+    "explains": false,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": null,
+   "consoleErrors": []
+  },
+  {
+   "width": 390,
+   "height": 844,
+   "load": "load",
+   "screens": 2,
+   "filled": [
+    0.48,
+    0.48
+   ],
+   "motion": {
+    "elements": 3,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 3,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "page": {
+     "height": 847,
+     "screens": 1,
+     "words": 35,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 6,
+     "sections": 2,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Administrasi jaringan, lebih teratur.",
+     "words": 4,
+     "chars": 37,
+     "lines": 2,
+     "size": 30,
+     "vw": 7.7,
+     "font": "Inter",
+     "weight": 600,
+     "tracking": 0,
+     "leading": 1.25,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "center",
+     "widthRatio": 0.88,
+     "top": 104,
+     "tag": "h1",
+     "kind": "heading"
+    },
+    "h1": {
+     "text": "Administrasi jaringan, lebih teratur.",
+     "words": 4,
+     "lines": 2,
+     "size": 30,
+     "font": "Inter"
+    },
+    "headings": [
+     {
+      "text": "Administrasi jaringan, lebih teratur.",
+      "words": 4,
+      "chars": 37,
+      "lines": 2,
+      "size": 30,
+      "vw": 7.7,
+      "font": "Inter",
+      "weight": 600,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.88,
+      "top": 104,
+      "tag": "h1",
+      "kind": "heading"
+     },
+     {
+      "text": "Masuk ke akun",
+      "words": 3,
+      "chars": 13,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Inter",
+      "weight": 600,
+      "tracking": 0,
+      "leading": 1.33,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.9,
+      "top": 403,
+      "tag": "h2",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 2,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": 3,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Inter",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      12,
+      14,
+      24,
+      30
+     ],
+     "sizeCount": 4,
+     "notLoaded": [],
+     "body": {
+      "font": "Inter",
+      "size": 14,
+      "leading": 1.71,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 2.1
+     },
+     "measureChars": 49,
+     "max": {
+      "size": 30,
+      "vw": 7.7,
+      "font": "Inter",
+      "text": "Administrasi jaringan, lebih teratur."
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.03,
+     "smallText": 1
+    },
+    "eyebrows": [
+     {
+      "text": "Tagihan WiFi",
+      "above": "Administrasi jaringan, lebih teratur.",
+      "upper": false,
+      "tracked": false,
+      "mono": false,
+      "pill": false,
+      "size": 14,
+      "top": 34
+     }
+    ],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#101418",
+     "bodyBgHsl": {
+      "h": 210,
+      "s": 0.2,
+      "l": 0.08
+     },
+     "dark": true,
+     "sectionBgs": [
+      {
+       "color": "#101418",
+       "top": 0,
+       "hsl": {
+        "h": 210,
+        "s": 0.2,
+        "l": 0.08
+       }
+      },
+      {
+       "color": "#45bee3",
+       "top": 0,
+       "hsl": {
+        "h": 194,
+        "s": 0.74,
+        "l": 0.58
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#f8fafc",
+       "share": 0.52
+      },
+      {
+       "color": "#9ea8b3",
+       "share": 0.3
+      },
+      {
+       "color": "#eff2f5",
+       "share": 0.12
+      },
+      {
+       "color": "#45bee3",
+       "share": 0.06
+      }
+     ],
+     "button": {
+      "bg": "#45bee3",
+      "hsl": {
+       "h": 194,
+       "s": 0.74,
+       "l": 0.58
+      },
+      "fg": "#f8fafc"
+     },
+     "lowContrast": [
+      {
+       "text": "Tagihan WiFi",
+       "ratio": 2.1,
+       "need": 4.5,
+       "size": 14,
+       "fg": "#f8fafc",
+       "bg": "#45bee3"
+      },
+      {
+       "text": "Administrasi jaringan, lebih teratur.",
+       "ratio": 2.1,
+       "need": 3,
+       "size": 30,
+       "fg": "#f8fafc",
+       "bg": "#45bee3"
+      },
+      {
+       "text": "Masuk",
+       "ratio": 2.1,
+       "need": 4.5,
+       "size": 14,
+       "fg": "#f8fafc",
+       "bg": "#45bee3"
+      }
+     ]
+    },
+    "buttons": {
+     "count": 1,
+     "inHero": 1,
+     "radius": 6,
+     "height": 44,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Masuk →"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 1,
+     "hairlineSamples": [
+      "p.mt-8.border-t 350px"
+     ],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": null,
+    "fontsLoaded": [
+     "inter"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "pageH": 847,
+    "margins": {
+     "left": 20,
+     "right": 16
+    },
+    "sections": [
+     {
+      "sel": "section.flex.min-h-56",
+      "tag": "section",
+      "top": 0,
+      "height": 307,
+      "words": 17,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Administrasi jaringan, lebih teratur.",
+       "size": 30,
+       "tag": "h1"
+      },
+      "left": 24,
+      "right": 33,
+      "textLeft": 24,
+      "textRight": 33,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section.relative.flex",
+      "tag": "section",
+      "top": 307,
+      "height": 540,
+      "words": 18,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Masuk ke akun",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 20,
+      "right": 16,
+      "textLeft": 20,
+      "textRight": 102,
+      "fullBleed": false,
+      "footer": true,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Administrasi jaringan, lebih teratur.",
+      "size": 30,
+      "top": 104,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 20,
+      "n": 3
+     }
+    ],
+    "leftBlocks": 3,
+    "bodySize": 14,
+    "stage": false,
+    "explains": false,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": null,
+   "consoleErrors": []
+  }
+ ],
+ "findings": [
+  {
+   "level": "WARN",
+   "id": "hairline",
+   "width": 1440,
+   "message": "1 thin rule(s)/divider line(s): p.mt-8.border-t 384px",
+   "fix": "Delete. Separate with space, a tone change, or scale. Lines are only for real tables and form fields.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "FAIL",
+   "id": "contrast",
+   "width": 1440,
+   "message": "Unreadable text: \"Tagihan WiFi\" 2.1:1 (#f8fafc on #45bee3); \"Administrasi jaringan, lebih teratur.\" 2.1:1 (#f8fafc on #45bee3); \"Masuk\" 2.1:1 (#f8fafc on #45bee3)",
+   "fix": "Raise contrast to at least 4.5:1 for text, 3:1 for large display.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "WARN",
+   "id": "grey-body",
+   "width": 1440,
+   "message": "The running text is a soft grey on its ground (2.1:1).",
+   "fix": "Set body copy in the full ink (7:1 or more). Keep the muted ink for secondary notes; pages read thin and unfinished when everything is grey.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "FAIL",
+   "id": "few-pictures",
+   "width": 1440,
+   "message": "Only 0 picture(s) on the page (0 photographs, footage or raster images, 0 interface fragments). Drawings in SVG do not count.",
+   "fix": "Find real pictures of the subject's world with scripts/assets.mjs (photographs, archival images, maps, engravings, footage), download them to assets/ and give them room: a hero picture, one per section that has a subject, a full-width band. At least four, usually six to twelve."
+  },
+  {
+   "level": "WARN",
+   "id": "no-footage",
+   "width": 1440,
+   "message": "No video anywhere on the page.",
+   "fix": "Look for one honest clip with scripts/assets.mjs --video (the place, the material, the process) and use it as a muted loop with a poster frame. Defend its absence only if no clip fits the subject."
+  },
+  {
+   "level": "WARN",
+   "id": "small-text",
+   "width": 1440,
+   "message": "1 text block(s) under 13px.",
+   "fix": "Nothing meant to be read goes below 13px.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "FAIL",
+   "id": "focal-point",
+   "width": 1440,
+   "message": "The first screen has no dominant element: the largest type is 48px (3.3vw) and no single picture holds a third of the viewport.",
+   "fix": "Make one thing lead: the headline at display size, or one large picture. A grid of many small pictures is not one thing; in blind tests jurors marked a first screen without a headline down every time. On the strongest studied sites the largest type has a median of 8.4vw."
+  },
+  {
+   "level": "WARN",
+   "id": "off-centre",
+   "width": 1440,
+   "message": "The margins differ: 56px on the left, 32px on the right, at 1440px.",
+   "fix": "Put the navigation and the content on one pair of margins; check for padding on one side only, a scrollbar gutter, or a header on another inset than the page."
+  },
+  {
+   "level": "FAIL",
+   "id": "still-page",
+   "width": 1440,
+   "message": "Only 3 element(s) moved while the page loaded and scrolled.",
+   "fix": "Build the motion layer (SKILL.md step 9, references/motion.md): the signature move, an entrance for the parts of every section, feedback on every control, and one moving picture. Transform and opacity only, with a reduced-motion fallback."
+  },
+  {
+   "level": "FAIL",
+   "id": "eyebrow",
+   "width": 390,
+   "message": "1 eyebrow/kicker label(s) above headings: \"Tagihan WiFi\" above \"Administrasi jaringan, lebih teratur.\"",
+   "fix": "Delete them. If the label carried real information, fold it into the headline or the supporting sentence."
+  },
+  {
+   "level": "FAIL",
+   "id": "body-size",
+   "width": 390,
+   "message": "Body text is 14px (the size most of the running text is set in).",
+   "fix": "Body copy 16–20px. Map small sizes from blueprints onto your body step."
+  }
+ ],
+ "images": [
+  {
+   "viewport": "desktop",
+   "width": 1440,
+   "fold": "/workspaces/tagihan-wifi/.taste-skill/inspect/desktop-fold.jpg",
+   "pages": [
+    "/workspaces/tagihan-wifi/.taste-skill/inspect/desktop-page-01.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "tablet",
+   "width": 768,
+   "fold": "/workspaces/tagihan-wifi/.taste-skill/inspect/tablet-fold.jpg",
+   "pages": [
+    "/workspaces/tagihan-wifi/.taste-skill/inspect/tablet-page-01.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "mobile",
+   "width": 390,
+   "fold": "/workspaces/tagihan-wifi/.taste-skill/inspect/mobile-fold.jpg",
+   "pages": [
+    "/workspaces/tagihan-wifi/.taste-skill/inspect/mobile-page-01.jpg"
+   ],
+   "film": []
+  }
+ ]
+}

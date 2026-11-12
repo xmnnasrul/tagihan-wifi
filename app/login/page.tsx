@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Wifi, User, Lock, Loader2, AlertCircle, Eye, EyeOff, Network } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -11,14 +11,17 @@ import { loginSchema } from '@/lib/login-validation';
 
 export default function LoginPage() {
   const router = useRouter();
+  const prefersReducedMotion = useReducedMotion();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const isSubmitting = useRef(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (isSubmitting.current) return;
     setError('');
 
     const parsed = loginSchema.safeParse({ username, password });
@@ -27,127 +30,183 @@ export default function LoginPage() {
       return;
     }
 
+    isSubmitting.current = true;
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(parsed.data),
       });
 
-      const data = await res.json();
+      const data = await response.json();
 
-      if (!res.ok) {
+      if (!response.ok) {
         setError(data.error || 'Login gagal');
         return;
       }
 
-      router.push('/dashboard');
-      router.refresh();
+      router.replace('/dashboard');
     } catch {
       setError('Terjadi kesalahan. Coba lagi.');
     } finally {
+      isSubmitting.current = false;
       setLoading(false);
     }
   };
 
   return (
-    <main className="grid min-h-[100dvh] bg-background lg:grid-cols-[minmax(0,1.08fr)_minmax(420px,.92fr)]">
-      <section className="flex min-h-56 flex-col justify-between bg-primary px-6 py-6 text-primary-foreground sm:min-h-64 sm:px-10 sm:py-8 lg:min-h-[100dvh] lg:px-14 lg:py-12">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-md border border-primary-foreground/25">
-            <Wifi className="h-5 w-5" />
-          </span>
-          <span className="text-sm font-semibold">Tagihan WiFi</span>
-        </div>
-        <div className="max-w-xl py-10 lg:py-0">
-          <h1 className="max-w-lg text-3xl font-semibold leading-tight sm:text-4xl lg:text-5xl">Administrasi jaringan, lebih teratur.</h1>
-          <p className="mt-4 max-w-md text-sm leading-6 text-primary-foreground/80 sm:text-base">
-            Kelola pelanggan, tagihan, dan setoran WiFi dalam satu ruang kerja.
-          </p>
-        </div>
-        <div className="hidden items-center gap-2 text-sm text-primary-foreground/75 lg:flex">
-          <Network className="h-4 w-4" />
-          <span>Operasional pelanggan dan pembayaran</span>
-        </div>
-      </section>
+    <div className="flex min-h-svh flex-col bg-[#b9d8d2] text-[#123a3c] dark:bg-[#0b292b] dark:text-[#eef4eb]">
+      <header className="mx-auto flex w-full max-w-360 items-center justify-end px-5 py-4 sm:px-8 lg:px-12">
+        <ThemeToggle
+          showLabel={false}
+          size="icon"
+          className="text-[#123a3c] hover:bg-[#a8ccc5] dark:text-[#eaf2ef] dark:hover:bg-white/10"
+        />
+      </header>
 
-      <section className="relative flex min-h-[540px] items-center justify-center px-5 py-12 sm:px-10 lg:min-h-[100dvh]">
-        <div className="absolute right-4 top-4 sm:right-8 sm:top-8">
-          <ThemeToggle showLabel={false} size="icon" />
-        </div>
-        <div className="w-full max-w-sm">
-          <div className="mb-8">
-            <p className="text-sm font-medium text-primary">Selamat datang</p>
-            <h2 className="mt-2 text-2xl font-semibold">Masuk ke akun</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Gunakan akun admin untuk melanjutkan.</p>
-          </div>
+      <main className="mx-auto flex w-full max-w-295 flex-1 items-center px-4 py-6 sm:px-8 sm:py-8 xl:px-0">
+        <motion.div
+          initial={prefersReducedMotion ? false : { y: 24, rotate: -0.55, scale: 0.985 }}
+          animate={{ y: 0, rotate: 0, scale: 1 }}
+          transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 95, damping: 18, mass: 0.85 }}
+          className="login-motion-initial login-paper-shell mx-auto w-full max-w-295"
+        >
+          <div className="login-paper grid w-full grid-cols-1 gap-10 bg-[#eef4e9] py-10 pl-10 pr-16 text-[#123a3c] dark:bg-[#153b3d] dark:text-[#eef4eb] sm:gap-14 sm:py-14 sm:pl-16 sm:pr-20 md:grid-cols-[0.95fr_1.05fr] md:items-center md:gap-8 lg:gap-20 lg:py-16 lg:pl-20 lg:pr-24">
+            <motion.section
+              aria-labelledby="intro-title"
+              initial={prefersReducedMotion ? false : { y: 12 }}
+              animate={{ y: 0 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.42, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
+              className="login-intro login-motion-initial flex flex-col justify-center"
+            >
+            <h1 id="intro-title" className="max-w-120 text-[clamp(1.75rem,2.4vw,2rem)] font-semibold leading-[1.02] tracking-[-0.04em]">
+              Dari pelanggan sampai setoran.
+            </h1>
+            <p className="mt-6 max-w-107.5 text-base leading-7 text-[#476465] dark:text-[#bed3cb]">
+              Tagihan, pembayaran, dan kunjungan lapangan tersambung dalam satu catatan.
+            </p>
+            </motion.section>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <motion.section
+              aria-labelledby="login-title"
+              initial={prefersReducedMotion ? false : { y: 12 }}
+              animate={{ y: 0 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.42, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              className="login-form-panel login-motion-initial flex flex-col justify-center lg:py-8"
+            >
+            <div className="mb-8">
+              <h2 id="login-title" className="text-3xl font-semibold tracking-[-0.04em]">Login</h2>
+              <p className="mt-2 text-sm leading-6 text-[#476465] dark:text-[#bed3cb]">
+                Akses panel operasional Tagihan WiFi.
+              </p>
+            </div>
+
+            <form onSubmit={handleSubmit} aria-labelledby="login-title" className="space-y-6">
+              <div className="login-scroll-reveal space-y-2">
+                <Label htmlFor="username" className="text-sm font-medium">Username</Label>
                 <Input
                   id="username"
+                  name="username"
                   type="text"
                   placeholder="Masukkan username"
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
-                  className="h-11 pl-10"
+                  className="h-12 rounded-none border-0 border-b-2 border-[#a7c3bb] bg-transparent px-0 text-base text-[#123a3c] placeholder:text-[#647b77] focus-visible:border-[#168697] focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-[#456c69] dark:text-[#f1f5ed] dark:placeholder:text-[#a9c1b9] dark:focus-visible:border-[#45bee3]"
                   minLength={3}
                   maxLength={32}
                   pattern="[a-zA-Z0-9._-]+"
                   title="Gunakan 3-32 karakter: huruf, angka, titik, garis bawah, atau tanda hubung."
                   required
                   autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  enterKeyHint="next"
                 />
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Masukkan password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="h-11 pl-10 pr-11"
-                  minLength={1}
-                  maxLength={72}
-                  required
-                  autoComplete="current-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((visible) => !visible)}
-                  aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+              <div className="login-scroll-reveal login-scroll-reveal--later space-y-2">
+                <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Masukkan password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className="h-12 rounded-none border-0 border-b-2 border-[#a7c3bb] bg-transparent px-0 pr-12 text-base text-[#123a3c] placeholder:text-[#647b77] focus-visible:border-[#168697] focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-[#456c69] dark:text-[#f1f5ed] dark:placeholder:text-[#a9c1b9] dark:focus-visible:border-[#45bee3]"
+                    minLength={1}
+                    maxLength={72}
+                    required
+                    autoComplete="current-password"
+                    enterKeyHint="done"
+                  />
+                  <motion.button
+                    type="button"
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                    whileTap={prefersReducedMotion ? undefined : { scale: 0.92 }}
+                    transition={{ duration: 0.12 }}
+                    className="absolute right-0 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center text-[#476465] outline-none transition-colors hover:text-[#123a3c] focus-visible:ring-2 focus-visible:ring-[#168697] dark:text-[#bed3cb] dark:hover:text-white dark:focus-visible:ring-[#45bee3]"
+                  >
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.span
+                        key={showPassword ? 'hidden' : 'visible'}
+                        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.8 }}
+                        transition={{ duration: prefersReducedMotion ? 0 : 0.12 }}
+                      >
+                        {showPassword
+                          ? <EyeOff aria-hidden="true" className="h-4 w-4" />
+                          : <Eye aria-hidden="true" className="h-4 w-4" />}
+                      </motion.span>
+                    </AnimatePresence>
+                  </motion.button>
+                </div>
               </div>
-            </div>
 
-            {error && (
-              <div role="alert" className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                {error}
-              </div>
-            )}
+              <AnimatePresence initial={false}>
+                {error && (
+                  <motion.div
+                    key="login-error"
+                    role="alert"
+                    initial={prefersReducedMotion ? false : { opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                    transition={{ duration: prefersReducedMotion ? 0 : 0.16 }}
+                    className="flex items-start gap-2.5 border-l-4 border-red-700 bg-red-100 px-3.5 py-3 text-sm text-red-900 dark:border-red-300 dark:bg-red-950 dark:text-red-100"
+                  >
+                    <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{error}</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-            <Button type="submit" disabled={loading} className="h-11 w-full justify-between px-4">
-              <span>{loading ? 'Memeriksa akun...' : 'Masuk'}</span>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <span aria-hidden="true">&rarr;</span>}
-            </Button>
-          </form>
-          <p className="mt-8 border-t border-border pt-4 text-xs text-muted-foreground">Tagihan WiFi · Panel administrasi</p>
-        </div>
-      </section>
-    </main>
+              <motion.button
+                type="submit"
+                disabled={loading}
+                whileHover={prefersReducedMotion || loading ? undefined : { y: -1 }}
+                whileTap={prefersReducedMotion || loading ? undefined : { scale: 0.99 }}
+                transition={{ duration: 0.14 }}
+                className="login-scroll-reveal login-scroll-reveal--later flex h-14 w-full items-center justify-center bg-[#123f43] px-5 text-sm font-semibold text-white outline-none transition-colors hover:bg-[#0d3437] focus-visible:ring-2 focus-visible:ring-[#168697] focus-visible:ring-offset-2 focus-visible:ring-offset-[#eef4e9] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-[#45bee3] dark:text-[#102b2d] dark:hover:bg-[#73d2eb] dark:focus-visible:ring-[#45bee3] dark:focus-visible:ring-offset-[#153b3d]"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
+                    Memeriksa akun...
+                  </>
+                ) : 'Login'}
+              </motion.button>
+            </form>
+            </motion.section>
+
+          </div>
+        </motion.div>
+      </main>
+    </div>
   );
 }

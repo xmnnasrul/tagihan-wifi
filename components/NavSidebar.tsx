@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion, useMotionValueEvent, useReducedMotion, useScroll } from 'framer-motion';
 import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, History, Shield, Users, UserCircle2, FileText, WalletCards, MoreHorizontal, ArrowUpRight, StickyNote, MessageCircle, CalendarDays, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -47,11 +47,11 @@ const mobileNav = [
 ];
 
 const desktopNav = [
-  { href: '/dashboard', label: 'Ringkasan', icon: LayoutDashboard },
-  { href: '/customers/all', label: 'Pelanggan', icon: Users },
-  { href: '/collector', label: 'Setoran', icon: WalletCards },
-  { href: '/arrears', label: 'Tunggakan', icon: FileText },
-  { href: '/monthly-recap', label: 'Rekap', icon: CalendarDays },
+  { href: '/dashboard', label: 'Ringkasan' },
+  { href: '/customers/all', label: 'Pelanggan' },
+  { href: '/collector', label: 'Setoran' },
+  { href: '/arrears', label: 'Tunggakan' },
+  { href: '/monthly-recap', label: 'Rekap' },
 ];
 
 export default function NavSidebar() {
@@ -60,6 +60,13 @@ export default function NavSidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { setTheme } = useTheme();
   const prefersReducedMotion = useReducedMotion();
+  const [isScrolling, setIsScrolling] = useState(false);
+  const [isLogoHovered, setIsLogoHovered] = useState(false);
+  const [isLogoFocused, setIsLogoFocused] = useState(false);
+  const [isLogoPressed, setIsLogoPressed] = useState(false);
+  const scrollResetTimeout = useRef<number | null>(null);
+  const logoResetTimeout = useRef<number | null>(null);
+  const { scrollY } = useScroll();
   const currentUser = useCurrentUser();
   const username = currentUser?.username || '';
   const roles = currentUser?.roles || [];
@@ -75,6 +82,35 @@ export default function NavSidebar() {
   })).filter((group) => group.items.length > 0);
   const activeItem = visibleGroups.flatMap((group) => group.items)
     .find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+
+  useMotionValueEvent(scrollY, 'change', (latest) => {
+    if (scrollResetTimeout.current !== null) {
+      window.clearTimeout(scrollResetTimeout.current);
+    }
+
+    if (latest <= 0) {
+      setIsScrolling(false);
+      scrollResetTimeout.current = null;
+      return;
+    }
+
+    setIsScrolling(true);
+    scrollResetTimeout.current = window.setTimeout(() => {
+      setIsScrolling(false);
+      scrollResetTimeout.current = null;
+    }, 160);
+  });
+
+  useEffect(() => {
+    return () => {
+      if (scrollResetTimeout.current !== null) {
+        window.clearTimeout(scrollResetTimeout.current);
+      }
+      if (logoResetTimeout.current !== null) {
+        window.clearTimeout(logoResetTimeout.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -95,6 +131,26 @@ export default function NavSidebar() {
     window.localStorage.removeItem(THEME_PREFERENCE_KEY);
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
+  };
+
+  const isCompact = isScrolling && !isLogoHovered && !isLogoFocused && !isLogoPressed;
+
+  const startLogoPress = () => {
+    if (logoResetTimeout.current !== null) {
+      window.clearTimeout(logoResetTimeout.current);
+      logoResetTimeout.current = null;
+    }
+    setIsLogoPressed(true);
+  };
+
+  const releaseLogoAfterPress = () => {
+    if (logoResetTimeout.current !== null) {
+      window.clearTimeout(logoResetTimeout.current);
+    }
+    logoResetTimeout.current = window.setTimeout(() => {
+      setIsLogoPressed(false);
+      logoResetTimeout.current = null;
+    }, 650);
   };
 
   const NavContent = () => (
@@ -166,110 +222,184 @@ export default function NavSidebar() {
 
   return (
     <>
-      <header className="fixed inset-x-0 top-3 z-40 hidden justify-center px-4 md:flex">
-        <div className="flex h-14 max-w-full items-center gap-2 rounded-full border border-border/80 bg-background px-2.5 shadow-md">
-          <Link href="/dashboard" className="flex shrink-0 items-center gap-2 rounded-full px-1.5" aria-label="Tagihan WiFi, Dashboard">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
+      <header className="fixed inset-x-0 top-3 z-40 hidden justify-center px-3 min-[60rem]:flex">
+        <motion.div
+          layout
+          animate={{ opacity: isCompact ? 0.5 : 1 }}
+          transition={prefersReducedMotion
+            ? { layout: { duration: 0 }, opacity: { duration: 0 } }
+            : {
+                layout: { type: 'spring', stiffness: 520, damping: 38, mass: 0.5 },
+                  opacity: { duration: 0.14, ease: 'easeOut' },
+              }}
+          className={cn(
+            'flex max-w-full items-center whitespace-nowrap rounded-full border border-border/80 bg-background p-1',
+            isCompact ? 'gap-0' : 'gap-0.5'
+          )}
+        >
+          <Link
+            href="/dashboard"
+            className="flex shrink-0 items-center gap-2 rounded-full px-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Tagihan WiFi, Dashboard"
+            onPointerEnter={(event) => {
+              if (event.pointerType !== 'touch') setIsLogoHovered(true);
+            }}
+            onPointerLeave={(event) => {
+              if (event.pointerType !== 'touch') setIsLogoHovered(false);
+            }}
+            onPointerDown={startLogoPress}
+            onPointerUp={releaseLogoAfterPress}
+            onPointerCancel={() => setIsLogoPressed(false)}
+            onFocus={() => setIsLogoFocused(true)}
+            onBlur={() => setIsLogoFocused(false)}
+            onClick={releaseLogoAfterPress}
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
               <Wifi className="h-4 w-4" aria-hidden="true" />
             </span>
-            <span className="hidden text-sm font-semibold lg:inline">Tagihan WiFi</span>
-          </Link>
-
-          <nav className="flex items-center gap-0.5" aria-label="Navigasi utama">
-            {desktopNav.map((item, index) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={cn(
-                    'inline-flex h-9 items-center gap-2 rounded-full px-2.5 text-xs font-medium transition-colors xl:px-3',
-                    index === desktopNav.length - 1 && 'hidden lg:inline-flex',
-                    isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  )}
+            <AnimatePresence initial={false}>
+              {!isCompact && (
+                <motion.span
+                  initial={prefersReducedMotion ? false : { opacity: 0, x: -6 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={prefersReducedMotion ? undefined : { opacity: 0, x: -6 }}
+                  transition={{ duration: prefersReducedMotion ? 0 : 0.12, ease: 'easeOut' }}
+                  className="hidden text-sm font-semibold min-[60rem]:inline"
                 >
-                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          {desktopMoreGroups.length > 0 && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button type="button" variant="ghost" className="h-9 gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground">
-                  <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-                  <span>Lainnya</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-72 rounded-xl p-2">
-                <nav aria-label="Navigasi lainnya" className="max-h-[min(70dvh,32rem)] space-y-3 overflow-y-auto">
-                  {desktopMoreGroups.map((group) => (
-                    <div key={group.label}>
-                      <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">{group.label}</p>
-                      <ul className="space-y-0.5">
-                        {group.items.map((item) => {
-                          const Icon = item.icon;
-                          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-                          return (
-                            <li key={item.href}>
-                              <Link
-                                href={item.href}
-                                aria-current={isActive ? 'page' : undefined}
-                                className={cn(
-                                  'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors',
-                                  isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                                )}
-                              >
-                                <Icon className="h-4 w-4" aria-hidden="true" />
-                                {item.label}
-                              </Link>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ))}
-                </nav>
-              </PopoverContent>
-            </Popover>
-          )}
-
-          <span aria-hidden="true" className="mx-0.5 h-6 w-px bg-border" />
-          <ThemeToggle className="h-9 w-9 rounded-full p-0" />
-          <Link
-            href="/profile"
-            title={username || 'Profil'}
-            className="inline-flex h-9 max-w-36 items-center gap-2 rounded-full px-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <UserCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span className="hidden truncate xl:inline">{username || 'Admin'}</span>
+                  Tagihan WiFi
+                </motion.span>
+              )}
+            </AnimatePresence>
           </Link>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Keluar"
-            title="Keluar"
-            onClick={handleLogout}
-            className="h-9 w-9 rounded-full text-muted-foreground hover:text-destructive"
+
+          <motion.div
+            initial={false}
+            animate={{
+              width: isCompact ? 0 : 'auto',
+              opacity: isCompact ? 0 : 1,
+              x: isCompact ? 8 : 0,
+              scale: isCompact ? 0.98 : 1,
+            }}
+            transition={prefersReducedMotion
+              ? { duration: 0 }
+              : {
+                  width: { type: 'spring', stiffness: 540, damping: 38, mass: 0.5 },
+                  opacity: { duration: 0.14, ease: 'easeOut' },
+                  x: { type: 'spring', stiffness: 540, damping: 38, mass: 0.5 },
+                  scale: { type: 'spring', stiffness: 540, damping: 38, mass: 0.5 },
+                }}
+            aria-hidden={isCompact}
+            {...({ inert: isCompact } as any)}
+            className="flex min-w-0 shrink-0 items-center gap-0.5 overflow-hidden"
           >
-            <LogOut className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        </div>
+            <nav className="flex shrink-0 items-center gap-0.5" aria-label="Navigasi utama">
+              {desktopNav.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={cn(
+                      'relative inline-flex h-11 shrink-0 items-center whitespace-nowrap rounded-full px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring xl:px-3',
+                      isActive ? 'text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    )}
+                  >
+                    {isActive && (
+                      <motion.span
+                        layoutId="desktop-nav-active-pill"
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-0 rounded-full bg-primary/10"
+                        transition={prefersReducedMotion
+                          ? { duration: 0 }
+                          : { type: 'spring', stiffness: 560, damping: 38, mass: 0.5 }}
+                      />
+                    )}
+                    <span className="relative">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+
+            {desktopMoreGroups.length > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    aria-label="Lainnya"
+                    className="ml-1 h-11 gap-1.5 rounded-full px-2.5 text-sm text-muted-foreground"
+                  >
+                    <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                    <span className="hidden min-[60rem]:inline">Lainnya</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 rounded-xl p-2">
+                  <nav aria-label="Navigasi lainnya" className="max-h-[min(70dvh,32rem)] space-y-3 overflow-y-auto">
+                    {desktopMoreGroups.map((group) => (
+                      <div key={group.label}>
+                        <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">{group.label}</p>
+                        <ul className="space-y-0.5">
+                          {group.items.map((item) => {
+                            const Icon = item.icon;
+                            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                            return (
+                              <li key={item.href}>
+                                <Link
+                                  href={item.href}
+                                  aria-current={isActive ? 'page' : undefined}
+                                  className={cn(
+                                    'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors',
+                                    isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                                  )}
+                                >
+                                  <Icon className="h-4 w-4" aria-hidden="true" />
+                                  {item.label}
+                                </Link>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ))}
+                  </nav>
+                </PopoverContent>
+              </Popover>
+            )}
+
+            <ThemeToggle showLabel={false} className="h-11 w-11 rounded-full p-0" />
+            <Link
+              href="/profile"
+              title={username || 'Profil'}
+              aria-label={username ? `Profil ${username}` : 'Profil'}
+              className="inline-flex h-11 max-w-36 items-center gap-2 rounded-full px-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <UserCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="hidden truncate xl:inline">{username || 'Admin'}</span>
+            </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Keluar"
+              title="Keluar"
+              onClick={handleLogout}
+              className="h-11 w-11 rounded-full text-muted-foreground hover:text-destructive"
+            >
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </motion.div>
+        </motion.div>
       </header>
 
-      <header className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center border-b border-border/70 bg-background px-4 md:hidden">
+      <header className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center border-b border-border/70 bg-background px-4 min-[60rem]:hidden">
         <Link href="/dashboard" className="flex min-w-0 items-center gap-2" onClick={() => setMobileOpen(false)}>
           <Wifi className="h-4 w-4 shrink-0 text-primary" />
           <span className="truncate text-sm font-semibold">{activeItem?.label || 'Tagihan WiFi'}</span>
         </Link>
       </header>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid h-[calc(4rem+env(safe-area-inset-bottom))] grid-cols-5 border-t border-border/70 bg-background pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Navigasi cepat">
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid h-[calc(4rem+env(safe-area-inset-bottom))] grid-cols-5 border-t border-border/70 bg-background pb-[env(safe-area-inset-bottom)] min-[60rem]:hidden" aria-label="Navigasi cepat">
         {mobileNav.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -302,7 +432,7 @@ export default function NavSidebar() {
       <AnimatePresence initial={false}>
         {mobileOpen && (
           <motion.div
-            className="fixed inset-0 z-50 bg-black/35 md:hidden"
+            className="fixed inset-0 z-50 bg-black/35 min-[60rem]:hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

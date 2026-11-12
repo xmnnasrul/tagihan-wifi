@@ -106,9 +106,107 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+
+  .login-motion-initial {
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
 
 @layer utilities {
+  .login-paper-shell {
+    --login-paper-edge: polygon(
+      0 0, calc(100% - 24px) 0,
+      calc(100% - 15px) 2.1%, calc(100% - 3px) 5%,
+      calc(100% - 24px) 5.9%, calc(100% - 7px) 7.3%,
+      calc(100% - 20px) 9.6%, 100% 11.1%,
+      calc(100% - 6px) 12.8%, calc(100% - 28px) 16.5%,
+      calc(100% - 17px) 17.2%, calc(100% - 1px) 18.4%,
+      calc(100% - 12px) 21.9%, calc(100% - 25px) 22.7%,
+      calc(100% - 4px) 24.4%, calc(100% - 18px) 27.6%,
+      100% 29%, calc(100% - 7px) 31.7%,
+      calc(100% - 27px) 35.1%, calc(100% - 20px) 36.2%,
+      calc(100% - 1px) 39.9%, calc(100% - 11px) 40.6%,
+      calc(100% - 24px) 43.4%, calc(100% - 5px) 45.2%,
+      calc(100% - 14px) 48.5%, 100% 49.7%,
+      calc(100% - 8px) 52.1%, calc(100% - 27px) 55.9%,
+      calc(100% - 16px) 56.8%, calc(100% - 1px) 60.1%,
+      calc(100% - 9px) 61.4%, calc(100% - 23px) 64.8%,
+      100% 65.9%, calc(100% - 6px) 67.5%,
+      calc(100% - 28px) 70.6%, calc(100% - 17px) 72%,
+      calc(100% - 2px) 75.4%, calc(100% - 12px) 76.2%,
+      calc(100% - 24px) 79%, calc(100% - 5px) 80.4%,
+      calc(100% - 20px) 83.8%, 100% 84.9%,
+      calc(100% - 8px) 86.7%, calc(100% - 28px) 89.8%,
+      calc(100% - 13px) 90.5%, calc(100% - 1px) 91.8%,
+      calc(100% - 18px) 94.2%, calc(100% - 4px) 95.1%,
+      calc(100% - 25px) 97.6%, calc(100% - 18px) 98.4%,
+      calc(100% - 21px) 100%, 0 100%
+    );
+    isolation: isolate;
+    position: relative;
+  }
+
+  .login-paper-shell::before {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    content: "";
+    transform: translate(7px, 5px);
+    background: #8eafa6;
+    clip-path: var(--login-paper-edge);
+  }
+
+  .dark .login-paper-shell::before {
+    background: #234749;
+  }
+
+  .login-paper {
+    position: relative;
+    z-index: 1;
+    clip-path: var(--login-paper-edge);
+  }
+
+  @media (min-width: 768px) {
+    .login-paper {
+      grid-template-areas: "intro form";
+    }
+
+    .login-intro {
+      grid-area: intro;
+    }
+
+    .login-form-panel {
+      grid-area: form;
+    }
+
+  }
+
+  @keyframes login-scroll-entry {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) and (animation-range: entry) {
+      .login-scroll-reveal {
+        animation: login-scroll-entry auto linear both;
+        animation-timeline: view(block);
+        animation-range: entry 0% entry 80%;
+      }
+
+      .login-scroll-reveal--later {
+        animation-range: entry 14% entry 92%;
+      }
+    }
+  }
+
   .theme-transition,
   .theme-transition *,
   .theme-transition *::before,
@@ -256,6 +354,30 @@
   to {
     opacity: 0;
     transform: scale(0.94);
+  }
+}
+
+@keyframes theme-sun-idle {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes theme-moon-idle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(7deg); }
+  75% { transform: rotate(-7deg); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  svg.theme-sun-idle {
+    animation: theme-sun-idle 16s linear infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  svg.theme-moon-idle {
+    animation: theme-moon-idle 3.6s ease-in-out infinite;
+    transform-box: fill-box;
+    transform-origin: center;
   }
 }
 

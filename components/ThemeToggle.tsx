@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button, type ButtonProps } from '@/components/ui/button';
 import { THEME_PREFERENCE_KEY } from '@/components/ThemeProvider';
@@ -32,6 +31,7 @@ export default function ThemeToggle({
   const [wipe, setWipe] = useState<ThemeWipe | null>(null);
   const isDark = ready && resolvedTheme === 'dark';
   const nextTheme = isDark ? 'light' : 'dark';
+  const iconIsDark = wipe ? wipe.theme === 'dark' : isDark;
 
   useEffect(() => {
     setReady(true);
@@ -77,17 +77,47 @@ export default function ThemeToggle({
         className={className}
       >
         <span className="flex items-center gap-2">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.span
-              key={isDark ? 'sun' : 'moon'}
-              initial={prefersReducedMotion ? false : { opacity: 0, rotate: -35, scale: 0.85 }}
-              animate={{ opacity: 1, rotate: 0, scale: 1 }}
-              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, rotate: 35, scale: 0.85 }}
-              transition={{ duration: prefersReducedMotion ? 0 : 0.3, ease: [0.22, 1, 0.36, 1] }}
+          <span aria-hidden="true" className="relative grid h-4 w-4 place-items-center">
+            <motion.svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`absolute inset-0 h-4 w-4 overflow-visible ${!wipe ? (iconIsDark ? 'theme-sun-idle' : 'theme-moon-idle') : ''}`}
+              initial={false}
             >
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </motion.span>
-          </AnimatePresence>
+              <motion.g
+                initial={false}
+                animate={{
+                  opacity: iconIsDark ? 1 : 0,
+                  rotate: iconIsDark ? 0 : -70,
+                  scale: iconIsDark ? 1 : 0.55,
+                }}
+                transition={prefersReducedMotion
+                  ? { duration: 0 }
+                  : { type: 'spring', stiffness: 260, damping: 19, mass: 0.72 }}
+                style={{ transformOrigin: '12px 12px' }}
+              >
+                <circle cx="12" cy="12" r="3.8" />
+                <path d="M12 1.75v2M12 20.25v2M4.76 4.76l1.42 1.42m11.64 11.64 1.42 1.42M1.75 12h2m16.5 0h2M4.76 19.24l1.42-1.42M17.82 6.18l1.42-1.42" />
+              </motion.g>
+              <motion.path
+                d="M20.3 15.1A8.5 8.5 0 0 1 8.9 3.7 8.5 8.5 0 1 0 20.3 15.1Z"
+                initial={false}
+                animate={{
+                  opacity: iconIsDark ? 0 : 1,
+                  rotate: iconIsDark ? 70 : 0,
+                  scale: iconIsDark ? 0.55 : 1,
+                }}
+                transition={prefersReducedMotion
+                  ? { duration: 0 }
+                  : { type: 'spring', stiffness: 260, damping: 19, mass: 0.72 }}
+                style={{ transformOrigin: '12px 12px' }}
+              />
+            </motion.svg>
+          </span>
           {showLabel && <span>{nextTheme === 'dark' ? 'Mode gelap' : 'Mode terang'}</span>}
         </span>
       </Button>
@@ -101,9 +131,13 @@ export default function ThemeToggle({
             style={{ backgroundColor: wipe.color }}
             initial={{ clipPath: `circle(0px at ${wipe.x}px ${wipe.y}px)` }}
             animate={{ clipPath: `circle(${wipe.radius * 1.08}px at ${wipe.x}px ${wipe.y}px)` }}
-            transition={{ duration: 2.5, ease: [0.2, 0.82, 0.25, 1] }}
+            transition={{ duration: 0.95, ease: [0.16, 1, 0.3, 1] }}
             onAnimationComplete={() => {
+              document.documentElement.classList.add('theme-transition');
               setTheme(wipe.theme);
+              window.setTimeout(() => {
+                document.documentElement.classList.remove('theme-transition');
+              }, 760);
               requestAnimationFrame(() => setWipe((current) => current?.id === wipe.id ? null : current));
             }}
           />
@@ -112,7 +146,7 @@ export default function ThemeToggle({
       <AnimatePresence initial={false}>
         {wipe && (
           <>
-            {[0, 0.2].map((delay, index) => (
+            {[0, 0.14].map((delay, index) => (
               <motion.span
                 key={`ripple-${wipe.id}-${index}`}
                 aria-hidden="true"
@@ -124,15 +158,15 @@ export default function ThemeToggle({
                   height: wipe.radius * 2,
                   marginLeft: -wipe.radius,
                   marginTop: -wipe.radius,
-                  borderColor: wipe.theme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(15, 23, 42, 0.16)',
+                  borderColor: wipe.theme === 'dark' ? 'rgba(255, 255, 255, 0.18)' : 'rgba(15, 23, 42, 0.14)',
                 }}
-                initial={{ scale: 0.02, opacity: 0 }}
-                animate={{ scale: 1.08, opacity: [0, index === 0 ? 0.3 : 0.18, 0] }}
+                initial={{ scale: 0.01, opacity: 0 }}
+                animate={{ scale: 1.08, opacity: [0, index === 0 ? 0.24 : 0.16, 0] }}
                 transition={{
-                  duration: 2.5,
+                  duration: 0.95,
                   delay,
-                  ease: [0.2, 0.82, 0.25, 1],
-                  times: [0, 0.22, 1],
+                  ease: [0.16, 1, 0.3, 1],
+                  times: [0, 0.18, 1],
                 }}
               />
             ))}

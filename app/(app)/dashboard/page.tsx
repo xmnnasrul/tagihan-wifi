@@ -197,14 +197,14 @@ export default function DashboardPage() {
           <Button
             type="button"
             variant="outline"
-            className="min-w-0 flex-1 justify-between font-normal sm:w-[142px] sm:flex-none"
+            className="min-w-0 flex-1 justify-between font-normal sm:w-35.5 sm:flex-none"
             aria-label="Pilih bulan periode keuangan"
             onClick={() => setStatsMonthPickerOpen(true)}
           >
             {statsMonth ?? 'Memuat...'}
           </Button>
           <Select value={statsYear ?? ''} onValueChange={setStatsYear}>
-            <SelectTrigger className="w-[94px]" aria-label="Tahun periode keuangan">
+            <SelectTrigger className="w-23.5" aria-label="Tahun periode keuangan">
               <SelectValue placeholder="..." />
             </SelectTrigger>
             <SelectContent>
@@ -267,23 +267,22 @@ export default function DashboardPage() {
         aria-label="Ringkasan keuangan"
         aria-busy={statsLoading}
       >
-        <div className="min-w-0 rounded-xl border border-border/80 bg-background p-5 sm:p-7">
-          {error && <p role="alert" className="mb-5 text-sm text-destructive">{error}</p>}
+        <div className="min-w-0 space-y-3">
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          <Link
+            href={recapHref}
+            aria-label={`Uang terkumpul, buka rekap bulanan ${statsMonth ?? ''} ${statsYear ?? ''}`}
+            className="group block rounded-xl border border-border/80 bg-background p-5 transition-colors hover:border-primary/30 hover:bg-muted/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-7"
+          >
           <div className="flex flex-wrap items-start justify-between gap-5">
             <div>
               <p className="text-xs font-medium text-muted-foreground">Uang terkumpul</p>
-              <Link
-                href={recapHref}
-                className="group mt-2 inline-block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={`Buka rekap bulanan ${statsMonth ?? ''} ${statsYear ?? ''}`}
-              >
-                <p aria-live="polite" className="text-3xl font-semibold leading-tight tracking-tight tabular-nums group-hover:text-primary sm:text-[38px]">
-                  {statsLoading ? 'Memuat...' : stats ? formatRupiah(stats.totalRevenue) : '-'}
-                </p>
-              </Link>
+              <p aria-live="polite" className="mt-2 text-3xl font-semibold leading-tight tracking-tight tabular-nums group-hover:text-primary sm:text-[38px]">
+                {statsLoading ? 'Memuat...' : stats ? formatRupiah(stats.totalRevenue) : '-'}
+              </p>
               <p className="mt-1 text-sm text-muted-foreground">{statsMonth ?? '...'} {statsYear ?? ''}</p>
             </div>
-            <div className="min-w-[72px] text-right">
+            <div className="min-w-18 text-right">
               <p className="text-3xl font-medium tabular-nums text-primary">
                 {statsLoading ? '...' : stats ? `${collectedPercent}%` : '-'}
               </p>
@@ -327,9 +326,10 @@ export default function DashboardPage() {
               </p>
             </div>
           </div>
+          </Link>
         </div>
 
-        <aside className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/15 bg-primary/[0.045] p-4 sm:p-5 xl:flex-col xl:items-start xl:justify-start" aria-labelledby="follow-up-heading">
+        <aside className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/15 bg-primary/4.5 p-4 sm:p-5 xl:flex-col xl:items-start xl:justify-start" aria-labelledby="follow-up-heading">
           <div className="min-w-0">
             <h2 id="follow-up-heading" className="text-sm font-medium">Sisa yang perlu dikumpulkan</h2>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -382,11 +382,11 @@ export default function DashboardPage() {
             <p className="mt-1 text-xs text-muted-foreground">tidak aktif</p>
           </Link>
           <Link href={recapHref} className="group min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <p className="text-xs text-muted-foreground">Tagihan diterbitkan</p>
+            <p className="text-xs text-muted-foreground">Sudah bayar</p>
             <p className="mt-1.5 text-2xl font-medium tabular-nums group-hover:text-primary">
-              {statsLoading ? '-' : stats?.totalBillings ?? '-'}
+              {statsLoading ? '-' : stats?.paidBillings ?? '-'}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">periode terpilih</p>
+            <p className="mt-1 text-xs text-muted-foreground">tagihan lunas periode ini</p>
           </Link>
           <Link href={unpaidCustomersHref} className="group min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <p className="text-xs text-muted-foreground">Belum bayar</p>
@@ -470,7 +470,7 @@ export default function DashboardPage() {
                   <li key={customer._id}>
                     <Link
                       href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}
-                      className="group grid min-h-[72px] grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 transition-colors hover:bg-muted/30 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-5"
+                      className="group grid min-h-18 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 transition-colors hover:bg-muted/30 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-5"
                     >
                       <div className="flex min-w-0 items-center gap-3">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">

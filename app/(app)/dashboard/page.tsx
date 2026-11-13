@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
-import { Loader2, MapPin, Search, CalendarDays, ChevronRight, ArrowUpRight, UserPlus, WalletCards, RefreshCw } from 'lucide-react';
+import { Loader2, Search, ChevronRight, ArrowUpRight, UserPlus, WalletCards, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { CustomerCard } from '@/components/CustomerCard';
 import {
   Select,
   SelectContent,
@@ -37,7 +37,7 @@ interface DashboardCustomer {
   _id: string;
   name: string;
   address: string;
-  packageId: { name: string; speed: string } | null;
+  packageId: { name: string; price: number; speed: string } | null;
   createdAt?: string;
   createdBy?: string;
 }
@@ -150,10 +150,6 @@ export default function DashboardPage() {
     currency: 'IDR',
     minimumFractionDigits: 0,
   }).format(amount);
-
-  const formatDateTime = (value?: string) => value
-    ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
-    : '-';
 
   const normalizedCustomerSearch = customerSearch.trim().toLocaleLowerCase('id-ID');
   const matchingCustomers = customers.filter((customer) =>
@@ -451,7 +447,7 @@ export default function DashboardPage() {
                 </Link>
               )}
             </div>
-            <ul className="divide-y divide-border/70 border-y border-border/70">
+            <ul className="space-y-2">
               {visibleCustomers.map((customer) => {
                 const billingStatus = billingStatusByCustomer.get(customer._id);
                 const isPaid = ['TF', 'Cash', 'Lunas'].includes(billingStatus ?? '');
@@ -467,36 +463,12 @@ export default function DashboardPage() {
                       : 'border-border text-muted-foreground';
 
                 return (
-                  <li key={customer._id}>
-                    <Link
-                      href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}
-                      className="group grid min-h-18 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 transition-colors hover:bg-muted/30 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-5"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                          {customer.name.charAt(0).toUpperCase()}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium group-hover:text-primary">{customer.name}</span>
-                          <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                            <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
-                            <span className="truncate">{customer.address || 'Alamat belum diisi'}</span>
-                          </span>
-                        </span>
-                      </div>
-                      <span className="hidden min-w-32 text-xs text-muted-foreground sm:block">
-                        {customer.packageId ? `${customer.packageId.name} · ${customer.packageId.speed}` : 'Paket belum dipilih'}
-                        <span className="mt-1 flex items-center gap-1">
-                          {customer.createdAt && <CalendarDays className="h-3 w-3" aria-hidden="true" />}
-                          {customer.createdAt ? formatDateTime(customer.createdAt) : customer.createdBy || 'Admin'}
-                        </span>
-                      </span>
-                      <span className="flex items-center gap-2">
-                        {statusLabel && <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>}
-                        <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
-                      </span>
-                    </Link>
-                  </li>
+                  <CustomerCard
+                    key={customer._id}
+                    customer={customer}
+                    href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}
+                    status={statusLabel ? { label: statusLabel, className: statusClass } : undefined}
+                  />
                 );
               })}
             </ul>

@@ -1,10 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { CalendarDays, ChevronRight, Loader2, MapPin, Search, UserRound, Users } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { Loader2, Search, Users } from 'lucide-react';
+import { CustomerCard } from '@/components/CustomerCard';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -102,10 +100,6 @@ export default function AllCustomersPage() {
 
   const hasActiveFilters = statusFilter !== 'all';
 
-  const formatDateTime = (value?: string | null) => value
-    ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
-    : '-';
-
   return (
     <div className="space-y-6">
       <div className="space-y-3">
@@ -160,45 +154,15 @@ export default function AllCustomersPage() {
         </div>
       ) : (
         <ul className="space-y-2">
-          {filteredCustomers.map((customer) => (
-            <li key={customer._id}>
-              <Link
-                href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}
-                className="group block animate-fade-in rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                <Card className="cursor-pointer border-border/60 transition-colors duration-150 hover:border-primary/40 hover:bg-accent/30">
-                  <CardContent className="py-4">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex min-w-0 flex-1 items-start gap-4">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
-                          {customer.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-base font-semibold">{customer.name}</p>
-                          <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
-                            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                            <span className="wrap-break-word">{customer.address || 'Alamat belum diisi'}</span>
-                          </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                            <span className="inline-flex items-center gap-1">
-                              <CalendarDays className="h-3 w-3" /> {formatDateTime(customer.createdAt)}
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                              <UserRound className="h-3 w-3" /> {customer.createdBy || 'Admin'}
-                            </span>
-                            <span>{customer.packageId ? `${customer.packageId.name} · ${customer.packageId.speed} · ${new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(customer.packageId.price)}` : 'Belum ada paket'}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
-                        <Badge variant="outline" className="text-muted-foreground">Aktif</Badge>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            </li>
+          {filteredCustomers.map((customer, index) => (
+            <CustomerCard
+              key={customer._id}
+              customer={customer}
+              href={`/customers/${customer._id}?name=${encodeURIComponent(customer.name)}`}
+              status={{ label: 'Aktif', className: 'text-muted-foreground' }}
+              className="animate-fade-in"
+              style={{ animationDelay: `${Math.min(index, 9) * 35}ms` }}
+            />
           ))}
         </ul>
       )}

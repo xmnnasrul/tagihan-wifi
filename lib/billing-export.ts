@@ -70,9 +70,9 @@ export function formatTxtBillingExport(
         .map((value) => String(value ?? '').replace(/[\t\r\n]+/g, ' ').trim())
         .filter(Boolean)
         .join(' ');
-      const amountAndMonths = customer.periods.length > 1
-        ? ` ${customer.outstandingAmount / 1000} (${formatMonths(customer.periods)})`
-        : '';
+      const amountAndMonths = ` ${customer.outstandingAmount / 1000}${
+        customer.periods.length > 1 ? ` (${formatMonths(customer.periods)})` : ''
+      }`;
 
       return `${index + 1}. ${customerDetails}${amountAndMonths}`;
     })

@@ -108,8 +108,7 @@ export default function ExportPage() {
                 <SelectTrigger id="export-status"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Semua Status</SelectItem>
-                  <SelectItem value="Belum Bayar">Belum Bayar</SelectItem>
-                  <SelectItem value="Nyicil">Nyicil</SelectItem>
+                  <SelectItem value="Belum Bayar">Belum Bayar + Nyicil</SelectItem>
                   <SelectItem value="Cash">Cash / Tunai</SelectItem>
                   <SelectItem value="TF">Transfer</SelectItem>
                   <SelectItem value="Lunas">Lunas</SelectItem>

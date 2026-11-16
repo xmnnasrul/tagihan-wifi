@@ -32,12 +32,18 @@ export default function AllCustomersPage() {
   const [billings, setBillings] = useState<Record<string, Omit<BillingSummary, 'customerId'>[]>>({});
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [error, setError] = useState('');
+  const hasSearchCriteria = Boolean(search.trim()) || statusFilter !== 'all';
 
   useEffect(() => {
+    if (!hasSearchCriteria || dataLoaded) return;
+
     let isCurrentRequest = true;
     async function fetchCustomers() {
+      setLoading(true);
+      setError('');
       try {
         const [customersResponse, billingsResponse] = await Promise.all([
           fetch('/api/customers'),
@@ -55,6 +61,7 @@ export default function AllCustomersPage() {
         }
         if (isCurrentRequest) {
           setCustomers(customerData);
+          setDataLoaded(true);
           const billingMap: Record<string, Omit<BillingSummary, 'customerId'>[]> = {};
           (billingData as BillingSummary[]).forEach((billing) => {
             (billingMap[billing.customerId] ||= []).push({
@@ -78,7 +85,7 @@ export default function AllCustomersPage() {
     return () => {
       isCurrentRequest = false;
     };
-  }, []);
+  }, [hasSearchCriteria, dataLoaded]);
 
   const filteredCustomers = useMemo(() => customers.filter((customer) => {
     const normalizedSearch = search.trim().toLocaleLowerCase('id-ID');
@@ -97,8 +104,6 @@ export default function AllCustomersPage() {
 
     return matchesSearch && matchesStatus;
   }), [customers, billings, search, statusFilter]);
-
-  const hasActiveFilters = statusFilter !== 'all';
 
   return (
     <div className="space-y-6">
@@ -140,17 +145,28 @@ export default function AllCustomersPage() {
       )}
 
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground" aria-live="polite">
-        <span>{loading ? 'Memuat pelanggan...' : `Menampilkan ${filteredCustomers.length} dari ${customers.length} pelanggan`}</span>
+        <span>
+          {!hasSearchCriteria
+            ? 'Masukkan pencarian atau pilih status untuk melihat pelanggan'
+            : loading
+              ? 'Mencari pelanggan...'
+              : `Menampilkan ${filteredCustomers.length} dari ${customers.length} pelanggan`}
+        </span>
       </div>
 
-      {loading ? (
+      {!hasSearchCriteria ? (
+        <div className="flex min-h-48 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+          <Users className="h-8 w-8 opacity-50" />
+          <p className="text-sm">Ketik nama, alamat, atau paket untuk mulai mencari.</p>
+        </div>
+      ) : loading ? (
         <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Memuat data pelanggan...
+          <Loader2 className="h-4 w-4 animate-spin" /> Mencari data pelanggan...
         </div>
       ) : filteredCustomers.length === 0 ? (
         <div className="flex min-h-48 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
           <Users className="h-8 w-8 opacity-50" />
-          <p className="text-sm">{search || hasActiveFilters ? 'Tidak ada pelanggan yang cocok dengan filter.' : 'Belum ada data pelanggan.'}</p>
+          <p className="text-sm">{customers.length ? 'Tidak ada pelanggan yang cocok dengan filter.' : 'Belum ada data pelanggan.'}</p>
         </div>
       ) : (
         <ul className="space-y-2">

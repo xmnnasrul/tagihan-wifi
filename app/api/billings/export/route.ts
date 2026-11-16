@@ -70,7 +70,9 @@ export async function GET(request: Request) {
       if (year) query.year = Number(year);
     }
     if (status) {
-      query.status = status;
+      query.status = status === 'Belum Bayar'
+        ? { $in: ['Belum Bayar', 'Nyicil'] }
+        : status;
     }
     if (customerName) {
       const escapedName = customerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

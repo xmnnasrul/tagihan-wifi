@@ -91,4 +91,5 @@ Tes mencakup akses API berbasis role, pembagian kepemilikan data, keamanan heade
 - Gunakan database user khusus dengan hak minimum yang dibutuhkan.
 - Batasi Network Access MongoDB Atlas ke sumber yang diperlukan.
 - `JWT_SECRET` dan `SEED_SECRET` harus berbeda dan acak.
+- Jalankan `npm audit --omit=dev` sebelum deploy dan tangani temuan `npm audit` pada dependency development secara berkala.
 - Penghapusan permanen pelanggan tidak dapat dibatalkan dan menghapus riwayat tagihannya.

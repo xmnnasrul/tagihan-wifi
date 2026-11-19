@@ -86,7 +86,21 @@ Saat memperbarui database dari versi sebelumnya, jalankan `npm run migrate` seka
 
 Semua error API dicatat lewat `logError` di `lib/logger.ts`. Untuk mengirim error ke layanan monitoring, panggil `setErrorSink` sekali saat aplikasi start; tanpa sink, log tetap masuk ke console.
 
-## Pemeriksaan
+## CI
+
+Workflow `.github/workflows/ci.yml` menjalankan `lint`, `typecheck`, `test`, dan `build` pada setiap push dan pull request. Tidak perlu konfigurasi host spesifik; aplikasi bisa dideploy ke platform apa pun yang mendukung Next.js dan Node.js 22.9+.
+
+## Skrip
+
+```bash
+npm run dev      # server development
+npm run build    # build production
+npm run start    # jalankan build production
+npm run lint     # ESLint
+npm run typecheck # TypeScript
+npm test         # node:test
+npm run migrate  # migrasi data lama sekali (idempotent)
+```
 
 ```bash
 npm run lint
@@ -105,3 +119,6 @@ Tes mencakup akses API berbasis role, pembagian kepemilikan data, keamanan heade
 - `JWT_SECRET` dan `SEED_SECRET` harus berbeda dan acak.
 - Jalankan `npm audit --omit=dev` sebelum deploy dan tangani temuan `npm audit` pada dependency development secara berkala.
 - Penghapusan permanen pelanggan tidak dapat dibatalkan dan menghapus riwayat tagihannya.
+- Rate limit login mendeteksi IP klien otomatis dari header proxy umum (`x-forwarded-for`, `x-real-ip`, `cf-connecting-ip`, dsb). Jika deploy di belakang proxy dengan header khusus, set `CLIENT_IP_HEADER`.
+- Base URL AI custom divalidasi terhadap alamat private/internal (SSRF) dan hanya menerima HTTP/HTTPS publik.
+- Pencarian pelanggan/tagihan men-escape regex, sehingga input pengguna tidak bisa menyuntikkan pola regex.

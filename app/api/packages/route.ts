@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Package from '@/lib/models/Package';
@@ -16,6 +17,7 @@ export async function GET() {
     const packages = await Package.find(getOwnerFilter(ownerScope)).sort({ price: 1 });
     return NextResponse.json(packages);
   } catch (error) {
+    logError('GET /api/packages failed:', error);
     return NextResponse.json({ error: 'Gagal mengambil data paket' }, { status: 500 });
   }
 }
@@ -65,6 +67,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(pkg, { status: 201 });
   } catch (error) {
+    logError('POST /api/packages failed:', error);
     return NextResponse.json({ error: 'Gagal menambah paket' }, { status: 500 });
   }
 }
@@ -126,6 +129,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(pkg);
   } catch (error) {
+    logError('PUT /api/packages failed:', error);
     return NextResponse.json({ error: 'Gagal mengedit paket' }, { status: 500 });
   }
 }
@@ -165,6 +169,7 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ message: 'Paket berhasil dihapus' });
   } catch (error) {
+    logError('DELETE /api/packages failed:', error);
     return NextResponse.json({ error: 'Gagal menghapus paket' }, { status: 500 });
   }
 }

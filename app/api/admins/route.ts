@@ -244,6 +244,7 @@ export async function PATCH(request: Request) {
       const response = NextResponse.json({ message: 'Username berhasil diubah', username });
       if (actor?.username === previousUsername) {
         const token = signToken({
+          userId: admin._id.toString(),
           username,
           role: getPrimaryRole(normalizeUserRoles(admin.role, admin.roles)) || '',
           roles: normalizeUserRoles(admin.role, admin.roles),
@@ -252,7 +253,7 @@ export async function PATCH(request: Request) {
         response.cookies.set(COOKIE_NAME, token, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
+          sameSite: 'strict',
           maxAge: 60 * 60 * 24 * 7,
           path: '/',
         });

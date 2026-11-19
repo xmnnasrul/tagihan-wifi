@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ArrowUpRight, Loader2, RotateCw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { MONTH_NAMES as months, MONTHS_SHORT as shortMonths } from '@/lib/months';
 
 interface MonthlyRecap {
   month: string;
@@ -20,13 +21,6 @@ interface MonthlyRecap {
 }
 
 type Category = 'pelanggan' | 'total-tagihan' | 'total-dibayar' | 'transfer' | 'tunai' | 'sisa-tagihan' | 'pelanggan-belum-bayar';
-
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
-
-const shortMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
 const categories: Array<{
   key: Category;

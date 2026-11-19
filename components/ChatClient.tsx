@@ -1,10 +1,23 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import Image from 'next/image';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { FormEvent, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowLeft, ArrowRight, CircleAlert, Loader2, Send, Settings, Trash2 } from 'lucide-react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import { ArrowDown, CircleAlert, Loader2, Send, Settings, Trash2 } from 'lucide-react';
+import ChatSettingsDialog from '@/components/chat/ChatSettingsDialog';
+import {
+  Message,
+  attachChatTablePagination,
+  appendChatWebSources,
+  getChatWebImages,
+  getChatWebSources,
+  getResponseError,
+  getStructuredChatReply,
+  isChatAISettings,
+  isMessage,
+  readResponseData,
+  renderChatMessage,
+} from '@/components/chat/chat-message-content';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -17,22 +30,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
   AI_CONFIG_STORAGE_KEY,
   buildChatRequestBody,
-  appendChatTablePageMetadata,
   appendChatWebImageMetadata,
-  CHAT_AI_PROVIDERS,
   ChatAIConfig,
   ChatAIProvider,
   ChatAISettings,
@@ -40,42 +42,27 @@ import {
   ChatTablePageMetadata,
   DEFAULT_CHAT_AI_CONFIG,
   getCloudflareAccountIDFromBaseURL,
-  getCloudflareWorkersAIBaseURL,
   getChatNewCustomerFollowUpQuestion,
   getChatBillingFollowUpQuestion,
   getChatContextFollowUpQuestion,
   getChatProviderBaseURL,
   getChatGreetingReply,
   isCloudflareAIModel,
-  getChatBillingHistoryReply,
-  getChatCustomerDataReply,
-  getChatPackageDataReply,
-  getChatNotesReply,
-  getChatUnpaidBillingReply,
-  getChatVisitedCustomerReply,
   getChatContextTopics,
   getChatTablePageMetadata,
-  getChatWebImageMetadata,
   getChatLearningAction,
   getPendingChatLearning,
-  getChatNoDataReply,
   getChatResponseContent,
-  getVisibleChatAnswer,
   isChatTablePageMetadata,
   isChatStreamingRejectionStatus,
   readChatCompletionStream,
-  isChatAIProvider,
   normalizeChatAIConfig,
   normalizeChatBaseURL,
-  normalizeCloudflareAccountID,
   normalizeCloudflareWorkersAIBaseURL,
   normalizeChatModel,
 } from '@/lib/chat-answer';
 import { shouldSearchChatImages, shouldSearchChatWeb } from '@/lib/chat-web-search.mjs';
 
-type Message = { role: 'user' | 'assistant'; content: string };
-type ChatWebSource = { title: string; url: string };
-type ChatWebImage = { title: string; thumbnail: string; url: string };
 type ChatAIModelConfig = Pick<ChatAISettings, 'provider' | 'baseURL' | 'model'> & { apiKey?: string };
 
 const ChatSignal = dynamic(() => import('@/components/ChatSignal'), {
@@ -96,341 +83,6 @@ function AlfiiMark({ className }: { className: string }) {
       A
     </span>
   );
-}
-
-function isMessage(value: unknown): value is Message {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  return 'role' in value
-    && (value.role === 'user' || value.role === 'assistant')
-    && 'content' in value
-    && typeof value.content === 'string';
-}
-
-function isChatAISettings(value: unknown): value is ChatAISettings {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  return 'provider' in value
-    && isChatAIProvider(value.provider)
-    && 'baseURL' in value && typeof value.baseURL === 'string'
-    && 'model' in value && typeof value.model === 'string'
-    && 'hasApiKey' in value && typeof value.hasApiKey === 'boolean';
-}
-
-async function readResponseData(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text.trim()) return null;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return text;
-  }
-}
-
-function parseMarkdownTableRow(line: string): string[] | null {
-  const trimmed = line.trim().replace(/^\|/u, '').replace(/\|$/u, '');
-  if (!trimmed.includes('|')) return null;
-  return trimmed.split('|').map((cell) => cell.trim().replace(/\\\|/gu, '|'));
-}
-
-function getResponseError(value: unknown, fallback: string): string {
-  return typeof value === 'object' && value !== null
-    && 'error' in value && typeof value.error === 'string'
-    ? value.error
-    : fallback;
-}
-
-function getChatWebSources(response: Response): ChatWebSource[] {
-  const header = response.headers.get('x-chat-web-sources');
-  if (!header) return [];
-  try {
-    const data: unknown = JSON.parse(decodeURIComponent(header));
-    if (!Array.isArray(data)) throw new Error('Daftar sumber internet tidak valid.');
-    return data.flatMap((source): ChatWebSource[] => {
-      if (
-        typeof source !== 'object' || source === null
-        || !('title' in source) || typeof source.title !== 'string'
-        || !('url' in source) || typeof source.url !== 'string'
-      ) throw new Error('Format sumber internet tidak valid.');
-      try {
-        const url = new URL(source.url);
-        if (url.protocol !== 'https:') throw new Error('Tautan sumber internet tidak aman.');
-        return [{ title: source.title.slice(0, 180), url: url.href }];
-      } catch {
-        throw new Error('Tautan sumber internet tidak valid.');
-      }
-    });
-  } catch {
-    throw new Error('Sumber internet dari server tidak dapat dibaca.');
-  }
-}
-
-function getChatWebImages(response: Response): ChatWebImage[] {
-  const header = response.headers.get('x-chat-web-images');
-  if (!header) return [];
-  try {
-    const data: unknown = JSON.parse(decodeURIComponent(header));
-    if (!Array.isArray(data)) throw new Error('Daftar gambar internet tidak valid.');
-    return data.flatMap((image): ChatWebImage[] => {
-      if (
-        typeof image !== 'object' || image === null
-        || !('title' in image) || typeof image.title !== 'string'
-        || !('thumbnail' in image) || typeof image.thumbnail !== 'string'
-        || !('url' in image) || typeof image.url !== 'string'
-      ) throw new Error('Format gambar internet tidak valid.');
-      try {
-        const thumbnail = new URL(image.thumbnail);
-        const url = new URL(image.url);
-        if (
-          thumbnail.protocol !== 'https:'
-          || !/^tse\d+\.mm\.bing\.net$/iu.test(thumbnail.hostname)
-          || url.protocol !== 'https:'
-          || url.username || url.password
-        ) throw new Error('Tautan gambar internet tidak aman.');
-        return [{ title: image.title.slice(0, 180), thumbnail: thumbnail.href, url: url.href }];
-      } catch {
-        throw new Error('Tautan gambar internet tidak valid.');
-      }
-    });
-  } catch {
-    throw new Error('Gambar internet dari server tidak dapat dibaca.');
-  }
-}
-
-function appendChatWebSources(content: string, sources: ChatWebSource[]): string {
-  if (sources.length === 0) return content;
-  return `${content.trimEnd()}\n\nSumber internet:\n${sources
-    .map((source, index) => `${index + 1}. ${source.title}\n${source.url}`)
-    .join('\n')}`;
-}
-
-function getStructuredChatReply(value: unknown): string | null {
-  return getChatNoDataReply(value)
-    || getChatBillingHistoryReply(value)
-    || getChatUnpaidBillingReply(value)
-    || getChatVisitedCustomerReply(value)
-    || getChatPackageDataReply(value)
-    || getChatNotesReply(value)
-    || getChatCustomerDataReply(value);
-}
-
-function attachChatTablePagination(
-  content: string,
-  metadata: ChatTablePageMetadata | null,
-): string {
-  if (
-    !metadata || (metadata.page === 1 && !metadata.hasNext)
-    || !/\n\|[^\n]+\|\n\|[-:| ]+\|/u.test(content)
-  ) return content;
-  return appendChatTablePageMetadata(content, metadata);
-}
-
-function renderChatMessage(
-  content: string,
-  onPageChange?: (page: number) => void,
-  pageLoading = false,
-): ReactNode {
-  const pagination = getChatTablePageMetadata(content);
-  const lines = getVisibleChatAnswer(content).split('\n');
-  const blocks: ReactNode[] = [];
-  let textLines: string[] = [];
-  let blockIndex = 0;
-  let paginationRendered = false;
-
-  function flushText() {
-    if (textLines.length === 0) return;
-    const text = textLines.join('\n').trim();
-    if (text) {
-      const key = `text-${blockIndex++}`;
-      blocks.push(/^(?:Riwayat Tagihan|Detail pembayaran)$/u.test(text)
-        ? <h4 key={key} className="pt-2 text-sm font-semibold text-foreground">{text}</h4>
-        : (
-          <p key={key} className="whitespace-pre-wrap">
-            {text.split(/(https:\/\/[^\s<]+)/giu).map((part, index) => {
-              if (!part.startsWith('https://')) return part;
-              const trailingPunctuation = part.match(/[.,!?;:)]+$/u)?.[0] || '';
-              const link = trailingPunctuation ? part.slice(0, -trailingPunctuation.length) : part;
-              return (
-                <span key={`${key}-link-${index}`}>
-                  <a
-                    href={link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="break-all text-primary underline underline-offset-2 hover:opacity-80 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {link}
-                  </a>
-                  {trailingPunctuation}
-                </span>
-              );
-            })}
-          </p>
-        ));
-    }
-    textLines = [];
-  }
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const headers = parseMarkdownTableRow(lines[index]);
-    const separators = index + 1 < lines.length ? parseMarkdownTableRow(lines[index + 1]) : null;
-    if (
-      !headers || !separators || headers.length !== separators.length
-      || !separators.every((cell) => /^:?-{3,}:?$/u.test(cell))
-    ) {
-      textLines.push(lines[index]);
-      continue;
-    }
-
-    flushText();
-    const rows: string[][] = [];
-    index += 2;
-    while (index < lines.length) {
-      const row = parseMarkdownTableRow(lines[index]);
-      if (!row || row.length !== headers.length) break;
-      rows.push(row);
-      index += 1;
-    }
-    index -= 1;
-    const isBillingHistorySummary = headers[0] === 'Bulan' && headers.includes('Dibayar');
-    const isBillingPaymentDetails = headers.includes('Periode')
-      && headers.includes('Pembayaran') && headers.includes('Nominal');
-    const isBillingHistoryTable = isBillingHistorySummary || isBillingPaymentDetails;
-    const minWidthClass = isBillingHistorySummary
-      ? 'min-w-[34rem]'
-      : isBillingPaymentDetails ? 'min-w-[50rem]' : 'min-w-max';
-
-    blocks.push(
-      <div
-        key={`table-${blockIndex++}`}
-        className="max-w-full overflow-x-auto rounded-md border border-border"
-        role="region"
-        aria-label="Tabel jawaban yang dapat digulir"
-        tabIndex={0}
-      >
-        <table className={`w-full border-collapse text-left text-sm ${minWidthClass}`}>
-          <thead className="bg-muted/80">
-            <tr>
-              {headers.map((header, columnIndex) => (
-                <th
-                  key={`${header}-${columnIndex}`}
-                  scope="col"
-                  className={`border-b border-r border-border px-3 py-2.5 font-medium text-muted-foreground first:pl-3 last:border-r-0 last:pr-3 ${
-                    isBillingHistoryTable && columnIndex === 0 ? 'sticky left-0 z-20 bg-muted' : ''
-                  } ${
-                    /(?:tagihan|jumlah|total|harga|saldo|nominal|bayar|setoran)/iu.test(header)
-                      ? 'text-right tabular-nums'
-                      : 'text-left'
-                  }`}
-                >
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, rowIndex) => (
-              <tr key={`row-${rowIndex}`}>
-                {row.map((cell, columnIndex) => (
-                  <td
-                    key={`${columnIndex}-${cell}`}
-                    className={`border-b border-r border-border px-3 py-2.5 align-middle first:pl-3 last:pr-3 ${
-                      isBillingHistoryTable && columnIndex === 0 ? 'sticky left-0 z-10 bg-background font-medium' : ''
-                    } ${
-                      isBillingHistoryTable && /catatan/i.test(headers[columnIndex])
-                        ? 'max-w-48 whitespace-normal break-words'
-                        : isBillingPaymentDetails && headers[columnIndex] === 'Tanggal dan petugas'
-                          ? 'max-w-52 whitespace-normal'
-                          : 'whitespace-nowrap'
-                    } ${
-                        /(?:tagihan|jumlah|total|harga|saldo|nominal|bayar|setoran)/iu.test(headers[columnIndex])
-                          ? 'text-right tabular-nums'
-                          : 'text-left'
-                      } ${columnIndex === row.length - 1 ? 'border-r-0' : ''}`}
-                    >
-                      {isBillingHistoryTable && headers[columnIndex] === 'Status'
-                        ? (() => {
-                            const status = cell.trim().toLocaleLowerCase();
-                            const statusClass = ['lunas', 'transfer', 'tunai'].includes(status)
-                              ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                              : status === 'nyicil'
-                                ? 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                : status === 'belum bayar'
-                                  ? 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300'
-                                  : 'border-border bg-muted text-muted-foreground';
-                            return <span className={`inline-flex whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium ${statusClass}`}>{cell}</span>;
-                          })()
-                        : pagination && columnIndex === 0 && /^no\.?$/iu.test(headers[0].trim())
-                          ? (pagination.page - 1) * pagination.pageSize + rowIndex + 1
-                          : cell}
-                    </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-    if (pagination && onPageChange && !paginationRendered) {
-      paginationRendered = true;
-      blocks.push(
-        <nav key={`pagination-${blockIndex++}`} className="flex items-center justify-end gap-2" aria-label="Halaman tabel">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label="Halaman sebelumnya"
-            disabled={pageLoading || pagination.page <= 1}
-            onClick={() => onPageChange(pagination.page - 1)}
-          >
-            <ArrowLeft className="size-4" aria-hidden="true" />
-          </Button>
-          <span className="min-w-28 text-center text-xs text-muted-foreground" aria-live="polite">
-            {pageLoading ? 'Memuat halaman…' : `Halaman ${pagination.page}`}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label="Halaman berikutnya"
-            disabled={pageLoading || !pagination.hasNext}
-            onClick={() => onPageChange(pagination.page + 1)}
-          >
-            <ArrowRight className="size-4" aria-hidden="true" />
-          </Button>
-        </nav>,
-      );
-    }
-  }
-
-  flushText();
-  const images = getChatWebImageMetadata(content);
-  if (images.length > 0) {
-    blocks.push(
-      <div key="web-images" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {images.map((image, index) => (
-          <a
-            key={`${image.url}-${index}`}
-            href={image.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Buka sumber gambar: ${image.title}`}
-            className="group min-w-0 overflow-hidden rounded-md bg-background transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <span className="relative block aspect-[4/3] overflow-hidden">
-              <Image
-                src={image.thumbnail}
-                alt={image.title}
-                fill
-                sizes="(max-width: 640px) 42vw, 220px"
-                unoptimized
-                className="object-cover transition-transform duration-300 group-hover:scale-105"
-              />
-            </span>
-            <span className="block truncate px-2 py-1.5 text-xs text-muted-foreground">{image.title}</span>
-          </a>
-        ))}
-      </div>,
-    );
-  }
-  return <div className="space-y-3">{blocks}</div>;
 }
 
 export default function ChatClient({ canManageSettings }: { canManageSettings: boolean }) {
@@ -899,7 +551,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
       setModelsError('Base URL harus berupa alamat HTTPS yang valid (HTTP hanya di localhost).');
       return;
     }
-    if (!apiKey && !(config?.provider === provider && config.hasApiKey && config.baseURL === normalizedBaseURL)) {
+    if (!apiKey && !(config && config.provider === provider && config.hasApiKey && config.baseURL === normalizedBaseURL)) {
       setModelsError('Masukkan API Key terlebih dahulu.');
       return;
     }
@@ -1182,214 +834,32 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         </div>
       </header>
       {canManageSettings && (
-        <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-          <DialogContent className="chat-settings-dialog max-h-[min(85dvh,52rem)] gap-5 overflow-y-auto rounded-2xl p-4 sm:p-6">
-            <DialogHeader>
-              <DialogTitle>Pengaturan koneksi AI</DialogTitle>
-              <DialogDescription>
-                Atur penyedia, API key, dan model untuk chat ini.
-              </DialogDescription>
-            </DialogHeader>
-              <form onSubmit={saveSettings} className="grid gap-4 md:grid-cols-2">
-                <div className="grid gap-2 md:col-span-2">
-                  <p className="text-sm font-medium leading-none">Penyedia AI</p>
-                  <div className="-mx-1 overflow-x-auto px-1 scrollbar-hidden">
-                    <div className="flex min-w-max border-b border-border" role="group" aria-label="Pilih penyedia AI">
-                      {CHAT_AI_PROVIDERS.map((provider) => (
-                        <button
-                          key={provider.id}
-                          type="button"
-                          aria-pressed={selectedProvider === provider.id}
-                          onClick={() => chooseProvider(provider.id)}
-                          className={`min-h-10 shrink-0 border-b-2 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                            selectedProvider === provider.id
-                              ? 'border-foreground font-medium text-foreground'
-                              : 'border-transparent text-muted-foreground hover:text-foreground'
-                          }`}
-                        >
-                          {provider.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                {selectedProvider === 'cloudflare' && (
-                  <div className="grid gap-2">
-                    <Label htmlFor="chat-ai-cloudflare-account-id">Cloudflare Account ID</Label>
-                    <Input
-                      id="chat-ai-cloudflare-account-id"
-                      type="text"
-                      value={cloudflareAccountID}
-                      onChange={(event) => {
-                        const nextAccountID = event.target.value;
-                        const normalizedAccountID = normalizeCloudflareAccountID(nextAccountID);
-                        setCloudflareAccountID(nextAccountID);
-                        setBaseURL(normalizedAccountID ? getCloudflareWorkersAIBaseURL(normalizedAccountID) || '' : '');
-                        setModelsError('');
-                        setSettingsSaved(false);
-                      }}
-                      autoComplete="off"
-                      maxLength={32}
-                      pattern="[a-fA-F0-9]{32}"
-                      title="Account ID harus terdiri dari 32 karakter heksadesimal."
-                      aria-describedby="chat-ai-cloudflare-account-hint"
-                      required
-                    />
-                    <p id="chat-ai-cloudflare-account-hint" className="text-xs text-muted-foreground">
-                      Salin Account ID 32 karakter dari dashboard Cloudflare. Endpoint akan terisi otomatis.
-                    </p>
-                  </div>
-                )}
-                <div className="grid gap-2">
-                  <Label htmlFor="chat-ai-base-url">Base URL</Label>
-                  <Input
-                    id="chat-ai-base-url"
-                    type="url"
-                    value={baseURL}
-                    onChange={(event) => {
-                      if (selectedProvider !== 'custom') return;
-                      setBaseURL(event.target.value);
-                      setAvailableModels([]);
-                      setModelsError('');
-                      setSettingsSaved(false);
-                    }}
-                    readOnly={selectedProvider !== 'custom'}
-                    autoComplete="url"
-                    required={selectedProvider !== 'cloudflare'}
-                  />
-                  {selectedProvider === 'custom' && (
-                    <p className="text-xs text-muted-foreground">
-                      Custom API harus memakai HTTPS.
-                    </p>
-                  )}
-                </div>
-                <div className="grid gap-2 md:col-span-2">
-                  <Label htmlFor="chat-ai-api-key">
-                    {selectedProvider === 'cloudflare' ? 'Cloudflare API Token' : 'API Key'}
-                  </Label>
-                  <Input
-                    id="chat-ai-api-key"
-                    type="password"
-                    value={apiKeyInput}
-                    onBlur={(event) => {
-                      const nextTarget = event.relatedTarget;
-                      if (
-                        apiKeyInput.trim()
-                        && !(nextTarget instanceof HTMLButtonElement)
-                        && selectedProvider !== 'cloudflare'
-                        && !loadingModels
-                        && availableModels.length === 0
-                      ) {
-                        void loadModels();
-                      }
-                    }}
-                    onChange={(event) => {
-                      setApiKeyInput(event.target.value);
-                      setAvailableModels([]);
-                      setModelsError('');
-                      setSettingsSaved(false);
-                    }}
-                    autoComplete="new-password"
-                    maxLength={500}
-                    aria-describedby={selectedProvider === 'cloudflare' ? 'chat-ai-key-hint' : undefined}
-                  />
-                  {selectedProvider === 'cloudflare' && (
-                    <p id="chat-ai-key-hint" className="text-xs text-muted-foreground">
-                      Gunakan API Token dengan izin Account &gt; Workers AI &gt; Read.
-                    </p>
-                  )}
-                </div>
-                <div className="grid gap-2 md:col-span-2">
-                  <Label htmlFor="chat-ai-model">Model AI</Label>
-                  {selectedProvider === 'cloudflare' ? (
-                    <Input
-                      id="chat-ai-model"
-                      type="text"
-                      value={model}
-                      onChange={(event) => {
-                        setModel(event.target.value);
-                        setSettingsSaved(false);
-                      }}
-                      maxLength={120}
-                      autoComplete="off"
-                      required
-                      aria-describedby="chat-ai-model-hint"
-                    />
-                  ) : (
-                    <select
-                      id="chat-ai-model"
-                      value={availableModels.includes(model) ? model : ''}
-                      onFocus={() => {
-                        if (
-                          !apiKeyInput.trim() && config?.provider === selectedProvider
-                          && config.hasApiKey && !loadingModels && availableModels.length === 0
-                        ) {
-                          void loadModels();
-                        }
-                      }}
-                      onChange={(event) => {
-                        setModel(event.target.value);
-                        setSettingsSaved(false);
-                      }}
-                      required
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <option value="" disabled>
-                        {loadingModels
-                          ? 'Memuat daftar model…'
-                          : availableModels.length > 0
-                            ? 'Pilih model AI'
-                            : apiKeyInput.trim() || config?.hasApiKey
-                              ? 'Pilih model AI'
-                              : 'Isi API Key dulu'}
-                      </option>
-                      {availableModels.map((modelID) => <option key={modelID} value={modelID}>{modelID}</option>)}
-                    </select>
-                  )}
-                  {selectedProvider === 'cloudflare' && (
-                    <p id="chat-ai-model-hint" className="text-xs text-muted-foreground">
-                      Gunakan ID dari katalog Cloudflare: @cf/meta/llama-3.1-8b-instruct atau google/gemini-4-argon.
-                    </p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-3">
-                    {loadingModels && (
-                      <span className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
-                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                        Memuat model…
-                      </span>
-                    )}
-                    {availableModels.length > 0 && (
-                      <span className="text-sm text-muted-foreground" role="status">
-                        {availableModels.length} model tersedia
-                      </span>
-                    )}
-                  </div>
-                  {modelsError && <p className="text-sm text-destructive" role="alert">{modelsError}</p>}
-                </div>
-                {settingsError && (
-                  <p className="text-sm text-destructive md:col-span-2" role="alert">{settingsError}</p>
-                )}
-                {settingsSaved && (
-                  <p className="text-sm text-muted-foreground md:col-span-2" role="status">Pengaturan AI tersimpan.</p>
-                )}
-                <div className="flex items-center justify-end gap-2 md:col-span-2">
-                  {config && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="mr-auto px-2 text-xs sm:px-4 sm:text-sm"
-                      onClick={clearSettings}
-                    >
-                      Hapus konfigurasi
-                    </Button>
-                  )}
-                  <Button type="submit" className="px-2 text-xs sm:px-4 sm:text-sm">
-                    Simpan pengaturan
-                  </Button>
-                </div>
-              </form>
-          </DialogContent>
-        </Dialog>
+        <ChatSettingsDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          onSubmit={saveSettings}
+          selectedProvider={selectedProvider}
+          chooseProvider={chooseProvider}
+          cloudflareAccountID={cloudflareAccountID}
+          setCloudflareAccountID={setCloudflareAccountID}
+          baseURL={baseURL}
+          setBaseURL={setBaseURL}
+          apiKeyInput={apiKeyInput}
+          setApiKeyInput={setApiKeyInput}
+          availableModels={availableModels}
+          setAvailableModels={setAvailableModels}
+          loadingModels={loadingModels}
+          loadModels={() => void loadModels()}
+          modelsError={modelsError}
+          setModelsError={setModelsError}
+          model={model}
+          setModel={setModel}
+          settingsError={settingsError}
+          settingsSaved={settingsSaved}
+          setSettingsSaved={setSettingsSaved}
+          config={config}
+          clearSettings={() => void clearSettings()}
+        />
       )}
 
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">

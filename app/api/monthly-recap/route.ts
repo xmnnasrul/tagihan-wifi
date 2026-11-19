@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import Billing from '@/lib/models/Billing';
 import Customer from '@/lib/models/Customer';
@@ -32,7 +33,7 @@ export async function GET() {
       paymentHistory: billing.paymentHistory,
     }))), { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
-    console.error('GET /api/monthly-recap failed', error);
+    logError('GET /api/monthly-recap failed', error);
     return NextResponse.json({ error: 'Gagal memuat rekap bulanan.' }, { status: 500 });
   }
 }

@@ -23,13 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
 import { getBillingOutstandingAmount, getBillingTotalDue } from '@/lib/billing-amounts';
-
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
-const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-const getBillingPeriod = (billingMonth: string, billingYear: number) => billingYear * 12 + months.indexOf(billingMonth);
+import { MONTH_NAMES as months, MONTHS_SHORT as monthShortNames, getMonthPeriodIndex } from '@/lib/months';
 
 interface Package {
   name: string;
@@ -291,10 +285,10 @@ export default function CollectorPage() {
       if (!response.ok) throw new Error(data.error || 'Gagal mengambil riwayat tagihan');
 
       const history = Array.isArray(data) ? data as Billing[] : [];
-      const targetPeriod = getBillingPeriod(month, Number(year));
+      const targetPeriod = getMonthPeriodIndex(month, Number(year));
       const currentBilling = history.find((billing) => billing.month === month && billing.year === Number(year));
       const previousOutstanding = history
-        .filter((billing) => getBillingPeriod(billing.month, billing.year) < targetPeriod)
+        .filter((billing) => getMonthPeriodIndex(billing.month, billing.year) < targetPeriod)
         .reduce((total, billing) => total + getBillingOutstandingAmount(billing), 0);
       const currentOutstanding = currentBilling
         ? getBillingOutstandingAmount(currentBilling)

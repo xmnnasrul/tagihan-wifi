@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
@@ -29,7 +30,12 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'INITIAL_ADMIN_PASSWORD wajib dikonfigurasi' }, { status: 500 });
       }
       const hashedPassword = await bcrypt.hash(initialPassword, 10);
-      existingAdmin = await User.create({ username: 'admin', password: hashedPassword, role: 'admin' });
+      existingAdmin = await User.create({
+        username: 'admin',
+        password: hashedPassword,
+        role: 'superadmin',
+        roles: ['superadmin'],
+      });
     }
 
     const packages = [
@@ -48,6 +54,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ message: 'Seed berhasil' });
   } catch (error) {
+    logError('POST /api/seed failed:', error);
     return NextResponse.json({ error: 'Seed gagal: ' + (error as Error).message }, { status: 500 });
   }
 }

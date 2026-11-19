@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { encryptChatAIKey, type EncryptedChatAIKey } from '@/lib/chat-ai-crypto';
 import { normalizeChatAIConfig } from '@/lib/chat-answer';
@@ -45,7 +46,7 @@ export async function GET() {
       .lean();
     return NextResponse.json({ config: getPublicSettings(settings) }, { headers: NO_STORE });
   } catch (error) {
-    console.error('GET /api/chat/settings failed:', error);
+    logError('GET /api/chat/settings failed:', error);
     return NextResponse.json({ error: 'Pengaturan AI gagal dimuat.' }, { status: 500, headers: NO_STORE });
   }
 }
@@ -81,7 +82,7 @@ export async function PUT(request: Request) {
         error: 'Pilih penyedia dan model yang valid, lalu masukkan API Key. API Key lama dapat dipertahankan jika penyedianya sama.',
       }, { status: 400, headers: NO_STORE });
     }
-    if (!isChatAIProxyBaseURLAllowed(normalized.provider, normalized.baseURL)) {
+    if (!(await isChatAIProxyBaseURLAllowed(normalized.provider, normalized.baseURL))) {
       return NextResponse.json({ error: 'Base URL Custom API tidak boleh mengarah ke host lokal atau privat.' }, { status: 400, headers: NO_STORE });
     }
 
@@ -126,7 +127,7 @@ export async function PUT(request: Request) {
     if (error instanceof Error && error.message === 'Format pengaturan AI tidak valid.') {
       return NextResponse.json({ error: error.message }, { status: 400, headers: NO_STORE });
     }
-    console.error('PUT /api/chat/settings failed:', error);
+    logError('PUT /api/chat/settings failed:', error);
     return NextResponse.json({ error: 'Pengaturan AI gagal disimpan.' }, { status: 500, headers: NO_STORE });
   }
 }
@@ -140,7 +141,7 @@ export async function DELETE() {
     await ChatAISettings.deleteOne({ _id: 'global' });
     return NextResponse.json({ ok: true }, { headers: NO_STORE });
   } catch (error) {
-    console.error('DELETE /api/chat/settings failed:', error);
+    logError('DELETE /api/chat/settings failed:', error);
     return NextResponse.json({ error: 'Pengaturan AI gagal dihapus.' }, { status: 500, headers: NO_STORE });
   }
 }

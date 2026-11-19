@@ -2,6 +2,9 @@ import { Types } from 'mongoose';
 import { getCurrentUser } from '@/lib/session';
 import User from '@/lib/models/User';
 import { normalizeUserRoles } from '@/lib/roles';
+import { getOwnerFilter } from './owner-filter.ts';
+
+export { getOwnerFilter };
 
 export interface DataOwnerScope {
   ownerId: Types.ObjectId;
@@ -12,6 +15,14 @@ export async function getDataOwnerScope(): Promise<DataOwnerScope> {
   const currentUser = await getCurrentUser();
   if (!currentUser) throw new Error('Authenticated user is required to determine data ownership');
 
+  const roles = normalizeUserRoles(currentUser.role, currentUser.roles);
+  if (currentUser.userId && Types.ObjectId.isValid(currentUser.userId)) {
+    return {
+      ownerId: new Types.ObjectId(currentUser.userId),
+      isSuperadmin: roles.includes('superadmin'),
+    };
+  }
+
   const account = await User.findOne({ username: currentUser.username, isActive: { $ne: false } })
     .select('_id role roles')
     .lean();
@@ -21,8 +32,4 @@ export async function getDataOwnerScope(): Promise<DataOwnerScope> {
     ownerId: new Types.ObjectId(account._id.toString()),
     isSuperadmin: normalizeUserRoles(account.role, account.roles).includes('superadmin'),
   };
-}
-
-export function getOwnerFilter(scope: DataOwnerScope): Record<string, unknown> {
-  return scope.isSuperadmin ? {} : { ownerId: scope.ownerId };
 }

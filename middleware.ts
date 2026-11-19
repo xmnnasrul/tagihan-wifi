@@ -4,7 +4,7 @@ import { jwtVerify } from 'jose/jwt/verify';
 import { COOKIE_NAME } from './lib/auth-constants';
 import { createSecurityHeaders } from './lib/security-headers';
 
-const publicPaths = new Set(['/login', '/api/auth/login', '/api/auth/logout']);
+const publicPaths = new Set(['/login', '/api/auth/login', '/api/auth/logout', '/api/seed']);
 
 async function hasValidSession(token?: string): Promise<boolean> {
   if (!token) return false;

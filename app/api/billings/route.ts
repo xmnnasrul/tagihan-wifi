@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Billing, { IBilling, PaymentMethod } from '@/lib/models/Billing';
@@ -8,13 +9,8 @@ import { writeAuditLog } from '@/lib/audit';
 import { applyPaymentToPreviousBillings, getBillingOutstandingAmount, getBillingTotalDue } from '@/lib/billing-amounts';
 import mongoose from 'mongoose';
 import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
-
-const billingMonths = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
-
-const getBillingPeriod = (month: string, year: number) => year * 12 + billingMonths.indexOf(month);
+import { getMonthPeriodIndex } from '@/lib/months';
+import { buildBillingFilter, getVisibleCustomerFilter } from '@/lib/billing-query';
 
 const getBillingAuditSnapshot = (billing: IBilling) => ({
   status: billing.status,
@@ -68,21 +64,12 @@ export async function GET(request: Request) {
     const status = searchParams.get('status');
     const summaryOnly = searchParams.get('summary') === 'true';
 
-    const query: Record<string, unknown> = {};
-    if (month) query.month = month;
-    if (year) query.year = Number(year);
-    if (customerName) query.customerName = { $regex: customerName, $options: 'i' };
-    if (status && status !== 'all') query.status = status;
+    const query = buildBillingFilter({ month, year, customerName, status });
     const includeArchivedCustomer = searchParams.get('includeArchived') === 'true' && Boolean(customerId);
-    const visibleCustomerIds = await Customer.distinct('_id', {
-      ...getOwnerFilter(ownerScope),
-      ...(includeArchivedCustomer
-        ? { _id: customerId, status: 'inactive' }
-        : {
-            ...(customerId ? { _id: customerId } : {}),
-            status: { $ne: 'inactive' },
-          }),
-    });
+    const visibleCustomerIds = await Customer.distinct('_id', getVisibleCustomerFilter(ownerScope, {
+      customerId,
+      includeArchived: includeArchivedCustomer,
+    }));
     query.customerId = { $in: visibleCustomerIds };
 
     if (summaryOnly) {
@@ -99,6 +86,7 @@ export async function GET(request: Request) {
     const billings = await Billing.find(query).sort({ year: -1, createdAt: -1 });
     return NextResponse.json(billings);
   } catch (error) {
+    logError('GET /api/billings failed:', error);
     return NextResponse.json({ error: 'Gagal mengambil data tagihan' }, { status: 500 });
   }
 }
@@ -154,10 +142,10 @@ export async function POST(request: Request) {
     }
 
     const previousBillings = await Billing.find({ customerId });
-    const targetPeriod = getBillingPeriod(month, Number(year));
+    const targetPeriod = getMonthPeriodIndex(month, Number(year));
     const olderOutstandingBillings = previousBillings
-      .filter((bill) => getBillingPeriod(bill.month, bill.year) < targetPeriod)
-      .sort((first, second) => getBillingPeriod(first.month, first.year) - getBillingPeriod(second.month, second.year))
+      .filter((bill) => getMonthPeriodIndex(bill.month, bill.year) < targetPeriod)
+      .sort((first, second) => getMonthPeriodIndex(first.month, first.year) - getMonthPeriodIndex(second.month, second.year))
       .filter((bill) => getBillingOutstandingAmount(bill) > 0);
     const monthlyDue = existingBilling?.packagePrice ?? pkg.price;
     const currentPaid = existingBilling
@@ -301,6 +289,7 @@ export async function POST(request: Request) {
       paymentReceipt: receipt ? { ...receipt, customerName: customer.name, month, year: Number(year) } : null,
     }, { status: 201 });
   } catch (error) {
+    logError('POST /api/billings failed:', error);
     return NextResponse.json({ error: 'Gagal menambah tagihan' }, { status: 500 });
   }
 }
@@ -369,6 +358,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(updatedBilling);
   } catch (error) {
+    logError('PUT /api/billings failed:', error);
     return NextResponse.json({ error: 'Gagal mengedit tagihan' }, { status: 500 });
   }
 }
@@ -409,6 +399,7 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ message: 'Tagihan berhasil dihapus' });
   } catch (error) {
+    logError('DELETE /api/billings failed:', error);
     return NextResponse.json({ error: 'Gagal menghapus tagihan' }, { status: 500 });
   }
 }

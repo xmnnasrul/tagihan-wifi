@@ -1,4 +1,5 @@
 import { getBillingPaidAmount, getBillingTotalDue } from './billing-amounts.ts';
+import { MONTHS } from './months.ts';
 import type { PaymentStatus } from './models/Billing';
 
 export interface MonthlyRecapBilling {
@@ -29,11 +30,7 @@ export interface MonthlyRecap {
   unpaidCustomers: number;
 }
 
-const monthIndexes = new Map([
-  ['Januari', 0], ['Februari', 1], ['Maret', 2], ['April', 3],
-  ['Mei', 4], ['Juni', 5], ['Juli', 6], ['Agustus', 7],
-  ['September', 8], ['Oktober', 9], ['November', 10], ['Desember', 11],
-]);
+const monthIndexes = new Map<string, number>(MONTHS.map((month, index) => [month, index]));
 
 function getPaymentMethodTotal(
   billing: MonthlyRecapBilling,

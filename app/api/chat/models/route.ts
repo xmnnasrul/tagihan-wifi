@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { decryptChatAIKey } from '@/lib/chat-ai-crypto';
 import {
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
     const baseURL = provider === 'custom'
       ? normalizeChatBaseURL(candidate.baseURL)
       : getChatProviderBaseURL(provider);
-    if (!baseURL || !isChatAIProxyBaseURLAllowed(provider, baseURL)) {
+    if (!baseURL || !(await isChatAIProxyBaseURLAllowed(provider, baseURL))) {
       return NextResponse.json({ error: 'Base URL penyedia AI tidak valid atau tidak diizinkan.' }, { status: 400, headers: NO_STORE });
     }
 
@@ -105,7 +106,7 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json({ error: 'Secret enkripsi AI belum dikonfigurasi dengan benar di server.' }, { status: 503, headers: NO_STORE });
     }
-    console.error('POST /api/chat/models failed:', error);
+    logError('POST /api/chat/models failed:', error);
     return NextResponse.json({ error: 'Daftar model AI gagal dimuat.' }, { status: 500, headers: NO_STORE });
   }
 }

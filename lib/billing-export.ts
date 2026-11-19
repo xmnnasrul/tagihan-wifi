@@ -1,16 +1,11 @@
 import type { IBilling } from './models/Billing';
+import { MONTH_NAMES as months, MONTHS_SHORT as shortMonths } from './months.ts';
 
 type TxtBilling = Pick<
   IBilling,
   'customerId' | 'customerName' | 'address' | 'month' | 'year' | 'packagePrice' | 'paidAmount' | 'installmentAmount' | 'status'
 >;
 
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
-
-const shortMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 const getPeriodIndex = (year: number, month: string) => year * 12 + months.indexOf(month);
 
 function formatMonths(periods: Array<{ month: string; year: number }>) {

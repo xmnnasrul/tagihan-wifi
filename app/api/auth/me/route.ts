@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { COOKIE_NAME, signToken } from '@/lib/auth';
 import { connectDB } from '@/lib/mongodb';
@@ -117,7 +118,7 @@ export async function PATCH(request: Request) {
     });
     return response;
   } catch (error) {
-    console.error('PATCH /api/auth/me failed:', error);
+    logError('PATCH /api/auth/me failed:', error);
     return NextResponse.json({ error: 'Gagal memperbarui profil' }, { status: 500 });
   }
 }

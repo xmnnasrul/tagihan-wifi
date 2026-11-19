@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import ChatMessage, { ChatMessageRole } from '@/lib/models/ChatMessage';
@@ -31,7 +32,7 @@ export async function GET() {
       messages: messages.reverse().map(({ role, content }) => ({ role, content })),
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
-    console.error('GET /api/chat/history failed:', error);
+    logError('GET /api/chat/history failed:', error);
     return NextResponse.json({ error: 'Gagal memuat riwayat chat' }, { status: 500 });
   }
 }
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
       messages: savedMessages.map(({ role, content }) => ({ role, content })),
     }, { status: 201, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
-    console.error('POST /api/chat/history failed:', error);
+    logError('POST /api/chat/history failed:', error);
     return NextResponse.json({ error: 'Gagal menyimpan riwayat chat' }, { status: 500 });
   }
 }
@@ -110,7 +111,7 @@ export async function DELETE() {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (error) {
-    console.error('DELETE /api/chat/history failed:', error);
+    logError('DELETE /api/chat/history failed:', error);
     return NextResponse.json({ error: 'Gagal menghapus riwayat chat' }, { status: 500 });
   }
 }

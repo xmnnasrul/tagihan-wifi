@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
@@ -70,7 +71,7 @@ export async function POST(request: Request) {
 
     return response;
   } catch (error) {
-    console.error('POST /api/auth/login failed:', error);
+    logError('POST /api/auth/login failed:', error);
     return NextResponse.json({ error: 'Terjadi kesalahan server' }, { status: 500 });
   }
 }

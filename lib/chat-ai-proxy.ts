@@ -1,4 +1,5 @@
 import { isIP } from 'node:net';
+import { lookup } from 'node:dns/promises';
 import type { ChatAIProvider } from '@/lib/chat-answer';
 
 const blockedCustomHostnames = new Set([
@@ -7,10 +8,75 @@ const blockedCustomHostnames = new Set([
   'host.docker.internal',
 ]);
 
-export function isChatAIProxyBaseURLAllowed(provider: ChatAIProvider, baseURL: string): boolean {
+const DNS_CACHE_TTL_MS = 5 * 60 * 1000;
+const dnsCache = new Map<string, { allowed: boolean; expiresAt: number }>();
+
+function isLoopbackAddress(ip: string): boolean {
+  return ip === '127.0.0.1' || ip === '::1';
+}
+
+export function isPrivateIpAddress(ip: string): boolean {
+  const version = isIP(ip);
+  if (version === 4) {
+    const [first, second] = ip.split('.').map(Number);
+    return first === 0
+      || first === 10
+      || first === 127
+      || (first === 100 && second >= 64 && second <= 127)
+      || (first === 169 && second === 254)
+      || (first === 172 && second >= 16 && second <= 31)
+      || (first === 192 && second === 0)
+      || (first === 192 && second === 168)
+      || (first === 198 && (second === 18 || second === 19))
+      || first >= 224;
+  }
+
+  if (version === 6) {
+    const value = ip.toLowerCase().split('%')[0];
+    if (value === '::1' || value === '::') return true;
+    if (value.startsWith('::ffff:')) return isPrivateIpAddress(value.slice(7));
+    if (value.startsWith('fc') || value.startsWith('fd')) return true;
+    return /^fe[89ab]/u.test(value);
+  }
+
+  return false;
+}
+
+function isAllowedAddress(ip: string): boolean {
+  if (isLoopbackAddress(ip)) return process.env.NODE_ENV !== 'production';
+  return !isPrivateIpAddress(ip);
+}
+
+async function resolvesToAllowedAddress(hostname: string): Promise<boolean> {
+  const cached = dnsCache.get(hostname);
+  if (cached && cached.expiresAt > Date.now()) return cached.allowed;
+
+  try {
+    const addresses = await lookup(hostname, { all: true, verbatim: true });
+    const allowed = addresses.length > 0 && addresses.every((entry) => isAllowedAddress(entry.address));
+    if (dnsCache.size > 200) dnsCache.clear();
+    dnsCache.set(hostname, { allowed, expiresAt: Date.now() + DNS_CACHE_TTL_MS });
+    return allowed;
+  } catch {
+    return false;
+  }
+}
+
+export async function isChatAIProxyBaseURLAllowed(
+  provider: ChatAIProvider,
+  baseURL: string,
+): Promise<boolean> {
   if (provider !== 'custom') return true;
 
-  const hostname = new URL(baseURL).hostname.toLowerCase().replace(/^\[|\]$/gu, '');
+  let url: URL;
+  try {
+    url = new URL(baseURL);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return false;
+
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/gu, '');
   if (
     blockedCustomHostnames.has(hostname)
     || hostname.endsWith('.localhost')
@@ -19,8 +85,8 @@ export function isChatAIProxyBaseURLAllowed(provider: ChatAIProvider, baseURL: s
     || hostname.endsWith('.home.arpa')
   ) return false;
 
-  if (isIP(hostname)) return process.env.NODE_ENV !== 'production' && ['127.0.0.1', '::1'].includes(hostname);
-  return true;
+  if (isIP(hostname)) return isAllowedAddress(hostname);
+  return resolvesToAllowedAddress(hostname);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

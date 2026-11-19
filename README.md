@@ -42,7 +42,7 @@ Semua halaman aplikasi memerlukan autentikasi. Halaman Pengelolaan Admin hanya t
 
 ## Menjalankan Lokal
 
-Persyaratan: Node.js 20 atau lebih baru, npm, dan MongoDB yang dapat diakses.
+Persyaratan: Node.js 22.9 atau lebih baru (dibutuhkan oleh `--env-file-if-exists` pada `npm run migrate`), npm, dan MongoDB yang dapat diakses.
 
 1. Salin `.env.example` menjadi `.env.local`.
 2. Isi `MONGODB_URI`, `JWT_SECRET`, dan `CHAT_AI_ENCRYPTION_KEY`. Buat kunci enkripsi dengan `openssl rand -base64 32`. Jangan commit `.env.local`.
@@ -55,13 +55,21 @@ npm run dev
 
 Buka `http://localhost:3000`.
 
+Jika memakai database yang sudah berisi data dari versi sebelumnya, jalankan migrasi sekali:
+
+```bash
+npm run migrate
+```
+
+Skrip ini aman dijalankan berulang: mengisi `ownerId` data lama, menghapus index usang, dan memastikan index terbaru ada. Aplikasi tidak lagi menjalankan migrasi data otomatis setiap kali server dimulai.
+
 Untuk membuat admin dan paket awal pada database kosong di mode development:
 
 ```bash
 curl -X POST http://localhost:3000/api/seed
 ```
 
-Akun development awal menggunakan username `admin` dan password `admin123`. Ganti password setelah masuk. Jangan gunakan password tersebut di production.
+Akun development awal menggunakan username `admin` dengan role superadmin dan password `admin123`. Ganti password setelah masuk. Jangan gunakan password tersebut di production.
 
 ## Production
 
@@ -72,7 +80,11 @@ curl -X POST https://DOMAIN-ANDA/api/seed \
   -H "x-seed-secret: NILAI_SEED_SECRET"
 ```
 
-Masuk dengan username `admin` dan password dari `INITIAL_ADMIN_PASSWORD`, lalu ganti password. Setelah seed berhasil, hapus `SEED_SECRET` dan `INITIAL_ADMIN_PASSWORD` dari konfigurasi hosting. Deployment perlu mendukung aplikasi Next.js dan koneksi keluar ke MongoDB Atlas.
+Masuk dengan username `admin` (superadmin) dan password dari `INITIAL_ADMIN_PASSWORD`, lalu ganti password. Setelah seed berhasil, hapus `SEED_SECRET` dan `INITIAL_ADMIN_PASSWORD` dari konfigurasi hosting. Deployment perlu mendukung aplikasi Next.js dan koneksi keluar ke MongoDB Atlas.
+
+Saat memperbarui database dari versi sebelumnya, jalankan `npm run migrate` sekali dari mesin yang memiliki akses ke `MONGODB_URI`. Index aplikasi tetap dibuat otomatis saat koneksi, tetapi migrasi data tidak lagi berjalan di setiap cold start.
+
+Semua error API dicatat lewat `logError` di `lib/logger.ts`. Untuk mengirim error ke layanan monitoring, panggil `setErrorSink` sekali saat aplikasi start; tanpa sink, log tetap masuk ke console.
 
 ## Pemeriksaan
 

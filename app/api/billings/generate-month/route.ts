@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Billing from '@/lib/models/Billing';
@@ -7,13 +8,7 @@ import User from '@/lib/models/User';
 import { getCurrentUser, requireAdmin } from '@/lib/session';
 import { writeAuditLog } from '@/lib/audit';
 import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
-
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
-
-const getBillingPeriod = (month: string, year: number) => year * 12 + months.indexOf(month);
+import { MONTH_NAMES as months, getMonthPeriodIndex } from '@/lib/months';
 
 interface PackageDetails {
   _id: { toString(): string };
@@ -34,8 +29,8 @@ export async function POST() {
     const year = Number(dateParts.find((part) => part.type === 'year')?.value);
     const monthIndex = Number(dateParts.find((part) => part.type === 'month')?.value) - 1;
     const month = months[monthIndex];
-    const period = getBillingPeriod(month, year);
-    const firstAllowedPeriod = getBillingPeriod('Oktober', 2026);
+    const period = getMonthPeriodIndex(month, year);
+    const firstAllowedPeriod = getMonthPeriodIndex('Oktober', 2026);
 
     if (period < firstAllowedPeriod) {
       return NextResponse.json({ month, year, created: 0, skipped: true });
@@ -153,7 +148,7 @@ export async function POST() {
 
     return NextResponse.json({ month, year, created });
   } catch (error) {
-    console.error('POST /api/billings/generate-month failed:', error);
+    logError('POST /api/billings/generate-month failed:', error);
     return NextResponse.json({ error: 'Gagal membuat tagihan bulanan otomatis' }, { status: 500 });
   }
 }

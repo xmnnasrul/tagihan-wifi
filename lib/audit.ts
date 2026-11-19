@@ -1,3 +1,4 @@
+import { logError } from './logger.ts';
 import { connectDB } from '@/lib/mongodb';
 import AuditLog, { AuditChanges, AuditEntityType } from '@/lib/models/AuditLog';
 
@@ -16,6 +17,6 @@ export async function writeAuditLog(event: AuditEvent): Promise<void> {
     await connectDB();
     await AuditLog.create(event);
   } catch (error) {
-    console.error('Failed to write audit log:', error);
+    logError('Failed to write audit log:', error);
   }
 }

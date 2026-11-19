@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import type { PipelineStage } from 'mongoose';
 import { getArrearsReport } from '@/lib/arrears-report';
@@ -571,7 +572,7 @@ export async function GET(request: Request) {
         && Array.isArray(data.notes) && data.notes.length === 0 && { notFound: 'notes' }),
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
-    console.error('GET /api/chat/context failed:', error);
+    logError('GET /api/chat/context failed:', error);
     return NextResponse.json({ error: 'Gagal mengambil konteks website untuk Chat AI' }, { status: 500 });
   }
 }

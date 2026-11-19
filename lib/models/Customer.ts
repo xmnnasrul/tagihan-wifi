@@ -1,7 +1,5 @@
 import { Schema, model, Document, models, Model, Types } from 'mongoose';
 
-export const LEGACY_DATA_OWNER_ID = '6ab3754d75400e992aad5eba';
-
 export interface ICustomer extends Document {
   name: string;
   address: string;

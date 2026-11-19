@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Customer from '@/lib/models/Customer';
@@ -7,6 +8,7 @@ import { getCurrentUser, requireAdmin, requireAuthenticatedUser } from '@/lib/se
 import { writeAuditLog } from '@/lib/audit';
 import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 import { isValidOptionalPhoneNumber } from '@/lib/form-validation';
+import { escapeRegex } from '@/lib/regex';
 
 export async function GET(request: Request) {
   try {
@@ -49,7 +51,7 @@ export async function GET(request: Request) {
         .lean();
     return NextResponse.json(id ? customers[0] || null : customers);
   } catch (error) {
-    console.error('GET /api/customers failed:', error);
+    logError('GET /api/customers failed:', error);
     return NextResponse.json({ error: 'Gagal mengambil data pelanggan' }, { status: 500 });
   }
 }
@@ -83,7 +85,7 @@ export async function POST(request: Request) {
     }
 
     const existing = await Customer.findOne({
-      name: { $regex: new RegExp(`^${normalizedName}$`, 'i') },
+      name: { $regex: new RegExp(`^${escapeRegex(normalizedName)}$`, 'i') },
       address: normalizedAddress,
       ownerId: ownerScope.ownerId,
     });
@@ -121,6 +123,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(customer, { status: 201 });
   } catch (error) {
+    logError('POST /api/customers failed:', error);
     return NextResponse.json({ error: 'Gagal menambah pelanggan' }, { status: 500 });
   }
 }
@@ -216,6 +219,7 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ message: 'Pelanggan berhasil diarsipkan dan tidak dihapus dari database' });
   } catch (error) {
+    logError('DELETE /api/customers failed:', error);
     return NextResponse.json({ error: 'Gagal mengarsipkan pelanggan' }, { status: 500 });
   }
 }
@@ -296,6 +300,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(customer);
   } catch (error) {
+    logError('PUT /api/customers failed:', error);
     return NextResponse.json({ error: 'Gagal memperbarui data pelanggan' }, { status: 500 });
   }
 }

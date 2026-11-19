@@ -3,11 +3,7 @@ import Billing from '@/lib/models/Billing';
 import Customer from '@/lib/models/Customer';
 import { getBillingOutstandingAmount, getBillingPaidAmount, getBillingTotalDue } from '@/lib/billing-amounts';
 import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
-
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
+import { MONTH_NAMES as months } from '@/lib/months';
 
 const getPeriodIndex = (year: number, month: string) => year * 12 + months.indexOf(month);
 

@@ -1,9 +1,9 @@
 import { createHmac } from 'node:crypto';
+import { getClientIp } from '@/lib/client-ip';
+import { getRateLimitRules } from './rate-limit-keys.ts';
 import LoginRateLimit from '@/lib/models/LoginRateLimit';
 
 const WINDOW_MS = 15 * 60 * 1000;
-const ACCOUNT_IP_LIMIT = 5;
-const IP_LIMIT = 30;
 
 interface RateLimitKey {
   key: string;
@@ -18,12 +18,12 @@ function hashKey(value: string): string {
 }
 
 export function getLoginRateLimitKeys(request: Request, username: string): RateLimitKey[] {
-  const clientIp = request.headers.get('x-nf-client-connection-ip')?.trim() || 'unknown';
+  const clientIp = getClientIp(request);
 
-  return [
-    { key: hashKey(`ip:${clientIp}`), limit: IP_LIMIT },
-    { key: hashKey(`account-ip:${clientIp}:${username}`), limit: ACCOUNT_IP_LIMIT },
-  ];
+  return getRateLimitRules(clientIp, username).map(({ scope, limit }) => ({
+    key: hashKey(scope),
+    limit,
+  }));
 }
 
 async function ensureRateLimitIndexes(): Promise<void> {

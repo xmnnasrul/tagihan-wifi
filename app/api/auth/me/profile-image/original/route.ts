@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
@@ -28,7 +29,7 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error('GET /api/auth/me/profile-image/original failed:', error);
+    logError('GET /api/auth/me/profile-image/original failed:', error);
     return NextResponse.json({ error: 'Gagal mengambil foto sumber' }, { status: 500 });
   }
 }

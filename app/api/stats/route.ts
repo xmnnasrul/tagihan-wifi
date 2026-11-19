@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Customer from '@/lib/models/Customer';
@@ -5,11 +6,7 @@ import Billing from '@/lib/models/Billing';
 import { requireAuthenticatedUser } from '@/lib/session';
 import { getMonthlyBillingAmounts } from '@/lib/billing-amounts';
 import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
-
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
+import { MONTH_NAMES as months } from '@/lib/months';
 
 export async function GET(request: Request) {
   try {
@@ -104,6 +101,7 @@ export async function GET(request: Request) {
       currentYear: year,
     });
   } catch (error) {
+    logError('GET /api/stats failed:', error);
     return NextResponse.json({ error: 'Gagal mengambil statistik' }, { status: 500 });
   }
 }

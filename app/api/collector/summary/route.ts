@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Billing from '@/lib/models/Billing';
@@ -92,7 +93,7 @@ export async function GET(request: Request) {
       transactions,
     });
   } catch (error) {
-    console.error('GET /api/collector/summary failed:', error);
+    logError('GET /api/collector/summary failed:', error);
     return NextResponse.json({ error: 'Gagal mengambil rekap setoran' }, { status: 500 });
   }
 }

@@ -7,6 +7,7 @@ import { ArrowLeft, CalendarDays, ChevronRight, Loader2, MapPin } from 'lucide-r
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { getBillingPaidAmount, getBillingTotalDue } from '@/lib/billing-amounts';
+import { MONTH_NAMES as months } from '@/lib/months';
 import type { PaymentStatus } from '@/lib/models/Billing';
 
 interface BillingListItem {
@@ -24,11 +25,6 @@ interface BillingListItem {
   installmentAmount: number;
   paymentHistory?: Array<{ amount: number; method?: string; status?: string }>;
 }
-
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
 
 function getMethodAmount(billing: BillingListItem, method: 'TF' | 'Cash') {
   if (billing.paymentHistory?.length) {

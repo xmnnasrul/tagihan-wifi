@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
+import { MONTH_NAMES as months, MONTHS_SHORT as monthShortNames } from '@/lib/months';
 
 interface Stats {
   totalCustomers: number;
@@ -41,13 +42,6 @@ interface DashboardCustomer {
   createdAt?: string;
   createdBy?: string;
 }
-
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
-
-const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
 export default function DashboardPage() {
   const currentUser = useCurrentUser();

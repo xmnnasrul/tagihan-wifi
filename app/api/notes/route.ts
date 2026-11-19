@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { Types } from 'mongoose';
 import { connectDB } from '@/lib/mongodb';
@@ -17,7 +18,7 @@ export async function GET() {
       _id: _id.toString(), text, completed, createdAt,
     })));
   } catch (error) {
-    console.error('GET /api/notes failed:', error);
+    logError('GET /api/notes failed:', error);
     return NextResponse.json({ error: 'Gagal memuat catatan' }, { status: 500 });
   }
 }
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
     const note = await Note.create({ ownerId, text });
     return NextResponse.json({ _id: note._id.toString(), text: note.text, completed: note.completed, createdAt: note.createdAt }, { status: 201 });
   } catch (error) {
-    console.error('POST /api/notes failed:', error);
+    logError('POST /api/notes failed:', error);
     return NextResponse.json({ error: 'Gagal menyimpan catatan' }, { status: 500 });
   }
 }
@@ -60,7 +61,7 @@ export async function PATCH(request: Request) {
     if (!note) return NextResponse.json({ error: 'Catatan tidak ditemukan' }, { status: 404 });
     return NextResponse.json({ _id: note._id.toString(), text: note.text, completed: note.completed, createdAt: note.createdAt });
   } catch (error) {
-    console.error('PATCH /api/notes failed:', error);
+    logError('PATCH /api/notes failed:', error);
     return NextResponse.json({ error: 'Gagal memperbarui checklist' }, { status: 500 });
   }
 }
@@ -79,7 +80,7 @@ export async function DELETE(request: Request) {
     if (!result.deletedCount) return NextResponse.json({ error: 'Catatan tidak ditemukan' }, { status: 404 });
     return NextResponse.json({ message: 'Catatan dihapus' });
   } catch (error) {
-    console.error('DELETE /api/notes failed:', error);
+    logError('DELETE /api/notes failed:', error);
     return NextResponse.json({ error: 'Gagal menghapus catatan' }, { status: 500 });
   }
 }

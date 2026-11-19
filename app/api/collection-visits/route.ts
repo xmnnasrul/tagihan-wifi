@@ -1,14 +1,11 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import CollectionVisit from '@/lib/models/CollectionVisit';
 import Customer from '@/lib/models/Customer';
 import { getCurrentUser, requireAdmin, requireAuthenticatedUser } from '@/lib/session';
 import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
-
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
+import { MONTH_NAMES as months } from '@/lib/months';
 
 export async function GET(request: Request) {
   try {
@@ -37,7 +34,7 @@ export async function GET(request: Request) {
       note: visit.note || '',
     })));
   } catch (error) {
-    console.error('GET /api/collection-visits failed:', error);
+    logError('GET /api/collection-visits failed:', error);
     return NextResponse.json({ error: 'Gagal mengambil status kunjungan' }, { status: 500 });
   }
 }
@@ -86,7 +83,7 @@ export async function PUT(request: Request) {
       note: visit.note || '',
     });
   } catch (error) {
-    console.error('PUT /api/collection-visits failed:', error);
+    logError('PUT /api/collection-visits failed:', error);
     return NextResponse.json({ error: 'Gagal menyimpan status kunjungan' }, { status: 500 });
   }
 }

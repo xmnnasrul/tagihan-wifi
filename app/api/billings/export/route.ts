@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Billing, { IBilling } from '@/lib/models/Billing';
@@ -7,6 +8,8 @@ import Customer from '@/lib/models/Customer';
 import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 import { formatTxtBillingExport } from '@/lib/billing-export';
 import { getBillingOutstandingAmount } from '@/lib/billing-amounts';
+import { MONTH_NAMES } from '@/lib/months';
+import { escapeRegex } from '@/lib/regex';
 
 const exportColumns = {
   customerName: {
@@ -47,7 +50,7 @@ export async function GET(request: Request) {
     }
 
     const query: Record<string, unknown> = {};
-    const validMonths = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const validMonths = MONTH_NAMES;
     if (month && !validMonths.includes(month)) {
       return NextResponse.json({ error: 'Bulan tagihan tidak valid' }, { status: 400 });
     }
@@ -75,7 +78,7 @@ export async function GET(request: Request) {
         : status;
     }
     if (customerName) {
-      const escapedName = customerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escapedName = escapeRegex(customerName);
       query.customerName = { $regex: escapedName, $options: 'i' };
     }
     query.customerId = {
@@ -141,6 +144,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
+    logError('GET /api/billings/export failed:', error);
     return NextResponse.json({ error: 'Gagal mengekspor data' }, { status: 500 });
   }
 }

@@ -1,3 +1,4 @@
+import { logError } from '@/lib/logger';
 import { NextResponse } from 'next/server';
 import { decryptChatAIKey } from '@/lib/chat-ai-crypto';
 import { isValidChatAIRequestBody, isChatAIProxyBaseURLAllowed } from '@/lib/chat-ai-proxy';
@@ -75,7 +76,7 @@ export async function POST(request: Request) {
     }
     const provider: ChatAIProvider = settings.provider;
     if (
-      !isChatAIProxyBaseURLAllowed(provider, settings.baseURL)
+      !(await isChatAIProxyBaseURLAllowed(provider, settings.baseURL))
       || !isValidChatAIRequestBody(provider, settings.model, candidate.requestBody, candidate.streaming)
     ) {
       return NextResponse.json({ error: 'Konfigurasi atau isi permintaan AI tidak valid.' }, { status: 400, headers: NO_STORE });
@@ -197,7 +198,7 @@ export async function POST(request: Request) {
       headers: { ...responseHeaders, 'Content-Type': contentType },
     });
   } catch {
-    console.error('POST /api/chat/completion failed');
+    logError('POST /api/chat/completion failed');
     return NextResponse.json({ error: 'Chat AI gagal memproses permintaan.' }, { status: 500, headers: NO_STORE });
   }
 }

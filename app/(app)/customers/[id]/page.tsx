@@ -48,6 +48,7 @@ import PageSkeleton from '@/components/PageSkeleton';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
 import { getBillingOutstandingAmount, getBillingPaidAmount, getBillingTotalDue } from '@/lib/billing-amounts';
 import { isPositiveAmount, isValidOptionalPhoneNumber } from '@/lib/form-validation';
+import { MONTH_NAMES as months, MONTHS_SHORT as monthShortNames, getMonthPeriodIndex } from '@/lib/months';
 
 interface Billing {
   _id: string;
@@ -84,15 +85,6 @@ interface Package {
   speed: string;
   description: string;
 }
-
-const months = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
-
-const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-
-const getBillingPeriod = (month: string, year: number) => year * 12 + months.indexOf(month);
 
 export default function CustomerDetailPage() {
   const currentUser = useCurrentUser();
@@ -363,7 +355,7 @@ export default function CustomerDetailPage() {
     openBillingDetails(billingId);
   };
 
-  const sortedBillings = [...billings].sort((a, b) => getBillingPeriod(b.month, b.year) - getBillingPeriod(a.month, a.year));
+  const sortedBillings = [...billings].sort((a, b) => getMonthPeriodIndex(b.month, b.year) - getMonthPeriodIndex(a.month, a.year));
   const visibleBillings = selectedBillingId
     ? sortedBillings.filter((billing) => billing._id === selectedBillingId)
     : sortedBillings;
@@ -401,9 +393,9 @@ export default function CustomerDetailPage() {
   const isArchived = customer?.status === 'inactive';
   const currentPackage = customer?.packageId && typeof customer.packageId === 'object' ? customer.packageId : null;
   const selectedBilling = billings.find((billing) => billing.month === billingMonth && billing.year === Number(billingYear));
-  const selectedPeriod = getBillingPeriod(billingMonth, Number(billingYear));
+  const selectedPeriod = getMonthPeriodIndex(billingMonth, Number(billingYear));
   const previousOutstanding = billings
-    .filter((billing) => getBillingPeriod(billing.month, billing.year) < selectedPeriod)
+    .filter((billing) => getMonthPeriodIndex(billing.month, billing.year) < selectedPeriod)
     .reduce((sum, billing) => sum + getBillingOutstandingAmount(billing), 0);
   const currentDueAmount = (selectedBilling ? getBillingTotalDue(selectedBilling) : currentPackage?.price ?? 0) + previousOutstanding;
   const currentPaidAmount = selectedBilling ? getBillingPaidAmount(selectedBilling) : 0;

@@ -2,9 +2,6 @@
 const nextConfig = {
   distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
   devIndicators: false,
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   images: { unoptimized: true },
   async headers() {
     const securityHeaders = [

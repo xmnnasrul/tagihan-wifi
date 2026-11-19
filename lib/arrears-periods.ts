@@ -1,7 +1,6 @@
-export const arrearsMonthOrder = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
+import { MONTH_NAMES } from './months.ts';
+
+export const arrearsMonthOrder = MONTH_NAMES;
 
 export interface ArrearsMonth {
   month: string;

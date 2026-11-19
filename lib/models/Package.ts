@@ -5,6 +5,7 @@ export interface IPackage extends Document {
   price: number;
   speed: string;
   description: string;
+  color: string;
   ownerId: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -16,6 +17,7 @@ const PackageSchema = new Schema<IPackage>(
     price: { type: Number, required: true },
     speed: { type: String, required: true },
     description: { type: String, default: '' },
+    color: { type: String, default: '' },
     ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   },
   { timestamps: true }
@@ -25,7 +27,7 @@ PackageSchema.index({ price: 1 });
 PackageSchema.index({ ownerId: 1, name: 1 }, { unique: true });
 
 const cachedPackageModel = models.Package as Model<IPackage> | undefined;
-if (cachedPackageModel && !cachedPackageModel.schema.path('ownerId')) delete models.Package;
+if (cachedPackageModel && (!cachedPackageModel.schema.path('ownerId') || !cachedPackageModel.schema.path('color'))) delete models.Package;
 
 const Package: Model<IPackage> = (models.Package as Model<IPackage> | undefined) || model<IPackage>('Package', PackageSchema);
 

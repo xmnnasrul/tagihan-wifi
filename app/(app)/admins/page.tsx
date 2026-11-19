@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useCurrentUser, useCurrentUserLoading } from '@/components/CurrentUserProvider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/responsive-dialog';
 import { getScheduledTheme, THEME_PREFERENCE_KEY } from '@/components/ThemeProvider';
 import { USER_ROLES, UserRole } from '@/lib/roles';
 

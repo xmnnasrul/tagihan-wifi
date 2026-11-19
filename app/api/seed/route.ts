@@ -39,10 +39,10 @@ export async function POST(request: Request) {
     }
 
     const packages = [
-      { name: 'Paket 10 Mbps', price: 150000, speed: '10 Mbps', description: 'Cocok untuk rumah kecil' },
-      { name: 'Paket 20 Mbps', price: 200000, speed: '20 Mbps', description: 'Cocok untuk keluarga' },
-      { name: 'Paket 50 Mbps', price: 350000, speed: '50 Mbps', description: 'Cocok untuk streaming & gaming' },
-      { name: 'Paket 100 Mbps', price: 500000, speed: '100 Mbps', description: 'Cocok untuk bisnis kecil' },
+      { name: 'Paket 10 Mbps', price: 150000, speed: '10 Mbps', description: 'Cocok untuk rumah kecil', color: 'blue' },
+      { name: 'Paket 20 Mbps', price: 200000, speed: '20 Mbps', description: 'Cocok untuk keluarga', color: 'green' },
+      { name: 'Paket 50 Mbps', price: 350000, speed: '50 Mbps', description: 'Cocok untuk streaming & gaming', color: 'amber' },
+      { name: 'Paket 100 Mbps', price: 500000, speed: '100 Mbps', description: 'Cocok untuk bisnis kecil', color: 'red' },
     ];
 
     for (const pkg of packages) {

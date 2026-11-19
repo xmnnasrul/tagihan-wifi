@@ -74,7 +74,7 @@ const ChatSignal = dynamic(() => import('@/components/ChatSignal'), {
   ),
 });
 
-function AlfiiMark({ className }: { className: string }) {
+function RexxaaMark({ className }: { className: string }) {
   return (
     <span
       className={`${className} inline-flex items-center justify-center font-bold leading-none text-primary`}
@@ -421,11 +421,11 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
           body: JSON.stringify({ content: learningAction.content }),
         });
         const data: unknown = await readResponseData(response);
-        if (!response.ok) throw new Error(getResponseError(data, 'Pemahaman Alfii gagal disimpan.'));
+        if (!response.ok) throw new Error(getResponseError(data, 'Pemahaman Rexxaa gagal disimpan.'));
       } catch (error) {
         setHistoryError(error instanceof TypeError
-          ? 'Jawaban diterima, tetapi pemahaman Alfii belum tersimpan.'
-          : error instanceof Error ? error.message : 'Pemahaman Alfii gagal disimpan.');
+          ? 'Jawaban diterima, tetapi pemahaman Rexxaa belum tersimpan.'
+          : error instanceof Error ? error.message : 'Pemahaman Rexxaa gagal disimpan.');
       }
     }
   }
@@ -800,7 +800,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
         <div className="flex min-w-0 items-center gap-3">
           <ChatSignal active={sending} className="size-10" />
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold leading-6">Alfii</h1>
+            <h1 className="truncate text-lg font-semibold leading-6">Rexxaa</h1>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -887,9 +887,9 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                 >
                   {message.role === 'assistant' ? (
                     <>
-                      <AlfiiMark className="mt-1 size-7 shrink-0 rounded-full border border-border text-xs" />
+                      <RexxaaMark className="mt-1 size-7 shrink-0 rounded-full border border-border text-xs" />
                       <div className="min-w-0 max-w-[min(90%,48rem)] space-y-1">
-                        <p className="px-1 text-xs font-medium text-muted-foreground">Alfii</p>
+                        <p className="px-1 text-xs font-medium text-muted-foreground">Rexxaa</p>
                         <div className="min-w-0 rounded-md bg-muted px-4 py-3 text-sm leading-6 text-foreground">
                           {renderChatMessage(
                             message.content,
@@ -927,7 +927,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
 
             {sending && !streamingResponse && (
               <div className="flex items-center gap-3 text-sm text-muted-foreground" role="status">
-                <AlfiiMark className="size-7 shrink-0 rounded-full border border-border text-xs" />
+                <RexxaaMark className="size-7 shrink-0 rounded-full border border-border text-xs" />
                 <span>{searchingWeb ? 'Mencari di internet…' : 'bentarrr yaaawww'}</span>
                 <span className="flex items-center gap-1" aria-hidden="true">
                   {[0, 1, 2].map((dot) => (
@@ -977,7 +977,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
                   void submitQuestion(input);
                 }
               }}
-              aria-label="Tulis pertanyaan untuk Alfii"
+              aria-label="Tulis pertanyaan untuk Rexxaa"
               placeholder="Tulis pertanyaan…"
               rows={1}
               maxLength={500}

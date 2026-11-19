@@ -50,7 +50,7 @@ export async function GET() {
     }, { headers: NO_STORE });
   } catch (error) {
     logError('GET /api/chat/knowledge failed:', error);
-    return NextResponse.json({ error: 'Gagal memuat pengetahuan Alfii' }, { status: 500, headers: NO_STORE });
+    return NextResponse.json({ error: 'Gagal memuat pengetahuan Rexxaa' }, { status: 500, headers: NO_STORE });
   }
 }
 
@@ -111,7 +111,7 @@ export async function POST(request: Request) {
     }, { status: 201, headers: NO_STORE });
   } catch (error) {
     logError('POST /api/chat/knowledge failed:', error);
-    return NextResponse.json({ error: 'Gagal menyimpan pengetahuan Alfii' }, { status: 500, headers: NO_STORE });
+    return NextResponse.json({ error: 'Gagal menyimpan pengetahuan Rexxaa' }, { status: 500, headers: NO_STORE });
   }
 }
 
@@ -147,7 +147,7 @@ export async function PUT(request: Request) {
     }, { headers: NO_STORE });
   } catch (error) {
     logError('PUT /api/chat/knowledge failed:', error);
-    return NextResponse.json({ error: 'Gagal memperbarui pengetahuan Alfii' }, { status: 500, headers: NO_STORE });
+    return NextResponse.json({ error: 'Gagal memperbarui pengetahuan Rexxaa' }, { status: 500, headers: NO_STORE });
   }
 }
 
@@ -174,6 +174,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ deleted: true }, { headers: NO_STORE });
   } catch (error) {
     logError('DELETE /api/chat/knowledge failed:', error);
-    return NextResponse.json({ error: 'Gagal menghapus pengetahuan Alfii' }, { status: 500, headers: NO_STORE });
+    return NextResponse.json({ error: 'Gagal menghapus pengetahuan Rexxaa' }, { status: 500, headers: NO_STORE });
   }
 }

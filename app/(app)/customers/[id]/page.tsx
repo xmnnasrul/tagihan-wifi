@@ -33,7 +33,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/components/ui/dialog';
+} from '@/components/ui/responsive-dialog';
 import {
   Select,
   SelectContent,

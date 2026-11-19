@@ -54,7 +54,7 @@ export function buildChatRequestBody(
       model,
       instructions: system,
       input: conversation.map(({ role, content }) =>
-        `${role === 'assistant' ? 'Alfii' : 'Pengguna'}:\n${content}`).join('\n\n'),
+        `${role === 'assistant' ? 'Rexxaa' : 'Pengguna'}:\n${content}`).join('\n\n'),
       max_output_tokens: maxTokens,
     };
   }

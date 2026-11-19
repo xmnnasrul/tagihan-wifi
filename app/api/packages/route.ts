@@ -6,6 +6,7 @@ import { getCurrentUser, requireAdmin, requireAuthenticatedUser } from '@/lib/se
 import { writeAuditLog } from '@/lib/audit';
 import { getDataOwnerScope, getOwnerFilter } from '@/lib/data-ownership';
 import { isPositiveAmount } from '@/lib/form-validation';
+import { isPackageColor } from '@/lib/package-colors.mjs';
 
 export async function GET() {
   try {
@@ -34,10 +35,12 @@ export async function POST(request: Request) {
     const speed = typeof body.speed === 'string' ? body.speed.trim() : '';
     const { price, description } = body;
     const normalizedDescription = typeof description === 'string' ? description.trim() : '';
+    const color = typeof body.color === 'string' ? body.color.trim() : '';
 
     if (name.length < 2 || name.length > 100 || !speed || speed.length > 40
-      || normalizedDescription.length > 300 || !isPositiveAmount(price)) {
-      return NextResponse.json({ error: 'Nama, harga, dan kecepatan wajib diisi' }, { status: 400 });
+      || normalizedDescription.length > 300 || !isPositiveAmount(price)
+      || (color && !isPackageColor(color))) {
+      return NextResponse.json({ error: 'Nama, harga, kecepatan, atau warna paket tidak valid' }, { status: 400 });
     }
 
     const existing = await Package.findOne({ name, ownerId: ownerScope.ownerId });
@@ -50,6 +53,7 @@ export async function POST(request: Request) {
       price: Number(price),
       speed,
       description: normalizedDescription,
+      color,
       ownerId: ownerScope.ownerId,
     });
     const actor = await getCurrentUser();
@@ -62,7 +66,7 @@ export async function POST(request: Request) {
       summary: `Paket ${pkg.name} dibuat dengan harga ${pkg.price}`,
       changes: {
         before: null,
-        after: { name: pkg.name, price: pkg.price, speed: pkg.speed, description: pkg.description || '' },
+        after: { name: pkg.name, price: pkg.price, speed: pkg.speed, description: pkg.description || '', color: pkg.color || '' },
       },
     });
     return NextResponse.json(pkg, { status: 201 });
@@ -85,13 +89,15 @@ export async function PUT(request: Request) {
     const speed = typeof body.speed === 'string' ? body.speed.trim() : '';
     const normalizedDescription = typeof description === 'string' ? description.trim() : '';
     const normalizedPrice = Number(price);
+    const color = typeof body.color === 'string' ? body.color.trim() : '';
 
     if (!id) {
       return NextResponse.json({ error: 'ID paket wajib diisi' }, { status: 400 });
     }
     if (name.length < 2 || name.length > 100 || !speed || speed.length > 40
-      || normalizedDescription.length > 300 || !isPositiveAmount(normalizedPrice)) {
-      return NextResponse.json({ error: 'Nama, harga, dan kecepatan wajib diisi dengan benar' }, { status: 400 });
+      || normalizedDescription.length > 300 || !isPositiveAmount(normalizedPrice)
+      || (color && !isPackageColor(color))) {
+      return NextResponse.json({ error: 'Nama, harga, kecepatan, atau warna paket tidak valid' }, { status: 400 });
     }
 
     const previousPackage = await Package.findOne({ _id: id, ...getOwnerFilter(ownerScope) }).lean();
@@ -100,7 +106,7 @@ export async function PUT(request: Request) {
     }
     const pkg = await Package.findOneAndUpdate(
       { _id: id, ...getOwnerFilter(ownerScope) },
-      { name, price: normalizedPrice, speed, description: normalizedDescription },
+      { name, price: normalizedPrice, speed, description: normalizedDescription, color },
       { returnDocument: 'after' }
     );
 
@@ -122,8 +128,9 @@ export async function PUT(request: Request) {
           price: previousPackage.price,
           speed: previousPackage.speed,
           description: previousPackage.description || '',
+          color: previousPackage.color || '',
         },
-        after: { name: pkg.name, price: pkg.price, speed: pkg.speed, description: pkg.description || '' },
+        after: { name: pkg.name, price: pkg.price, speed: pkg.speed, description: pkg.description || '', color: pkg.color || '' },
       },
     });
 

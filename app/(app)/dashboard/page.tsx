@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/responsive-dialog';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
 import { MONTH_NAMES as months, MONTHS_SHORT as monthShortNames } from '@/lib/months';
 

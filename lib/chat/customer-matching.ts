@@ -32,7 +32,7 @@ export function normalizeChatSearchText(value: string) {
 
 export function getChatGreetingReply(question: string): string | null {
   const normalized = normalizeChatSearchText(question).replace(/(.)\1{2,}/gu, '$1$1');
-  if (!/^(?:hai+|halo+|helo+|hello+|hi+)(?: alfii?)?$/u.test(normalized)) return null;
+  if (!/^(?:hai+|halo+|helo+|hello+|hi+)(?: rexxaa??)?$/u.test(normalized)) return null;
   return 'Haloo juga!';
 }
 

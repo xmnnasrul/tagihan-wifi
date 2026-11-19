@@ -6,12 +6,13 @@ import { CalendarDays, ChevronRight, MapPin, UserRound } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { getPackageColorTextClass } from '@/lib/package-colors.mjs';
 
 export interface CustomerCardData {
   _id: string;
   name: string;
   address: string;
-  packageId: { name: string; price: number; speed: string } | null;
+  packageId: { name: string; price: number; speed: string; color?: string } | null;
   createdAt?: string;
   createdBy?: string;
 }
@@ -36,6 +37,7 @@ export function CustomerCard({ customer, href, status, className, style }: Custo
         maximumFractionDigits: 0,
       }).format(customer.packageId.price)}`
     : 'Belum ada paket';
+  const packageTextClass = getPackageColorTextClass(customer.packageId?.color);
 
   return (
     <motion.li
@@ -68,7 +70,7 @@ export function CustomerCard({ customer, href, status, className, style }: Custo
                     <span className="inline-flex items-center gap-1">
                       <UserRound className="h-3 w-3" aria-hidden="true" /> {customer.createdBy || 'Admin'}
                     </span>
-                    <span>{packageDetails}</span>
+                    <span className={packageTextClass}>{packageDetails}</span>
                   </div>
                 </div>
               </div>

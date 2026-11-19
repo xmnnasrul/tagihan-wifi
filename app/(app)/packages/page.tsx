@@ -6,7 +6,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +13,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/components/ui/dialog';
+} from '@/components/ui/responsive-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +27,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useCurrentUser } from '@/components/CurrentUserProvider';
 import { isPositiveAmount } from '@/lib/form-validation';
+import { PACKAGE_COLOR_OPTIONS, getPackageColorClasses } from '@/lib/package-colors.mjs';
 
 interface Package {
   _id: string;
@@ -35,6 +35,7 @@ interface Package {
   price: number;
   speed: string;
   description: string;
+  color?: string;
 }
 
 export default function PackagesPage() {
@@ -51,6 +52,7 @@ export default function PackagesPage() {
   const [price, setPrice] = useState('');
   const [speed, setSpeed] = useState('');
   const [description, setDescription] = useState('');
+  const [color, setColor] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -69,12 +71,17 @@ export default function PackagesPage() {
     }
   };
 
+  const nextUnusedColor = () =>
+    PACKAGE_COLOR_OPTIONS.find((option) => !packages.some((pkg) => pkg.color === option.id))?.id
+    ?? PACKAGE_COLOR_OPTIONS[0].id;
+
   const openAdd = () => {
     setEditingPkg(null);
     setName('');
     setPrice('');
     setSpeed('');
     setDescription('');
+    setColor(nextUnusedColor());
     setDialogOpen(true);
   };
 
@@ -84,6 +91,7 @@ export default function PackagesPage() {
     setPrice(String(pkg.price));
     setSpeed(pkg.speed);
     setDescription(pkg.description);
+    setColor(pkg.color ?? '');
     setDialogOpen(true);
   };
 
@@ -107,8 +115,8 @@ export default function PackagesPage() {
       const url = '/api/packages';
       const method = editingPkg ? 'PUT' : 'POST';
       const body = editingPkg
-        ? { id: editingPkg._id, name: name.trim(), price: Number(price), speed: speed.trim(), description: description.trim() }
-        : { name: name.trim(), price: Number(price), speed: speed.trim(), description: description.trim() };
+        ? { id: editingPkg._id, name: name.trim(), price: Number(price), speed: speed.trim(), description: description.trim(), color }
+        : { name: name.trim(), price: Number(price), speed: speed.trim(), description: description.trim(), color };
 
       const res = await fetch(url, {
         method,
@@ -201,9 +209,9 @@ export default function PackagesPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="truncate text-base font-semibold">{pkg.name}</h3>
-                    <Badge className="mt-2 border-primary/20 bg-primary/10 text-primary hover:bg-primary/10">
+                    <span className={`mt-2 inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getPackageColorClasses(pkg.color)}`}>
                       {pkg.speed}
-                    </Badge>
+                    </span>
                   </div>
 
                   {canManageData && (
@@ -291,6 +299,49 @@ export default function PackagesPage() {
                 onChange={(e) => setDescription(e.target.value)}
                 maxLength={300}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Warna Label</Label>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Warna label paket">
+                {PACKAGE_COLOR_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={color === option.id}
+                    onClick={() => setColor(option.id)}
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      color === option.id
+                        ? 'border-foreground bg-muted text-foreground'
+                        : 'border-border text-muted-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <span className={`size-3 rounded-full ${option.swatch}`} aria-hidden="true" />
+                    {option.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  aria-pressed={color === ''}
+                  onClick={() => setColor('')}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    color === ''
+                      ? 'border-foreground bg-muted text-foreground'
+                      : 'border-border text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  Netral
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">Dipakai untuk label paket di kartu pelanggan.</p>
+              <div className="rounded-md border border-border bg-muted/30 p-3">
+                <span className={`inline-flex max-w-full items-center gap-1.5 truncate rounded-full border px-2.5 py-1 text-xs font-medium ${getPackageColorClasses(color)}`}>
+                  {name.trim() || 'Nama paket'}
+                  <span aria-hidden="true">·</span>
+                  {speed.trim() || 'Kecepatan'}
+                  <span aria-hidden="true">·</span>
+                  <span className="font-semibold tabular-nums">{formatRupiah(Number(price) || 0)}</span>
+                </span>
+              </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>

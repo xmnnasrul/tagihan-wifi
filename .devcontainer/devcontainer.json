@@ -8,7 +8,7 @@
       "version": "latest"
     }
   },
-  "postCreateCommand": "npm ci",
+  "postCreateCommand": "npm ci && sudo apt-get update -qq && sudo apt-get install -y -qq tmux && npm install -g @opencode/cli",
   "forwardPorts": [
     3000
   ],

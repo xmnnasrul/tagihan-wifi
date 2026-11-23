@@ -465,7 +465,7 @@ export default function CollectorPage() {
           </div>
         </div>
         <Dialog open={dailyBreakdownOpen} onOpenChange={setDailyBreakdownOpen}>
-          <DialogContent className="rounded-2xl sm:max-w-sm">
+          <DialogContent className="md:rounded-2xl md:max-w-sm">
             <DialogHeader>
               <DialogTitle>Rincian Setoran Harian</DialogTitle>
               <DialogDescription>
@@ -648,7 +648,7 @@ export default function CollectorPage() {
       </section>
 
       <Dialog open={monthPickerOpen} onOpenChange={setMonthPickerOpen}>
-        <DialogContent className="rounded-2xl sm:max-w-sm">
+        <DialogContent className="md:rounded-2xl md:max-w-sm">
           <DialogHeader>
             <DialogTitle>Pilih Bulan</DialogTitle>
             <DialogDescription>Pilih periode kunjungan dan catat pembayaran pelanggan.</DialogDescription>
@@ -672,7 +672,7 @@ export default function CollectorPage() {
       </Dialog>
 
       <Dialog open={Boolean(selectedCustomer)} onOpenChange={(open) => !open && setSelectedCustomer(null)}>
-        <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-2xl p-4 sm:max-w-lg sm:p-6">
+        <DialogContent className="md:max-h-[85dvh] md:max-w-lg md:overflow-y-auto md:rounded-2xl md:p-6">
           <DialogHeader>
             <DialogTitle>Catat pembayaran</DialogTitle>
             <DialogDescription>

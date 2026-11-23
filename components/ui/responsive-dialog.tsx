@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import {
@@ -80,22 +79,10 @@ export const ResponsiveDialogContent = React.forwardRef<
 
   if (isMobile) {
     return (
-      <BaseDrawerContent
-        ref={ref}
-        className={cn(
-          'max-h-[88vh] overflow-y-auto rounded-t-2xl border-t bg-background px-5 pb-6 pt-2',
-          className
-        )}
-        {...props}
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ type: 'spring', stiffness: 360, damping: 30, delay: 0.06 }}
-          className="flex flex-col gap-4"
-        >
+      <BaseDrawerContent ref={ref} {...props}>
+        <div className={cn('flex flex-col gap-4 px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-2', className)}>
           {children}
-        </motion.div>
+        </div>
       </BaseDrawerContent>
     );
   }

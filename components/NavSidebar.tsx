@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion, useMotionValueEvent, useReducedMotion, useScroll } from 'framer-motion';
+import { AnimatePresence, animate, motion, useDragControls, useMotionValue, useMotionValueEvent, useReducedMotion, useScroll, useTransform } from 'framer-motion';
 import { Wifi, LayoutDashboard, FilePlus, Package, Archive, Download, LogOut, History, Shield, Users, UserCircle2, FileText, WalletCards, MoreHorizontal, ArrowUpRight, StickyNote, MessageCircle, CalendarDays, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -58,8 +58,17 @@ export default function NavSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [backdropInteractive, setBackdropInteractive] = useState(true);
+  const [sheetHeight, setSheetHeight] = useState(0);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const sheetDragY = useMotionValue(0);
+  const sheetAnimationRef = useRef<{ stop: () => void } | null>(null);
+  const backdropInteractiveRef = useRef(true);
+  const dragControls = useDragControls();
   const { setTheme } = useTheme();
   const prefersReducedMotion = useReducedMotion();
+  const sheetMaxDrag = Math.max(sheetHeight - 56, 1);
+  const backdropOpacity = useTransform(sheetDragY, [0, 240], [1, 0.15]);
   const [isScrolling, setIsScrolling] = useState(false);
   const [isLogoHovered, setIsLogoHovered] = useState(false);
   const [isLogoFocused, setIsLogoFocused] = useState(false);
@@ -114,17 +123,61 @@ export default function NavSidebar() {
 
   useEffect(() => {
     if (!mobileOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setMobileOpen(false);
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => {
       window.removeEventListener('keydown', closeOnEscape);
-      document.body.style.overflow = previousOverflow;
     };
   }, [mobileOpen]);
+
+  useEffect(() => {
+    return () => {
+      sheetAnimationRef.current?.stop();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    backdropInteractiveRef.current = true;
+    setBackdropInteractive(true);
+    sheetAnimationRef.current?.stop();
+    const controls = animate(sheetDragY, 0, {
+      type: 'spring',
+      stiffness: 420,
+      damping: 34,
+      mass: 0.6,
+    });
+    sheetAnimationRef.current = controls;
+    return () => controls.stop();
+  }, [mobileOpen, sheetDragY]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const element = sheetRef.current;
+    if (!element) return;
+    const updateHeight = () => setSheetHeight(element.offsetHeight);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [mobileOpen]);
+
+  const syncBackdrop = (interactive: boolean) => {
+    if (backdropInteractiveRef.current === interactive) return;
+    backdropInteractiveRef.current = interactive;
+    setBackdropInteractive(interactive);
+  };
+
+  const toggleMobileMenu = () => {
+    if (mobileOpen) {
+      setMobileOpen(false);
+      return;
+    }
+    sheetDragY.set(prefersReducedMotion ? 0 : 24);
+    setMobileOpen(true);
+  };
 
   const handleLogout = async () => {
     setTheme(getScheduledTheme());
@@ -421,7 +474,7 @@ export default function NavSidebar() {
           variant="ghost"
           aria-expanded={mobileOpen}
           aria-controls="mobile-navigation"
-          onClick={() => setMobileOpen((open) => !open)}
+          onClick={toggleMobileMenu}
           className={cn('h-full flex-col gap-1 rounded-none px-1 text-[10px] font-medium', mobileOpen ? 'text-primary' : 'text-muted-foreground')}
         >
           <MoreHorizontal className="h-4.5 w-4.5" />
@@ -432,26 +485,66 @@ export default function NavSidebar() {
       <AnimatePresence initial={false}>
         {mobileOpen && (
           <motion.div
-            className="fixed inset-0 z-50 bg-black/35 min-[60rem]:hidden"
+            className="pointer-events-none fixed inset-0 z-30 min-[60rem]:hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.16 }}
-            onClick={() => setMobileOpen(false)}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.18, ease: 'easeOut' }}
           >
+            <motion.div
+              aria-hidden="true"
+              className="absolute inset-0 bg-black/35"
+              style={{ opacity: backdropOpacity, pointerEvents: backdropInteractive ? 'auto' : 'none' }}
+              onClick={() => setMobileOpen(false)}
+            />
             <motion.aside
+              ref={sheetRef}
               id="mobile-navigation"
               role="dialog"
               aria-modal="true"
               aria-label="Semua menu"
-              className="absolute inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] flex max-h-[75dvh] flex-col overflow-hidden overscroll-contain rounded-t-lg bg-background pb-3 shadow-xl"
-              initial={prefersReducedMotion ? { opacity: 0 } : { y: 24, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={prefersReducedMotion ? { opacity: 0 } : { y: 24, opacity: 0 }}
-              transition={{ duration: prefersReducedMotion ? 0 : 0.2, ease: 'easeOut' }}
-              onClick={(event) => event.stopPropagation()}
+              className="pointer-events-auto fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] flex max-h-[75dvh] flex-col overflow-hidden overscroll-contain rounded-t-lg bg-background pb-3 shadow-xl"
+              style={prefersReducedMotion ? undefined : { y: sheetDragY }}
+              drag={prefersReducedMotion ? false : 'y'}
+              dragControls={dragControls}
+              dragListener={false}
+              dragConstraints={{ top: 0, bottom: sheetMaxDrag }}
+              dragElastic={0.06}
+              dragMomentum={false}
+              dragTransition={{ bounceStiffness: 520, bounceDamping: 38, power: 0.18, timeConstant: 180 }}
+              onDragStart={() => {
+                sheetAnimationRef.current?.stop();
+                sheetAnimationRef.current = null;
+              }}
+              onDrag={() => {
+                const height = sheetHeight || 1;
+                syncBackdrop(sheetDragY.get() <= height * 0.6);
+              }}
+              onDragEnd={(_event, info) => {
+                const height = sheetHeight || 1;
+                if (info.velocity.y > 900) {
+                  setMobileOpen(false);
+                  return;
+                }
+                const nextY = Math.min(Math.max(sheetDragY.get(), 0), sheetMaxDrag);
+                syncBackdrop(nextY <= height * 0.6);
+                sheetAnimationRef.current?.stop();
+                sheetAnimationRef.current = animate(sheetDragY, nextY, {
+                  type: 'spring',
+                  stiffness: 420,
+                  damping: 34,
+                  mass: 0.6,
+                });
+              }}
             >
-              <div className="mx-auto my-2 h-1 w-10 rounded-full bg-muted-foreground/35" />
+              <button
+                type="button"
+                aria-label="Geser menu"
+                className="flex w-full shrink-0 touch-none select-none justify-center py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-grab active:cursor-grabbing"
+                onPointerDown={(event) => dragControls.start(event)}
+              >
+                <span className="h-1.5 w-12 rounded-full bg-muted-foreground/40 transition-colors" />
+              </button>
               {NavContent()}
             </motion.aside>
           </motion.div>

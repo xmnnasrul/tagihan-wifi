@@ -75,7 +75,7 @@ export default function ChatSettingsDialog({
 }: ChatSettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="chat-settings-dialog max-h-[min(85dvh,52rem)] gap-5 overflow-y-auto rounded-2xl p-4 sm:p-6">
+      <DialogContent className="chat-settings-dialog gap-5 md:max-h-[min(85dvh,52rem)] md:overflow-y-auto md:rounded-2xl md:p-6">
         <DialogHeader>
           <DialogTitle>Pengaturan koneksi AI</DialogTitle>
           <DialogDescription>

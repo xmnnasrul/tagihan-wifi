@@ -377,7 +377,7 @@ export default function AdminsPage() {
       </section>
 
       <Dialog open={Boolean(roleEditingAccount)} onOpenChange={(open) => !open && !savingRoles && setRoleEditingAccount(null)}>
-        <DialogContent className="rounded-2xl sm:max-w-md">
+        <DialogContent className="md:rounded-2xl md:max-w-md">
           <DialogHeader>
             <DialogTitle>Atur role akun</DialogTitle>
             <DialogDescription>{roleEditingAccount?.username}. Perubahan role akan mengakhiri sesi akun tersebut.</DialogDescription>

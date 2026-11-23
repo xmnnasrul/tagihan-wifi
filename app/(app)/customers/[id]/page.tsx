@@ -710,7 +710,7 @@ export default function CustomerDetailPage() {
       </div>
 
       <Dialog open={monthPickerOpen} onOpenChange={setMonthPickerOpen}>
-        <DialogContent className="rounded-2xl sm:max-w-sm">
+        <DialogContent className="md:rounded-2xl md:max-w-sm">
           <DialogHeader>
             <DialogTitle>Pilih Bulan</DialogTitle>
             <DialogDescription>Pilih bulan tagihan yang ingin ditambahkan.</DialogDescription>

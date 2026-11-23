@@ -312,7 +312,7 @@ export default function ProfileImageEditor({ username, profileImage, hasOriginal
       </Dialog>
 
       <Dialog open={isViewingPhoto} onOpenChange={(open) => { if (!open) closeOriginalPhoto(); }}>
-        <DialogContent className="popup-appear max-w-2xl gap-5 rounded-xl p-5 pt-14 sm:gap-6 sm:rounded-xl sm:p-7 sm:pt-16 data-[state=closed]:slide-out-to-left-0 data-[state=closed]:slide-out-to-top-0">
+        <DialogContent className="popup-appear gap-5 md:max-w-2xl md:gap-6 md:rounded-xl md:p-7 md:pt-16 data-[state=closed]:slide-out-to-left-0 data-[state=closed]:slide-out-to-top-0">
           <DialogTitle className="sr-only">Foto profil {username}</DialogTitle>
           {isLoadingOriginalPhoto && <div className="flex min-h-56 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>}
           {originalPhotoError && <p className="mx-1 rounded-md border border-border bg-muted/40 px-4 py-3 text-center text-sm text-muted-foreground">{originalPhotoError}</p>}

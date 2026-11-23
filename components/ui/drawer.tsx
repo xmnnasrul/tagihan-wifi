@@ -6,11 +6,14 @@ import { Drawer as DrawerPrimitive } from 'vaul';
 import { cn } from '@/lib/utils';
 
 const Drawer = ({
-  shouldScaleBackground = true,
+  shouldScaleBackground = false,
+  handleOnly = true,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Root>) => (
   <DrawerPrimitive.Root
     shouldScaleBackground={shouldScaleBackground}
+    handleOnly={handleOnly}
+    closeThreshold={0.9}
     {...props}
   />
 );
@@ -28,7 +31,7 @@ const DrawerOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DrawerPrimitive.Overlay
     ref={ref}
-    className={cn('fixed inset-0 z-50 bg-black/80', className)}
+    className={cn('fixed inset-0 z-50 bg-black/60', className)}
     {...props}
   />
 ));
@@ -43,13 +46,20 @@ const DrawerContent = React.forwardRef<
     <DrawerPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto flex-col rounded-t-[10px] border bg-background',
+        'fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-[92dvh] flex-col overflow-hidden rounded-t-3xl border-t border-border/70 bg-background shadow-2xl',
         className
       )}
       {...props}
     >
-      <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-muted-foreground/40" />
-      {children}
+      <DrawerPrimitive.Handle
+        preventCycle
+        className="group flex h-11 w-full shrink-0 touch-none cursor-grab select-none items-center justify-center active:cursor-grabbing"
+      >
+        <span className="h-1.5 w-12 rounded-full bg-muted-foreground/40 transition-[background-color,transform] duration-150 group-active:scale-105 group-active:bg-muted-foreground/70" />
+      </DrawerPrimitive.Handle>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {children}
+      </div>
     </DrawerPrimitive.Content>
   </DrawerPortal>
 ));
@@ -60,7 +70,7 @@ const DrawerHeader = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn('grid gap-1.5 p-4 text-center sm:text-left', className)}
+    className={cn('grid gap-1.5 p-4 text-center md:text-left', className)}
     {...props}
   />
 );

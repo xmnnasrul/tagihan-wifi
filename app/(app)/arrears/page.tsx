@@ -349,35 +349,35 @@ export default function ArrearsPage() {
       </section>
 
       <section aria-labelledby="arrears-list-heading" aria-busy={loading} className="space-y-2 sm:space-y-3">
-        <div className="space-y-1">
-          <h2 id="arrears-list-heading" className="text-base font-semibold">Pelanggan menunggak</h2>
-          <div className="flex items-center justify-between gap-3">
-            {!loading && !error ? (
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <h2 id="arrears-list-heading" className="text-base font-semibold">Pelanggan menunggak</h2>
+            {!loading && !error && (
               <p className="text-xs tabular-nums text-muted-foreground">
                 {view.customers.length} pelanggan · {view.periodCount} periode
               </p>
-            ) : <span />}
-            {!loading && !error && sortedCustomers.length > 0 && (
-              <select
-                value={`${sortKey}:${sortDirection}`}
-                aria-label="Urutkan daftar pelanggan"
-                onChange={(event) => {
-                  const [key, direction] = event.target.value.split(':');
-                  setSortKey(key as ArrearsSortKey);
-                  setSortDirection(direction as ArrearsSortDirection);
-                  setHasSorted(true);
-                }}
-                className="h-9 shrink-0 rounded-md border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
-              >
-                <option value="age:desc">Terlama menunggak</option>
-                <option value="age:asc">Terbaru menunggak</option>
-                <option value="amount:desc">Sisa terbesar</option>
-                <option value="amount:asc">Sisa terkecil</option>
-                <option value="name:asc">Nama A-Z</option>
-                <option value="name:desc">Nama Z-A</option>
-              </select>
             )}
           </div>
+          {!loading && !error && sortedCustomers.length > 0 && (
+            <select
+              value={`${sortKey}:${sortDirection}`}
+              aria-label="Urutkan daftar pelanggan"
+              onChange={(event) => {
+                const [key, direction] = event.target.value.split(':');
+                setSortKey(key as ArrearsSortKey);
+                setSortDirection(direction as ArrearsSortDirection);
+                setHasSorted(true);
+              }}
+              className="h-8 shrink-0 rounded-md border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+            >
+              <option value="age:desc">Terlama</option>
+              <option value="age:asc">Terbaru</option>
+              <option value="amount:desc">Sisa terbesar</option>
+              <option value="amount:asc">Sisa terkecil</option>
+              <option value="name:asc">Nama A-Z</option>
+              <option value="name:desc">Nama Z-A</option>
+            </select>
+          )}
         </div>
 
         <p className="sr-only" role="status">

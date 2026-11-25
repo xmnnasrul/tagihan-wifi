@@ -1,83 +1,140 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ChevronDown, MapPin } from 'lucide-react';
+import { motion, useReducedMotion } from 'framer-motion';
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  ChevronDown,
+  ChevronsUpDown,
+  MapPin,
+} from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { getArrearsPeriodIndex } from '@/lib/arrears-periods';
 import {
-  filterPeriodsThroughMonth,
-  getArrearsMonthCount,
-  getArrearsPeriodIndex,
-} from '@/lib/arrears-periods';
-
-interface OutstandingPeriod {
-  month: string;
-  year: number;
-  billedAmount: number;
-  paidAmount: number;
-  outstandingAmount: number;
-  status: 'Belum Bayar' | 'Nyicil';
-}
-
-interface ArrearsCustomer {
-  customerId: string;
-  customerName: string;
-  address: string;
-  totalOutstanding: number;
-  outstandingPeriods: OutstandingPeriod[];
-}
+  buildArrearsFindingSentence,
+  buildArrearsView,
+  formatArrearsPercent,
+  sortArrearsCustomers,
+  type ArrearsCustomerInput,
+  type ArrearsPeriodSlice,
+  type ArrearsSortDirection,
+  type ArrearsSortKey,
+  type ArrearsStatusFilter,
+} from '@/lib/arrears-summary';
 
 function formatRupiah(amount: number) {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
     minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(amount);
 }
 
-function getArrearsAgeStyle(monthCount: number) {
-  if (monthCount >= 3) {
-    return { rail: 'border-l-destructive', marker: 'bg-destructive', text: 'text-destructive' };
+const sortLabels: Record<ArrearsSortKey, string> = {
+  name: 'nama pelanggan',
+  age: 'umur tunggakan',
+  amount: 'sisa tagihan',
+};
+
+function SortIcon({ active, direction }: { active: boolean; direction: ArrearsSortDirection }) {
+  if (!active) {
+    return <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-40" aria-hidden="true" />;
   }
-  if (monthCount === 2) {
-    return { rail: 'border-l-amber-500', marker: 'bg-amber-500', text: 'text-amber-800 dark:text-amber-400' };
-  }
-  return { rail: 'border-l-border', marker: 'bg-border', text: 'text-muted-foreground' };
+  const Icon = direction === 'asc' ? ArrowUp : ArrowDown;
+  return <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />;
 }
 
-function PeriodBreakdown({ periods }: { periods: OutstandingPeriod[] }) {
+function SortHeaderButton({
+  label,
+  active,
+  direction,
+  align = 'left',
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  direction: ArrearsSortDirection;
+  align?: 'left' | 'right';
+  onClick: () => void;
+}) {
   return (
-    <details className="group min-w-0">
-      <summary className="flex cursor-pointer list-none items-center gap-1 rounded-sm py-1 text-xs font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        Rincian tagihan
-        <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
-      </summary>
-      <div className="mt-1 space-y-2 border-l border-border pl-3">
-        {periods.map((period) => (
-          <div key={`${period.year}-${period.month}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 text-xs">
-            <span className="font-medium">{period.month} {period.year}</span>
-            <span className="text-right font-medium tabular-nums">Sisa {formatRupiah(period.outstandingAmount)}</span>
-            <span className="col-span-2 text-muted-foreground">
-              Tagihan {formatRupiah(period.billedAmount)} · Dibayar {formatRupiah(period.paidAmount)}
-            </span>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-11 w-full items-center gap-1.5 px-4 py-3 text-xs font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+        align === 'right' ? 'justify-end text-right' : 'justify-start text-left'
+      } ${active ? 'text-foreground' : 'text-muted-foreground'}`}
+    >
+      {label}
+      <SortIcon active={active} direction={direction} />
+    </button>
+  );
+}
+
+function PeriodList({ periods }: { periods: ArrearsPeriodSlice[] }) {
+  return (
+    <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      {periods.map((period) => (
+        <li
+          key={`${period.year}-${period.month}`}
+          className="rounded-md border border-border/60 bg-background/70 px-3 py-2"
+        >
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xs font-medium">{period.month} {period.year}</span>
+            <span className="text-xs font-semibold tabular-nums">Sisa {formatRupiah(period.outstandingAmount)}</span>
+          </div>
+          <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+            Tagihan {formatRupiah(period.billedAmount)} · dibayar {formatRupiah(period.paidAmount)} · {period.status}
+          </p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function SummarySkeleton() {
+  return (
+    <div className="grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]" aria-hidden="true">
+      <div className="space-y-3 p-5 sm:p-6 lg:p-7">
+        <div className="h-4 w-28 rounded-sm bg-muted" />
+        <div className="h-10 w-56 max-w-full rounded-sm bg-muted" />
+        <div className="h-3 w-44 max-w-full rounded-sm bg-muted/70" />
+        <div className="h-3 w-72 max-w-full rounded-sm bg-muted/60" />
+      </div>
+      <div className="space-y-5 border-t border-border/80 p-5 sm:p-6 lg:border-l lg:border-t-0 lg:p-7">
+        {Array.from({ length: 3 }, (_, index) => (
+          <div key={index} className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="h-3 w-16 rounded-sm bg-muted" />
+              <div className="h-3 w-20 rounded-sm bg-muted/70" />
+            </div>
+            <div className="h-1.5 rounded-full bg-muted/70" />
           </div>
         ))}
       </div>
-    </details>
+    </div>
   );
 }
 
 export default function ArrearsPage() {
-  const [report, setReport] = useState<ArrearsCustomer[]>([]);
+  const [report, setReport] = useState<ArrearsCustomerInput[]>([]);
   const [monthFilter, setMonthFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'Belum Bayar' | 'Nyicil'>('all');
+  const [statusFilter, setStatusFilter] = useState<ArrearsStatusFilter>('all');
+  const [sortKey, setSortKey] = useState<ArrearsSortKey>('age');
+  const [sortDirection, setSortDirection] = useState<ArrearsSortDirection>('desc');
+  const [hasSorted, setHasSorted] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
     let isCurrentRequest = true;
@@ -111,7 +168,7 @@ export default function ArrearsPage() {
   }, [monthFilter]);
 
   const monthOptions = useMemo(() => {
-    const periods = new Map<string, OutstandingPeriod>();
+    const periods = new Map<string, ArrearsPeriodSlice>();
     report.forEach((customer) => customer.outstandingPeriods.forEach((period) => {
       periods.set(`${period.year}-${period.month}`, period);
     }));
@@ -121,56 +178,162 @@ export default function ArrearsPage() {
       .map((period) => ({ value: `${period.year}-${period.month}`, label: `${period.month} ${period.year}` }));
   }, [report]);
 
-  const baseReport = useMemo(() => report.flatMap((customer) => {
-    const outstandingPeriods = filterPeriodsThroughMonth(customer.outstandingPeriods, monthCutoff);
-    const matchesStatus = statusFilter === 'all'
-      || outstandingPeriods.some((period) => period.status === statusFilter);
+  const view = useMemo(
+    () => buildArrearsView(report, { cutoff: monthCutoff, status: statusFilter }),
+    [report, monthCutoff, statusFilter],
+  );
 
-    if (!matchesStatus || outstandingPeriods.length === 0) return [];
-    return [{
-      ...customer,
-      outstandingPeriods,
-      totalOutstanding: outstandingPeriods.reduce((sum, period) => sum + period.outstandingAmount, 0),
-      arrearsMonthCount: getArrearsMonthCount(outstandingPeriods, monthCutoff),
-    }];
-  }), [report, monthCutoff, statusFilter]);
+  const sortedCustomers = useMemo(
+    () => sortArrearsCustomers(view.customers, sortKey, sortDirection),
+    [view.customers, sortKey, sortDirection],
+  );
 
-  const filteredReport = baseReport;
+  const isFiltered = monthFilter !== 'all' || statusFilter !== 'all';
+  const hasOlderArrears = (view.buckets.find((bucket) => bucket.key === '3+')?.customerCount ?? 0) > 0;
+  const isInitialLoading = loading && report.length === 0;
+  const findingSentence = isFiltered && view.customers.length === 0
+    ? 'Tidak ada tunggakan yang cocok dengan filter ini.'
+    : buildArrearsFindingSentence(view.buckets);
+  const sortStatus = `Diurutkan berdasarkan ${sortLabels[sortKey]}, ${sortDirection === 'asc' ? 'naik' : 'turun'}.`;
 
-  const totalOutstanding = filteredReport.reduce((sum, customer) => sum + customer.totalOutstanding, 0);
-  const outstandingPeriodCount = filteredReport.reduce((sum, customer) => sum + customer.outstandingPeriods.length, 0);
+  const handleSort = (key: ArrearsSortKey) => {
+    setHasSorted(true);
+    if (sortKey === key) {
+      setSortDirection((direction) => (direction === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(key);
+    setSortDirection(key === 'name' ? 'asc' : 'desc');
+  };
+
+  const earliestPeriod = useMemo(() => {
+    const periods = view.customers.flatMap((customer) => customer.outstandingPeriods[0] ?? []);
+    return periods.reduce<ArrearsPeriodSlice | null>((earliest, period) => {
+      if (!earliest) return period;
+      return (getArrearsPeriodIndex(period) ?? 0) < (getArrearsPeriodIndex(earliest) ?? 0) ? period : earliest;
+    }, null);
+  }, [view.customers]);
+
+  const averageOutstanding = view.customers.length > 0
+    ? Math.round(view.totalOutstanding / view.customers.length)
+    : 0;
+
+  const ariaSortFor = (key: ArrearsSortKey): 'ascending' | 'descending' | undefined => {
+    if (sortKey !== key) return undefined;
+    return sortDirection === 'asc' ? 'ascending' : 'descending';
+  };
+
+  const resetFilters = () => {
+    setStatusFilter('all');
+    setMonthFilter('all');
+  };
+
+  const toggleDetails = (customerId: string) => {
+    setExpandedId((current) => (current === customerId ? null : customerId));
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="space-y-6 sm:space-y-7">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Laporan Tunggakan</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Pantau sisa tagihan dan lamanya pelanggan menunggak.</p>
+          <h1 className="font-semibold tracking-tight">Laporan Tunggakan</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Sisa tagihan yang belum lunas, dikelompokkan menurut umur tunggakan.
+          </p>
         </div>
-        <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" /> Kembali ke Dashboard
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-2 rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Kembali ke Dashboard
         </Link>
-      </div>
+      </header>
 
-      <section aria-label="Ringkasan tunggakan" className="grid divide-y divide-border border-y border-border/70 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        <div className="flex items-center justify-between gap-4 py-3 sm:block sm:pr-4">
-          <p className="text-sm text-muted-foreground">Total sisa tunggakan</p>
-          <p className="text-lg font-semibold tabular-nums text-primary sm:mt-1 sm:text-2xl">{formatRupiah(totalOutstanding)}</p>
-        </div>
-        <div className="flex items-center justify-between gap-4 py-3 sm:block sm:border-l sm:px-4">
-          <p className="text-sm text-muted-foreground">Pelanggan menunggak</p>
-          <p className="text-lg font-medium tabular-nums sm:mt-1 sm:text-xl">{filteredReport.length}</p>
-        </div>
-        <div className="flex items-center justify-between gap-4 py-3 sm:block sm:border-l sm:pl-4">
-          <p className="text-sm text-muted-foreground">Periode belum lunas</p>
-          <p className="text-lg font-medium tabular-nums sm:mt-1 sm:text-xl">{outstandingPeriodCount}</p>
-        </div>
-      </section>
+      {!error && (isInitialLoading || view.customers.length > 0) && (
+        <section
+          aria-label="Ringkasan tunggakan"
+          aria-busy={isInitialLoading}
+          className="overflow-hidden rounded-lg border border-border/80 bg-card"
+        >
+          {isInitialLoading ? (
+            <SummarySkeleton />
+          ) : (
+            <div className="grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+              <div className="p-5 sm:p-6 lg:p-7">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <h2 className="text-sm font-medium text-muted-foreground">Sisa tunggakan</h2>
+                  {isFiltered && <span className="text-xs text-muted-foreground">Total mengikuti filter</span>}
+                </div>
+                <p className="mt-2 break-words text-4xl font-semibold leading-none tracking-tight tabular-nums sm:text-5xl">
+                  {formatRupiah(view.totalOutstanding)}
+                </p>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  {view.customers.length} pelanggan · {view.periodCount} periode belum lunas
+                </p>
+                <p
+                  className={`mt-5 max-w-prose border-l-2 pl-3 text-sm ${
+                    hasOlderArrears ? 'border-destructive/70 text-foreground' : 'border-border text-muted-foreground'
+                  }`}
+                >
+                  {findingSentence}
+                </p>
+                <div className="mt-6 grid grid-cols-2 gap-4 border-t border-border/70 pt-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Tunggakan tertua</p>
+                    <p className="mt-0.5 text-sm font-medium">
+                      {earliestPeriod ? `${earliestPeriod.month} ${earliestPeriod.year}` : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Rata-rata sisa</p>
+                    <p className="mt-0.5 text-sm font-medium tabular-nums">{formatRupiah(averageOutstanding)}</p>
+                  </div>
+                </div>
+              </div>
 
-      <section aria-label="Filter laporan" className="grid grid-cols-2 gap-3 sm:w-fit sm:grid-cols-[190px_190px] sm:items-end">
+              <div className="border-t border-border/80 p-5 sm:p-6 lg:border-l lg:border-t-0 lg:p-7">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 className="text-sm font-medium">Umur tunggakan</h2>
+                  <span className="text-xs text-muted-foreground">Porsi sisa</span>
+                </div>
+                <ul className="mt-5 space-y-5">
+                  {view.buckets.map((bucket) => {
+                    const isOlder = bucket.key === '3+' && bucket.customerCount > 0;
+                    return (
+                      <li key={bucket.key}>
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className={`text-sm font-medium ${isOlder ? 'text-destructive' : ''}`}>{bucket.label}</span>
+                          <span className="text-xs tabular-nums text-muted-foreground">{bucket.customerCount} pelanggan</span>
+                        </div>
+                        <div className="mt-2 flex items-center gap-3">
+                          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                            <motion.div
+                              className={`h-full origin-left rounded-full ${isOlder ? 'bg-destructive' : 'bg-primary/45'}`}
+                              initial={prefersReducedMotion ? false : { scaleX: 0 }}
+                              animate={{ scaleX: bucket.share }}
+                              transition={{ duration: prefersReducedMotion ? 0 : 0.5, ease: 'easeOut' }}
+                            />
+                          </div>
+                          <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                            {formatArrearsPercent(bucket)}
+                          </span>
+                        </div>
+                        <p className="mt-1.5 text-xs tabular-nums text-muted-foreground">{formatRupiah(bucket.totalOutstanding)}</p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      <section aria-label="Filter laporan" className="flex flex-wrap items-end justify-between gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:items-end">
           <div className="space-y-1.5">
             <label htmlFor="arrears-status" className="text-xs font-medium text-muted-foreground">Status tunggakan</label>
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ArrearsStatusFilter)}>
               <SelectTrigger id="arrears-status" className="h-10"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Semua status</SelectItem>
@@ -191,22 +354,56 @@ export default function ArrearsPage() {
               </SelectContent>
             </Select>
           </div>
+        </div>
+        {isFiltered && !loading && !error && (
+          <Button type="button" variant="ghost" size="sm" onClick={resetFilters}>
+            Hapus filter
+          </Button>
+        )}
       </section>
 
-      <section aria-label="Daftar pelanggan menunggak" className="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h2 className="text-base font-semibold">Daftar pelanggan</h2>
-          {!loading && !error && (
-            <p className="text-xs tabular-nums text-muted-foreground">
-              {filteredReport.length} pelanggan · {outstandingPeriodCount} periode
-            </p>
+      <section aria-labelledby="arrears-list-heading" aria-busy={loading} className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+          <div>
+            <h2 id="arrears-list-heading" className="text-base font-semibold">Pelanggan menunggak</h2>
+            {!loading && !error && (
+              <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                {view.customers.length} pelanggan · {view.periodCount} periode
+              </p>
+            )}
+          </div>
+          {!loading && !error && sortedCustomers.length > 0 && (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground md:hidden">
+              Urutkan
+              <select
+                value={`${sortKey}:${sortDirection}`}
+                onChange={(event) => {
+                  const [key, direction] = event.target.value.split(':');
+                  setSortKey(key as ArrearsSortKey);
+                  setSortDirection(direction as ArrearsSortDirection);
+                  setHasSorted(true);
+                }}
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="age:desc">Terlama menunggak</option>
+                <option value="age:asc">Terbaru menunggak</option>
+                <option value="amount:desc">Sisa terbesar</option>
+                <option value="amount:asc">Sisa terkecil</option>
+                <option value="name:asc">Nama A-Z</option>
+                <option value="name:desc">Nama Z-A</option>
+              </select>
+            </label>
           )}
         </div>
 
+        <p className="sr-only" role="status">
+          {hasSorted ? sortStatus : ''}
+        </p>
+
         {loading ? (
           <div className="divide-y divide-border/70" role="status" aria-label="Memuat laporan tunggakan">
-            {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="flex items-center justify-between gap-4 py-3">
+            {Array.from({ length: 5 }, (_, index) => (
+              <div key={index} className="flex items-center justify-between gap-4 py-4">
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="h-4 w-40 max-w-full rounded-sm bg-muted" />
                   <div className="h-3 w-56 max-w-full rounded-sm bg-muted/70" />
@@ -222,79 +419,125 @@ export default function ArrearsPage() {
               Coba lagi
             </Button>
           </Alert>
-        ) : filteredReport.length === 0 ? (
-          <div className="border-y border-border/70 py-10 text-center">
+        ) : sortedCustomers.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border/80 px-4 py-12 text-center">
             <p className="text-sm font-medium">
-              {report.length === 0 ? 'Tidak ada tagihan yang menunggak.' : 'Tidak ada pelanggan yang cocok dengan status atau bulan.'}
+              {report.length === 0 ? 'Tidak ada tagihan yang menunggak.' : 'Tidak ada pelanggan yang cocok dengan filter ini.'}
             </p>
-            {report.length > 0 && (
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                className="mt-1"
-                onClick={() => {
-                  setStatusFilter('all');
-                  setMonthFilter('all');
-                }}
-              >
+            <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+              {report.length === 0
+                ? 'Semua tagihan pelanggan aktif sudah lunas.'
+                : 'Coba longgarkan status atau bulan, lalu lihat kembali daftarnya.'}
+            </p>
+            {report.length > 0 && isFiltered && (
+              <Button type="button" variant="outline" size="sm" className="mt-3" onClick={resetFilters}>
                 Hapus filter
               </Button>
             )}
           </div>
         ) : (
           <>
-            <div className="hidden overflow-x-auto rounded-md border border-border/70 md:block">
-              <Table className="min-w-180">
+            <div className="hidden md:block">
+              <Table className="min-w-[720px]">
+                <TableCaption className="sr-only">
+                  Daftar pelanggan menunggak beserta umur tunggakan dan sisa tagihan
+                </TableCaption>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[36%] font-normal text-muted-foreground">Pelanggan</TableHead>
-                    <TableHead className="whitespace-nowrap font-normal text-muted-foreground">Mulai menunggak</TableHead>
-                    <TableHead className="font-normal text-muted-foreground">Periode</TableHead>
-                    <TableHead className="whitespace-nowrap text-right font-normal text-muted-foreground">Sisa tunggakan</TableHead>
-                    <TableHead className="text-right font-normal text-muted-foreground">Detail</TableHead>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead scope="col" aria-sort={ariaSortFor('name')} className="h-auto w-[38%] p-0">
+                      <SortHeaderButton
+                        label="Pelanggan"
+                        active={sortKey === 'name'}
+                        direction={sortDirection}
+                        onClick={() => handleSort('name')}
+                      />
+                    </TableHead>
+                    <TableHead scope="col" aria-sort={ariaSortFor('age')} className="h-auto w-[22%] p-0">
+                      <SortHeaderButton
+                        label="Menunggak"
+                        active={sortKey === 'age'}
+                        direction={sortDirection}
+                        onClick={() => handleSort('age')}
+                      />
+                    </TableHead>
+                    <TableHead scope="col" aria-sort={ariaSortFor('amount')} className="h-auto w-[22%] p-0">
+                      <SortHeaderButton
+                        label="Sisa tagihan"
+                        align="right"
+                        active={sortKey === 'amount'}
+                        direction={sortDirection}
+                        onClick={() => handleSort('amount')}
+                      />
+                    </TableHead>
+                    <TableHead scope="col" className="h-auto w-[100px] px-4 py-3 text-right text-xs font-medium text-muted-foreground">
+                      <span className="sr-only">Rincian tagihan</span>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredReport.map((customer) => {
+                  {sortedCustomers.map((customer) => {
                     const oldestPeriod = customer.outstandingPeriods[0];
-                    const hasUnpaid = customer.outstandingPeriods.some((period) => period.status === 'Belum Bayar');
-                    const hasInstallment = customer.outstandingPeriods.some((period) => period.status === 'Nyicil');
-                    const customerHref = `/customers/${customer.customerId}?name=${encodeURIComponent(customer.customerName)}`;
-                    const ageStyle = getArrearsAgeStyle(customer.arrearsMonthCount);
+                    const paidTotal = customer.outstandingPeriods.reduce((sum, period) => sum + period.paidAmount, 0);
+                    const isOld = customer.arrearsMonthCount >= 3;
+                    const isExpanded = expandedId === customer.customerId;
+                    const detailsId = `arrears-detail-${customer.customerId}`;
+                    const customerHref = `/customers/${encodeURIComponent(customer.customerId)}?name=${encodeURIComponent(customer.customerName)}`;
 
                     return (
-                      <TableRow key={customer.customerId} className="align-middle">
-                        <TableCell className="relative max-w-[320px] pl-5">
-                          <span aria-hidden="true" className={`absolute bottom-3 left-0 top-3 w-1 rounded-full ${ageStyle.marker}`} />
-                          <Link href={customerHref} className="font-semibold hover:text-primary">
-                            {customer.customerName}
-                          </Link>
-                          <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <MapPin className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{customer.address || 'Alamat belum diisi'}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                          {oldestPeriod.month} {oldestPeriod.year}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className={`whitespace-nowrap text-sm font-semibold tabular-nums ${ageStyle.text}`}>{customer.arrearsMonthCount} bulan</span>
-                            {hasUnpaid && <Badge variant="outline" className="whitespace-nowrap border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400">Belum Bayar</Badge>}
-                            {hasInstallment && <Badge variant="outline" className="whitespace-nowrap border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-400">Nyicil</Badge>}
-                          </div>
-                          <PeriodBreakdown periods={customer.outstandingPeriods} />
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-right text-base font-semibold tabular-nums text-primary">
-                          {formatRupiah(customer.totalOutstanding)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button asChild variant="outline" size="sm">
-                            <Link href={customerHref}>Lihat</Link>
-                          </Button>
-                        </TableCell>
-                      </TableRow>
+                      <Fragment key={customer.customerId}>
+                        <TableRow>
+                          <TableCell className="max-w-[360px] px-4 py-3.5">
+                            <Link
+                              href={customerHref}
+                              className="rounded-sm font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {customer.customerName}
+                            </Link>
+                            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                              <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                              <span className="truncate">{customer.address || 'Alamat belum diisi'}</span>
+                            </p>
+                          </TableCell>
+                          <TableCell className="px-4 py-3.5">
+                            <span className={`text-sm font-medium tabular-nums ${isOld ? 'text-destructive' : ''}`}>
+                              {customer.arrearsMonthCount} bulan
+                            </span>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              sejak {oldestPeriod.month} {oldestPeriod.year}
+                            </p>
+                          </TableCell>
+                          <TableCell className="px-4 py-3.5 text-right">
+                            <span className="text-sm font-semibold tabular-nums">{formatRupiah(customer.totalOutstanding)}</span>
+                            {paidTotal > 0 && (
+                              <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                                dibayar {formatRupiah(paidTotal)}
+                              </p>
+                            )}
+                          </TableCell>
+                          <TableCell className="px-4 py-3.5 text-right">
+                            <button
+                              type="button"
+                              aria-expanded={isExpanded}
+                              aria-controls={detailsId}
+                              onClick={() => toggleDetails(customer.customerId)}
+                              className="inline-flex min-h-9 items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              Rincian
+                              <ChevronDown
+                                className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                aria-hidden="true"
+                              />
+                            </button>
+                          </TableCell>
+                        </TableRow>
+                        {isExpanded && (
+                          <TableRow className="hover:bg-transparent">
+                            <TableCell id={detailsId} colSpan={4} className="bg-muted/30 px-4 py-3">
+                              <PeriodList periods={customer.outstandingPeriods} />
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </TableBody>
@@ -302,39 +545,62 @@ export default function ArrearsPage() {
             </div>
 
             <div className="divide-y divide-border/70 md:hidden">
-              {filteredReport.map((customer) => {
+              {sortedCustomers.map((customer) => {
                 const oldestPeriod = customer.outstandingPeriods[0];
-                const hasUnpaid = customer.outstandingPeriods.some((period) => period.status === 'Belum Bayar');
-                const hasInstallment = customer.outstandingPeriods.some((period) => period.status === 'Nyicil');
-                const customerHref = `/customers/${customer.customerId}?name=${encodeURIComponent(customer.customerName)}`;
-                const ageStyle = getArrearsAgeStyle(customer.arrearsMonthCount);
+                const paidTotal = customer.outstandingPeriods.reduce((sum, period) => sum + period.paidAmount, 0);
+                const isOld = customer.arrearsMonthCount >= 3;
+                const isExpanded = expandedId === customer.customerId;
+                const detailsId = `arrears-detail-mobile-${customer.customerId}`;
+                const customerHref = `/customers/${encodeURIComponent(customer.customerId)}?name=${encodeURIComponent(customer.customerName)}`;
 
                 return (
-                  <article key={customer.customerId} className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 border-l-2 py-3 pl-3 ${ageStyle.rail}`}>
-                    <div className="min-w-0">
-                      <Link href={customerHref} className="block truncate text-base font-semibold hover:text-primary">
-                        {customer.customerName}
-                      </Link>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">{customer.address || 'Alamat belum diisi'}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Sisa</p>
-                      <p className="whitespace-nowrap text-base font-semibold tabular-nums text-primary">{formatRupiah(customer.totalOutstanding)}</p>
-                    </div>
-                    <div className="col-span-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                        <span className="whitespace-nowrap text-muted-foreground">Mulai {oldestPeriod.month} {oldestPeriod.year}</span>
-                        <span className={`whitespace-nowrap font-semibold ${ageStyle.text}`}>{customer.arrearsMonthCount} bulan</span>
-                        {hasUnpaid && <Badge variant="outline" className="whitespace-nowrap border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400">Belum Bayar</Badge>}
-                        {hasInstallment && <Badge variant="outline" className="whitespace-nowrap border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-400">Nyicil</Badge>}
+                  <article key={customer.customerId} className="py-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <Link
+                          href={customerHref}
+                          className="rounded-sm font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {customer.customerName}
+                        </Link>
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                          <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                          <span className="truncate">{customer.address || 'Alamat belum diisi'}</span>
+                        </p>
                       </div>
-                      <Button asChild variant="ghost" size="sm" className="h-8 shrink-0 px-2">
-                        <Link href={customerHref}>Lihat</Link>
-                      </Button>
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-semibold tabular-nums">{formatRupiah(customer.totalOutstanding)}</p>
+                        {paidTotal > 0 && (
+                          <p className="text-[11px] tabular-nums text-muted-foreground">dibayar {formatRupiah(paidTotal)}</p>
+                        )}
+                      </div>
                     </div>
-                    <div className="col-span-2">
-                      <PeriodBreakdown periods={customer.outstandingPeriods} />
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <p className="min-w-0 text-xs text-muted-foreground">
+                        <span className={`font-medium ${isOld ? 'text-destructive' : 'text-foreground'}`}>
+                          {customer.arrearsMonthCount} bulan
+                        </span>{' '}
+                        · sejak {oldestPeriod.month} {oldestPeriod.year}
+                      </p>
+                      <button
+                        type="button"
+                        aria-expanded={isExpanded}
+                        aria-controls={detailsId}
+                        onClick={() => toggleDetails(customer.customerId)}
+                        className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        Rincian
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                          aria-hidden="true"
+                        />
+                      </button>
                     </div>
+                    {isExpanded && (
+                      <div id={detailsId} className="mt-3">
+                        <PeriodList periods={customer.outstandingPeriods} />
+                      </div>
+                    )}
                   </article>
                 );
               })}

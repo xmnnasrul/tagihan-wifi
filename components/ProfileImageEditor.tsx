@@ -237,7 +237,7 @@ export default function ProfileImageEditor({ username, profileImage, hasOriginal
           type="button"
           onClick={() => void handleViewOriginalPhoto()}
           disabled={isSaving}
-          className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-primary text-primary-foreground outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60"
+          className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-primary text-primary-foreground outline-offset-2 transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60 motion-safe:active:scale-95"
           aria-label={profileImage ? `Lihat foto profil ${username}` : `Pilih foto profil ${username}`}
           title={profileImage ? 'Lihat foto profil' : 'Pilih foto profil'}
         >

@@ -952,7 +952,7 @@ export default function ChatClient({ canManageSettings }: { canManageSettings: b
             <button
               type="button"
               onClick={scrollToLatest}
-              className="absolute bottom-3 left-1/2 z-10 flex size-10 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute bottom-3 left-1/2 z-10 flex size-10 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm transition-all duration-150 hover:bg-muted motion-safe:active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Gulir ke pesan terbaru"
               title="Gulir ke pesan terbaru"
             >

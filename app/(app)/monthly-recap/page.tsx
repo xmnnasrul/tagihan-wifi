@@ -183,7 +183,7 @@ export default function MonthlyRecapPage() {
           <button
             type="button"
             onClick={() => void fetchRecaps()}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-all duration-150 hover:bg-muted motion-safe:active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <RotateCw className="h-4 w-4" /> Coba lagi
           </button>

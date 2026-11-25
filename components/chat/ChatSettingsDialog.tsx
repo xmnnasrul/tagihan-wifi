@@ -93,7 +93,7 @@ export default function ChatSettingsDialog({
                       type="button"
                       aria-pressed={selectedProvider === provider.id}
                       onClick={() => chooseProvider(provider.id)}
-                      className={`min-h-10 shrink-0 border-b-2 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      className={`min-h-10 shrink-0 border-b-2 px-3 text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                         selectedProvider === provider.id
                           ? 'border-foreground font-medium text-foreground'
                           : 'border-transparent text-muted-foreground hover:text-foreground'

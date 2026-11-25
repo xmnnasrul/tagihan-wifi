@@ -17,7 +17,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { getArrearsPeriodIndex } from '@/lib/arrears-periods';
 import {
-  buildArrearsFindingSentence,
   buildArrearsView,
   formatArrearsPercent,
   sortArrearsCustomers,
@@ -102,13 +101,13 @@ function PeriodList({ periods }: { periods: ArrearsPeriodSlice[] }) {
 function SummarySkeleton() {
   return (
     <div className="grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]" aria-hidden="true">
-      <div className="space-y-3 p-5 sm:p-6 lg:p-7">
+      <div className="space-y-3 p-4 sm:p-6 lg:p-7">
         <div className="h-4 w-28 rounded-sm bg-muted" />
         <div className="h-10 w-56 max-w-full rounded-sm bg-muted" />
         <div className="h-3 w-44 max-w-full rounded-sm bg-muted/70" />
         <div className="h-3 w-72 max-w-full rounded-sm bg-muted/60" />
       </div>
-      <div className="space-y-5 border-t border-border/80 p-5 sm:p-6 lg:border-l lg:border-t-0 lg:p-7">
+      <div className="space-y-5 border-t border-border/80 p-4 sm:p-6 lg:border-l lg:border-t-0 lg:p-7">
         {Array.from({ length: 3 }, (_, index) => (
           <div key={index} className="space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -189,11 +188,7 @@ export default function ArrearsPage() {
   );
 
   const isFiltered = monthFilter !== 'all' || statusFilter !== 'all';
-  const hasOlderArrears = (view.buckets.find((bucket) => bucket.key === '3+')?.customerCount ?? 0) > 0;
   const isInitialLoading = loading && report.length === 0;
-  const findingSentence = isFiltered && view.customers.length === 0
-    ? 'Tidak ada tunggakan yang cocok dengan filter ini.'
-    : buildArrearsFindingSentence(view.buckets);
   const sortStatus = `Diurutkan berdasarkan ${sortLabels[sortKey]}, ${sortDirection === 'asc' ? 'naik' : 'turun'}.`;
 
   const handleSort = (key: ArrearsSortKey) => {
@@ -233,17 +228,17 @@ export default function ArrearsPage() {
   };
 
   return (
-    <div className="space-y-6 sm:space-y-7">
+    <div className="space-y-4 sm:space-y-7">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-semibold tracking-tight">Laporan Tunggakan</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Laporan Tunggakan</h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
             Sisa tagihan yang belum lunas, dikelompokkan menurut umur tunggakan.
           </p>
         </div>
         <Link
           href="/dashboard"
-          className="inline-flex items-center gap-2 rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="hidden items-center gap-2 rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Kembali ke Dashboard
         </Link>
@@ -259,25 +254,18 @@ export default function ArrearsPage() {
             <SummarySkeleton />
           ) : (
             <div className="grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-              <div className="p-5 sm:p-6 lg:p-7">
+              <div className="p-4 sm:p-6 lg:p-7">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                   <h2 className="text-sm font-medium text-muted-foreground">Sisa tunggakan</h2>
                   {isFiltered && <span className="text-xs text-muted-foreground">Total mengikuti filter</span>}
                 </div>
-                <p className="mt-2 break-words text-4xl font-semibold leading-none tracking-tight tabular-nums sm:text-5xl">
+                <p className="mt-1 break-words text-3xl sm:mt-1.5 sm:text-4xl font-semibold leading-none tracking-tight tabular-nums">
                   {formatRupiah(view.totalOutstanding)}
                 </p>
-                <p className="mt-3 text-sm text-muted-foreground">
+                <p className="mt-1.5 text-sm text-muted-foreground sm:mt-3">
                   {view.customers.length} pelanggan · {view.periodCount} periode belum lunas
                 </p>
-                <p
-                  className={`mt-5 max-w-prose border-l-2 pl-3 text-sm ${
-                    hasOlderArrears ? 'border-destructive/70 text-foreground' : 'border-border text-muted-foreground'
-                  }`}
-                >
-                  {findingSentence}
-                </p>
-                <div className="mt-6 grid grid-cols-2 gap-4 border-t border-border/70 pt-4">
+                <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border/70 pt-2 sm:mt-4 sm:pt-3">
                   <div>
                     <p className="text-xs text-muted-foreground">Tunggakan tertua</p>
                     <p className="mt-0.5 text-sm font-medium">
@@ -291,12 +279,12 @@ export default function ArrearsPage() {
                 </div>
               </div>
 
-              <div className="border-t border-border/80 p-5 sm:p-6 lg:border-l lg:border-t-0 lg:p-7">
+              <div className="border-t border-border/80 p-4 sm:p-6 lg:border-l lg:border-t-0 lg:p-7">
                 <div className="flex items-baseline justify-between gap-3">
                   <h2 className="text-sm font-medium">Umur tunggakan</h2>
                   <span className="text-xs text-muted-foreground">Porsi sisa</span>
                 </div>
-                <ul className="mt-5 space-y-5">
+                <ul className="mt-3 space-y-3 sm:mt-4 sm:space-y-5">
                   {view.buckets.map((bucket) => {
                     const isOlder = bucket.key === '3+' && bucket.customerCount > 0;
                     return (
@@ -305,20 +293,18 @@ export default function ArrearsPage() {
                           <span className={`text-sm font-medium ${isOlder ? 'text-destructive' : ''}`}>{bucket.label}</span>
                           <span className="text-xs tabular-nums text-muted-foreground">{bucket.customerCount} pelanggan</span>
                         </div>
-                        <div className="mt-2 flex items-center gap-3">
-                          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
-                            <motion.div
-                              className={`h-full origin-left rounded-full ${isOlder ? 'bg-destructive' : 'bg-primary/45'}`}
-                              initial={prefersReducedMotion ? false : { scaleX: 0 }}
-                              animate={{ scaleX: bucket.share }}
-                              transition={{ duration: prefersReducedMotion ? 0 : 0.5, ease: 'easeOut' }}
-                            />
-                          </div>
-                          <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                            {formatArrearsPercent(bucket)}
-                          </span>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                          <motion.div
+                            className={`h-full origin-left rounded-full ${isOlder ? 'bg-destructive' : 'bg-primary/45'}`}
+                            initial={prefersReducedMotion ? false : { scaleX: 0 }}
+                            animate={{ scaleX: bucket.share }}
+                            transition={{ duration: prefersReducedMotion ? 0 : 0.5, ease: 'easeOut' }}
+                          />
                         </div>
-                        <p className="mt-1.5 text-xs tabular-nums text-muted-foreground">{formatRupiah(bucket.totalOutstanding)}</p>
+                        <div className="mt-1 flex items-baseline justify-between gap-3 text-xs tabular-nums text-muted-foreground">
+                          <span>{formatRupiah(bucket.totalOutstanding)}</span>
+                          <span>{formatArrearsPercent(bucket)}</span>
+                        </div>
                       </li>
                     );
                   })}
@@ -330,7 +316,7 @@ export default function ArrearsPage() {
       )}
 
       <section aria-label="Filter laporan" className="flex flex-wrap items-end justify-between gap-3">
-        <div className="grid grid-cols-2 gap-3 sm:flex sm:items-end">
+        <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:items-end">
           <div className="space-y-1.5">
             <label htmlFor="arrears-status" className="text-xs font-medium text-muted-foreground">Status tunggakan</label>
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ArrearsStatusFilter)}>
@@ -362,28 +348,26 @@ export default function ArrearsPage() {
         )}
       </section>
 
-      <section aria-labelledby="arrears-list-heading" aria-busy={loading} className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
-          <div>
-            <h2 id="arrears-list-heading" className="text-base font-semibold">Pelanggan menunggak</h2>
-            {!loading && !error && (
-              <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+      <section aria-labelledby="arrears-list-heading" aria-busy={loading} className="space-y-2 sm:space-y-3">
+        <div className="space-y-1">
+          <h2 id="arrears-list-heading" className="text-base font-semibold">Pelanggan menunggak</h2>
+          <div className="flex items-center justify-between gap-3">
+            {!loading && !error ? (
+              <p className="text-xs tabular-nums text-muted-foreground">
                 {view.customers.length} pelanggan · {view.periodCount} periode
               </p>
-            )}
-          </div>
-          {!loading && !error && sortedCustomers.length > 0 && (
-            <label className="flex items-center gap-2 text-xs text-muted-foreground md:hidden">
-              Urutkan
+            ) : <span />}
+            {!loading && !error && sortedCustomers.length > 0 && (
               <select
                 value={`${sortKey}:${sortDirection}`}
+                aria-label="Urutkan daftar pelanggan"
                 onChange={(event) => {
                   const [key, direction] = event.target.value.split(':');
                   setSortKey(key as ArrearsSortKey);
                   setSortDirection(direction as ArrearsSortDirection);
                   setHasSorted(true);
                 }}
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-9 shrink-0 rounded-md border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
               >
                 <option value="age:desc">Terlama menunggak</option>
                 <option value="age:asc">Terbaru menunggak</option>
@@ -392,8 +376,8 @@ export default function ArrearsPage() {
                 <option value="name:asc">Nama A-Z</option>
                 <option value="name:desc">Nama Z-A</option>
               </select>
-            </label>
-          )}
+            )}
+          </div>
         </div>
 
         <p className="sr-only" role="status">
@@ -403,7 +387,7 @@ export default function ArrearsPage() {
         {loading ? (
           <div className="divide-y divide-border/70" role="status" aria-label="Memuat laporan tunggakan">
             {Array.from({ length: 5 }, (_, index) => (
-              <div key={index} className="flex items-center justify-between gap-4 py-4">
+              <div key={index} className="flex items-center justify-between gap-4 py-3.5">
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="h-4 w-40 max-w-full rounded-sm bg-muted" />
                   <div className="h-3 w-56 max-w-full rounded-sm bg-muted/70" />
@@ -444,7 +428,7 @@ export default function ArrearsPage() {
                 </TableCaption>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead scope="col" aria-sort={ariaSortFor('name')} className="h-auto w-[38%] p-0">
+                    <TableHead scope="col" aria-sort={ariaSortFor('name')} className="h-auto w-[40%] p-0">
                       <SortHeaderButton
                         label="Pelanggan"
                         active={sortKey === 'name'}
@@ -452,7 +436,7 @@ export default function ArrearsPage() {
                         onClick={() => handleSort('name')}
                       />
                     </TableHead>
-                    <TableHead scope="col" aria-sort={ariaSortFor('age')} className="h-auto w-[22%] p-0">
+                    <TableHead scope="col" aria-sort={ariaSortFor('age')} className="h-auto w-[18%] p-0">
                       <SortHeaderButton
                         label="Menunggak"
                         active={sortKey === 'age'}
@@ -460,7 +444,7 @@ export default function ArrearsPage() {
                         onClick={() => handleSort('age')}
                       />
                     </TableHead>
-                    <TableHead scope="col" aria-sort={ariaSortFor('amount')} className="h-auto w-[22%] p-0">
+                    <TableHead scope="col" aria-sort={ariaSortFor('amount')} className="h-auto w-[24%] p-0">
                       <SortHeaderButton
                         label="Sisa tagihan"
                         align="right"
@@ -554,7 +538,7 @@ export default function ArrearsPage() {
                 const customerHref = `/customers/${encodeURIComponent(customer.customerId)}?name=${encodeURIComponent(customer.customerName)}`;
 
                 return (
-                  <article key={customer.customerId} className="py-4">
+                  <article key={customer.customerId} className="py-3.5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <Link
@@ -569,13 +553,13 @@ export default function ArrearsPage() {
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="text-sm font-semibold tabular-nums">{formatRupiah(customer.totalOutstanding)}</p>
+                        <p className="min-w-0 text-sm font-semibold tabular-nums whitespace-nowrap">{formatRupiah(customer.totalOutstanding)}</p>
                         {paidTotal > 0 && (
                           <p className="text-[11px] tabular-nums text-muted-foreground">dibayar {formatRupiah(paidTotal)}</p>
                         )}
                       </div>
                     </div>
-                    <div className="mt-2 flex items-center justify-between gap-3">
+                    <div className="mt-1.5 flex items-center justify-between gap-3">
                       <p className="min-w-0 text-xs text-muted-foreground">
                         <span className={`font-medium ${isOld ? 'text-destructive' : 'text-foreground'}`}>
                           {customer.arrearsMonthCount} bulan
@@ -587,7 +571,7 @@ export default function ArrearsPage() {
                         aria-expanded={isExpanded}
                         aria-controls={detailsId}
                         onClick={() => toggleDetails(customer.customerId)}
-                        className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="-mr-2 inline-flex min-h-10 shrink-0 items-center gap-1 rounded-sm px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         Rincian
                         <ChevronDown

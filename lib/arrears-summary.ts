@@ -132,18 +132,6 @@ export function formatArrearsPercent(bucket: Pick<ArrearsBucket, 'share' | 'perc
   return bucket.share > 0 ? '<1%' : '0%';
 }
 
-export function buildArrearsFindingSentence(buckets: readonly ArrearsBucket[]): string {
-  const totalCustomers = buckets.reduce((sum, bucket) => sum + bucket.customerCount, 0);
-  if (totalCustomers === 0) return 'Belum ada tunggakan yang tercatat.';
-
-  const olderBucket = buckets.find((bucket) => bucket.key === '3+');
-  if (!olderBucket || olderBucket.customerCount === 0) {
-    return 'Tidak ada tunggakan berumur 3 bulan atau lebih.';
-  }
-
-  return `${formatArrearsPercent(olderBucket)} sisa tunggakan sudah berumur 3 bulan atau lebih, mencakup ${olderBucket.customerCount} dari ${totalCustomers} pelanggan yang menunggak.`;
-}
-
 export type ArrearsSortKey = 'name' | 'age' | 'amount';
 export type ArrearsSortDirection = 'asc' | 'desc';
 

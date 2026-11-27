@@ -209,10 +209,6 @@ export default function ArrearsPage() {
     }, null);
   }, [view.customers]);
 
-  const averageOutstanding = view.customers.length > 0
-    ? Math.round(view.totalOutstanding / view.customers.length)
-    : 0;
-
   const ariaSortFor = (key: ArrearsSortKey): 'ascending' | 'descending' | undefined => {
     if (sortKey !== key) return undefined;
     return sortDirection === 'asc' ? 'ascending' : 'descending';
@@ -232,9 +228,6 @@ export default function ArrearsPage() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Laporan Tunggakan</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Sisa tagihan yang belum lunas, dikelompokkan menurut umur tunggakan.
-          </p>
         </div>
         <Link
           href="/dashboard"
@@ -265,17 +258,11 @@ export default function ArrearsPage() {
                 <p className="mt-1.5 text-sm text-muted-foreground sm:mt-3">
                   {view.customers.length} pelanggan · {view.periodCount} periode belum lunas
                 </p>
-                <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border/70 pt-2 sm:mt-4 sm:pt-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Tunggakan tertua</p>
-                    <p className="mt-0.5 text-sm font-medium">
-                      {earliestPeriod ? `${earliestPeriod.month} ${earliestPeriod.year}` : '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Rata-rata sisa</p>
-                    <p className="mt-0.5 text-sm font-medium tabular-nums">{formatRupiah(averageOutstanding)}</p>
-                  </div>
+                <div className="mt-3 border-t border-border/70 pt-2 sm:mt-4 sm:pt-3">
+                  <p className="text-xs text-muted-foreground">Tunggakan tertua</p>
+                  <p className="mt-0.5 text-sm font-medium">
+                    {earliestPeriod ? `${earliestPeriod.month} ${earliestPeriod.year}` : '—'}
+                  </p>
                 </div>
               </div>
 
@@ -316,11 +303,11 @@ export default function ArrearsPage() {
       )}
 
       <section aria-label="Filter laporan" className="flex flex-wrap items-end justify-between gap-3">
-        <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:items-end">
+        <div className="grid w-full grid-cols-1 gap-3 sm:flex sm:w-auto sm:items-end">
           <div className="space-y-1.5">
             <label htmlFor="arrears-status" className="text-xs font-medium text-muted-foreground">Status tunggakan</label>
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ArrearsStatusFilter)}>
-              <SelectTrigger id="arrears-status" className="h-10"><SelectValue /></SelectTrigger>
+              <SelectTrigger id="arrears-status" className="h-11 sm:h-10"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Semua status</SelectItem>
                 <SelectItem value="Belum Bayar">Belum Bayar</SelectItem>
@@ -331,7 +318,7 @@ export default function ArrearsPage() {
           <div className="space-y-1.5">
             <label htmlFor="arrears-month" className="text-xs font-medium text-muted-foreground">Sampai bulan</label>
             <Select value={monthFilter} onValueChange={setMonthFilter}>
-              <SelectTrigger id="arrears-month" className="h-10"><SelectValue /></SelectTrigger>
+              <SelectTrigger id="arrears-month" className="h-11 sm:h-10"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Semua bulan</SelectItem>
                 {monthOptions.map((month) => (
@@ -340,6 +327,32 @@ export default function ArrearsPage() {
               </SelectContent>
             </Select>
           </div>
+          {!loading && !error && sortedCustomers.length > 0 && (
+            <div className="space-y-1.5 sm:hidden">
+              <label htmlFor="arrears-sort" className="text-xs font-medium text-muted-foreground">Urutkan daftar pelanggan</label>
+              <Select
+                value={`${sortKey}:${sortDirection}`}
+                onValueChange={(value) => {
+                  const [key, direction] = value.split(':');
+                  setSortKey(key as ArrearsSortKey);
+                  setSortDirection(direction as ArrearsSortDirection);
+                  setHasSorted(true);
+                }}
+              >
+                <SelectTrigger id="arrears-sort" aria-label="Urutkan daftar pelanggan" className="h-11">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="age:desc">Terlama</SelectItem>
+                  <SelectItem value="age:asc">Terbaru</SelectItem>
+                  <SelectItem value="amount:desc">Sisa terbesar</SelectItem>
+                  <SelectItem value="amount:asc">Sisa terkecil</SelectItem>
+                  <SelectItem value="name:asc">Nama A-Z</SelectItem>
+                  <SelectItem value="name:desc">Nama Z-A</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
         {isFiltered && !loading && !error && (
           <Button type="button" variant="ghost" size="sm" onClick={resetFilters}>
@@ -349,34 +362,12 @@ export default function ArrearsPage() {
       </section>
 
       <section aria-labelledby="arrears-list-heading" aria-busy={loading} className="space-y-2 sm:space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
-            <h2 id="arrears-list-heading" className="text-base font-semibold">Pelanggan menunggak</h2>
-            {!loading && !error && (
-              <p className="text-xs tabular-nums text-muted-foreground">
-                {view.customers.length} pelanggan · {view.periodCount} periode
-              </p>
-            )}
-          </div>
-          {!loading && !error && sortedCustomers.length > 0 && (
-            <select
-              value={`${sortKey}:${sortDirection}`}
-              aria-label="Urutkan daftar pelanggan"
-              onChange={(event) => {
-                const [key, direction] = event.target.value.split(':');
-                setSortKey(key as ArrearsSortKey);
-                setSortDirection(direction as ArrearsSortDirection);
-                setHasSorted(true);
-              }}
-              className="h-8 shrink-0 rounded-md border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
-            >
-              <option value="age:desc">Terlama</option>
-              <option value="age:asc">Terbaru</option>
-              <option value="amount:desc">Sisa terbesar</option>
-              <option value="amount:asc">Sisa terkecil</option>
-              <option value="name:asc">Nama A-Z</option>
-              <option value="name:desc">Nama Z-A</option>
-            </select>
+        <div className="min-w-0 space-y-1">
+          <h2 id="arrears-list-heading" className="text-base font-semibold">Pelanggan menunggak</h2>
+          {!loading && !error && (
+            <p className="text-xs tabular-nums text-muted-foreground">
+              {view.customers.length} pelanggan · {view.periodCount} periode
+            </p>
           )}
         </div>
 

@@ -5,27 +5,27 @@
 @layer base {
   :root {
     color-scheme: light;
-    --background: 210 18% 96%;
-    --chrome: 204 24% 93%;
-    --foreground: 216 26% 12%;
-    --card: 0 0% 100%;
-    --card-foreground: 216 26% 12%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 216 26% 12%;
-    --primary: 198 78% 34%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 204 20% 92%;
-    --secondary-foreground: 216 23% 19%;
-    --muted: 204 18% 95%;
-    --muted-foreground: 214 12% 42%;
-    --accent: 204 20% 90%;
-    --accent-foreground: 216 23% 19%;
+    --background: 92.7 33.3% 93.5%;
+    --chrome: 168.4 28.4% 78.6%;
+    --foreground: 182.9 53.8% 15.3%;
+    --card: 92.7 33.3% 93.5%;
+    --card-foreground: 182.9 53.8% 15.3%;
+    --popover: 92.7 33.3% 93.5%;
+    --popover-foreground: 182.9 53.8% 15.3%;
+    --primary: 184.9 57.6% 16.7%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 154 25.5% 86.4%;
+    --secondary-foreground: 182.9 53.8% 15.3%;
+    --muted: 109.1 21.6% 90%;
+    --muted-foreground: 182 17.4% 33.7%;
+    --accent: 154 25.5% 86.4%;
+    --accent-foreground: 182.9 53.8% 15.3%;
     --destructive: 0 72% 45%;
     --destructive-foreground: 210 40% 98%;
-    --border: 210 16% 87%;
-    --input: 210 16% 82%;
-    --ring: 198 78% 34%;
-    --chart-1: 198 78% 34%;
+    --border: 162.9 18.9% 71%;
+    --input: 162.9 18.9% 71%;
+    --ring: 187.9 74.6% 33.9%;
+    --chart-1: 187.9 74.6% 33.9%;
     --chart-2: 151 49% 34%;
     --chart-3: 39 78% 42%;
     --chart-4: 3 62% 46%;
@@ -33,7 +33,7 @@
     --status-positive: 151 61% 29%;
     --status-warning: 32 84% 34%;
     --status-negative: 0 66% 43%;
-    --status-info: 198 83% 33%;
+    --status-info: 187.9 74.6% 33.9%;
     --radius: 0.5rem;
   }
 
@@ -335,30 +335,6 @@
   to {
     opacity: 0;
     transform: scale(0.94);
-  }
-}
-
-@keyframes theme-sun-idle {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes theme-moon-idle {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(7deg); }
-  75% { transform: rotate(-7deg); }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  svg.theme-sun-idle {
-    animation: theme-sun-idle 16s linear infinite;
-    transform-box: fill-box;
-    transform-origin: center;
-  }
-
-  svg.theme-moon-idle {
-    animation: theme-moon-idle 3.6s ease-in-out infinite;
-    transform-box: fill-box;
-    transform-origin: center;
   }
 }
 

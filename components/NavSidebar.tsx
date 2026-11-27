@@ -59,7 +59,7 @@ export default function NavSidebar() {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [backdropInteractive, setBackdropInteractive] = useState(true);
-  const [sheetHeight, setSheetHeight] = useState(0);
+  const [sheetHeight, setSheetHeight] = useState(600);
   const sheetRef = useRef<HTMLDivElement>(null);
   const sheetDragY = useMotionValue(0);
   const sheetAnimationRef = useRef<{ stop: () => void } | null>(null);
@@ -144,14 +144,12 @@ export default function NavSidebar() {
     setBackdropInteractive(true);
     sheetAnimationRef.current?.stop();
     const controls = animate(sheetDragY, 0, {
-      type: 'spring',
-      stiffness: 420,
-      damping: 34,
-      mass: 0.6,
+      duration: prefersReducedMotion ? 0 : 0.6,
+      ease: [0.4, 0, 0.2, 1],
     });
     sheetAnimationRef.current = controls;
     return () => controls.stop();
-  }, [mobileOpen, sheetDragY]);
+  }, [mobileOpen, sheetDragY, prefersReducedMotion]);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -175,7 +173,7 @@ export default function NavSidebar() {
       setMobileOpen(false);
       return;
     }
-    sheetDragY.set(prefersReducedMotion ? 0 : 24);
+    sheetDragY.set(prefersReducedMotion ? 0 : 56);
     setMobileOpen(true);
   };
 
@@ -462,9 +460,24 @@ export default function NavSidebar() {
               href={item.href}
               aria-current={isActive ? 'page' : undefined}
               onClick={() => setMobileOpen(false)}
-              className={cn('flex min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors', isActive ? 'text-primary' : 'text-muted-foreground')}
+              className={cn(
+                'flex min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-[color,transform] duration-150 motion-safe:active:scale-[0.97]',
+                isActive ? 'text-primary' : 'text-muted-foreground'
+              )}
             >
-              <Icon className="h-4.5 w-4.5" />
+              <span className="relative flex h-8 w-11 items-center justify-center rounded-md">
+                {isActive && (
+                  <motion.span
+                    layoutId="mobile-nav-active-pill"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 rounded-md bg-primary/10"
+                    transition={prefersReducedMotion
+                      ? { duration: 0 }
+                      : { type: 'spring', stiffness: 560, damping: 38, mass: 0.5 }}
+                  />
+                )}
+                <Icon className="relative h-4.5 w-4.5" />
+              </span>
               <span className="truncate">{item.label}</span>
             </Link>
           );
@@ -475,9 +488,18 @@ export default function NavSidebar() {
           aria-expanded={mobileOpen}
           aria-controls="mobile-navigation"
           onClick={toggleMobileMenu}
-          className={cn('h-full flex-col gap-1 rounded-none px-1 text-[10px] font-medium', mobileOpen ? 'text-primary' : 'text-muted-foreground')}
+          className={cn(
+            'h-full flex-col gap-1 rounded-none px-1 text-[10px] font-medium transition-[color,transform] duration-150 motion-safe:active:scale-[0.97]',
+            mobileOpen ? 'text-primary' : 'text-muted-foreground'
+          )}
         >
-          <MoreHorizontal className="h-4.5 w-4.5" />
+          <motion.span
+            animate={{ rotate: mobileOpen ? 90 : 0 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.5, ease: [0.16, 1, 0.3, 1] }}
+            className="flex h-8 w-11 items-center justify-center"
+          >
+            <MoreHorizontal className="h-4.5 w-4.5" />
+          </motion.span>
           Menu
         </Button>
       </nav>
@@ -489,7 +511,7 @@ export default function NavSidebar() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.18, ease: 'easeOut' }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.25, ease: [0.4, 0, 0.2, 1] }}
           >
             <motion.div
               aria-hidden="true"
